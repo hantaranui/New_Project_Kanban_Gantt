@@ -896,6 +896,7 @@ var DEFAULT_USERS_TABLE    = 'PM_Users';
 var DEFAULT_PROJECTS_TABLE = 'PM_Projects';
 var DEFAULT_CATEGORIES_TABLE = 'PM_Categories';
 var DEFAULT_TAGS_TABLE     = 'PM_Tags';
+var taskTableColumns = null;
 
 // Configuration mapping object
 var columnMapping = {
@@ -1056,6 +1057,59 @@ function requireTaskTitle() {
     return '';
   }
   return title;
+}
+
+async function refreshTaskTableColumns() {
+  try {
+    var data = await grist.docApi.fetchTable(TASKS_TABLE);
+    taskTableColumns = data ? Object.keys(data) : null;
+  } catch (e) {
+    taskTableColumns = null;
+  }
+}
+
+async function keepExistingTaskColumns(record) {
+  if (!taskTableColumns) await refreshTaskTableColumns();
+  if (!taskTableColumns) return record;
+  var filtered = {};
+  Object.keys(record).forEach(function(key) {
+    if (taskTableColumns.indexOf(key) !== -1) filtered[key] = record[key];
+  });
+  return filtered;
+}
+
+function captureTaskFormState() {
+  return {
+    title: getInputValue('task-title'),
+    description: getInputValue('task-desc'),
+    status: getInputValue('task-status'),
+    priority: getInputValue('task-priority'),
+    group: getInputValue('task-group'),
+    start: getInputValue('task-start'),
+    due: getInputValue('task-due'),
+    category: getInputValue('task-category'),
+    project: getInputValue('task-project'),
+    tag: getInputValue('task-tag')
+  };
+}
+
+function restoreTaskFormState(state) {
+  if (!state) return;
+  [
+    ['task-title', state.title],
+    ['task-desc', state.description],
+    ['task-status', state.status],
+    ['task-priority', state.priority],
+    ['task-group', state.group],
+    ['task-start', state.start],
+    ['task-due', state.due],
+    ['task-category', state.category],
+    ['task-project', state.project],
+    ['task-tag', state.tag]
+  ].forEach(function(pair) {
+    var el = document.getElementById(pair[0]);
+    if (el && pair[1] !== undefined && pair[1] !== null) el.value = pair[1];
+  });
 }
 
 // Get column name for a field using mapping
@@ -6062,6 +6116,7 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
   if (TASKS_TABLE === DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
   if (dateStr) { setField(record, 'tasks', 'startDate', toEpoch(dateStr)); setField(record, 'tasks', 'dueDate', toEpoch(dateStr)); }
   try {
+    record = await keepExistingTaskColumns(record);
     var res = await grist.docApi.applyUserActions([['AddRecord', TASKS_TABLE, null, record]]);
     var newId = (res && res.retValues && res.retValues[0]) || null;
     if (!newId) { showToast('Error', 'error'); return; }
@@ -7149,6 +7204,7 @@ async function addComment(taskId) {
   var textarea = document.getElementById('new-comment-input');
   var content = textarea.value.trim();
   if (!content) return;
+  var savedFormState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
@@ -7173,6 +7229,7 @@ async function addComment(taskId) {
     editConsulted = savedConsulted;
     editInformed = savedInformed;
     openEditTaskModal(taskId, true);
+    restoreTaskFormState(savedFormState);
   } catch (e) {
     console.error('Error adding comment:', e);
     showToast('Error: ' + e.message, 'error');
@@ -7681,6 +7738,7 @@ async function createTask() {
   }
 
   try {
+    record = await keepExistingTaskColumns(record);
     var createResult = await grist.docApi.applyUserActions([
       ['AddRecord', TASKS_TABLE, null, record]
     ]);
@@ -7706,7 +7764,7 @@ async function createTask() {
 async function updateTask(taskId) {
   var title = requireTaskTitle();
   if (!title) return;
-  if (draftTaskId === taskId) draftTaskId = null; // ce brouillon devient une vraie tâche
+  var wasDraft = draftTaskId === taskId;
 
   var task = tasks.find(function(t) { return t.id === taskId; });
   var wasNotDone = task && task.Status !== 'done';
@@ -7762,9 +7820,11 @@ async function updateTask(taskId) {
   }
 
   try {
+    record = await keepExistingTaskColumns(record);
     await grist.docApi.applyUserActions([
       ['UpdateRecord', TASKS_TABLE, taskId, record]
     ]);
+    if (wasDraft) draftTaskId = null; // ce brouillon devient une vraie tâche seulement après sauvegarde réussie
     showToast(t('taskUpdated'), 'success');
     var logDetails = [];
     var autoChanges = {};
