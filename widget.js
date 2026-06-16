@@ -1107,6 +1107,19 @@ async function removeCommentsForTask(taskId) {
   }));
 }
 
+async function removeSubtasksForTask(taskId) {
+  var toRemove = subtasks.filter(function(st) { return st.Parent_Task_Id === taskId; });
+  if (!toRemove.length) return;
+  await grist.docApi.applyUserActions(toRemove.map(function(st) {
+    return ['RemoveRecord', SUBTASKS_TABLE, st.id];
+  }));
+}
+
+async function removeDraftChildren(taskId) {
+  await removeCommentsForTask(taskId);
+  await removeSubtasksForTask(taskId);
+}
+
 async function saveTaskFormSilently(taskId) {
   var title = requireTaskTitle();
   if (!title) return false;
@@ -1206,6 +1219,56 @@ function userMatchesRole(u, role) {
 function userRoleDisplay(u) {
   var roles = getUserRoles(u);
   return roles.length ? roles.join(', ') : '';
+}
+
+function getCurrentUserRecord() {
+  var em = (currentUserEmail || '').toLowerCase().trim();
+  if (!em) return null;
+  return users.find(function(u) {
+    return (u.Email || '').toLowerCase().trim() === em;
+  }) || null;
+}
+
+function getCurrentBusinessRoles() {
+  var u = getCurrentUserRecord();
+  return u ? getUserRoles(u) : [];
+}
+
+function hasCurrentBusinessRole(role) {
+  return getCurrentBusinessRoles().indexOf(role) !== -1;
+}
+
+function canSeeAllProjects() {
+  return isOwner || hasCurrentBusinessRole('admin');
+}
+
+function shouldLimitToMyProjects() {
+  if (canSeeAllProjects()) return false;
+  var roles = getCurrentBusinessRoles();
+  return roles.indexOf('member') !== -1 || roles.indexOf('viewer') !== -1;
+}
+
+function canEditWorkItems() {
+  return (isOwner || isEditor) && !hasCurrentBusinessRole('viewer');
+}
+
+function applyRoleVisibilityDefaults() {
+  if (shouldLimitToMyProjects()) {
+    mineOnly = true;
+    currentFilterRole = null;
+    currentFilterAssignee = null;
+    if (currentProjectId) {
+      var myIds = myProjectIdSet();
+      if (!myIds[currentProjectId]) currentProjectId = null;
+    }
+  }
+}
+
+function applyBusinessRoleRestrictions() {
+  var canEdit = canEditWorkItems();
+  document.querySelectorAll('.btn-new-task, .btn-new-project, .kanban-add-btn, .col-add').forEach(function(el) {
+    el.style.display = canEdit ? '' : 'none';
+  });
 }
 
 function formatDate(d) {
@@ -2678,7 +2741,7 @@ function renderProjectSelector() {
 
   // Projets visibles
   var visibleProjects = projects;
-  if (mineOnly) {
+  if (mineOnly || shouldLimitToMyProjects()) {
     var myIds = myProjectIdSet();
     visibleProjects = projects.filter(function (p) { return myIds[p.id]; });
   }
@@ -2696,18 +2759,20 @@ function renderProjectSelector() {
 
   var html = '';
 
-  // Filtre Rôle
-  var roleOptions = roles.map(function(r) { return { value: r, label: roleLabel(r) }; });
-  html += buildFilterCombo('role', currentLang === 'fr' ? '— Rôle —' : '— Role —', roleOptions, currentFilterRole, filterByRole);
+  if (canSeeAllProjects()) {
+    // Filtre Rôle
+    var roleOptions = roles.map(function(r) { return { value: r, label: roleLabel(r) }; });
+    html += buildFilterCombo('role', currentLang === 'fr' ? '— Rôle —' : '— Role —', roleOptions, currentFilterRole, filterByRole);
 
-  // Filtre Personne
-  var personOptions = [];
-  visibleUsers.forEach(function(u) {
-    var val = u.Email || u.Name;
-    var label = u.Name || u.Email;
-    if (val) personOptions.push({ value: val, label: label });
-  });
-  html += buildFilterCombo('person', currentLang === 'fr' ? '— Personne —' : '— Person —', personOptions, currentFilterAssignee, filterByAssignee);
+    // Filtre Personne
+    var personOptions = [];
+    visibleUsers.forEach(function(u) {
+      var val = u.Email || u.Name;
+      var label = u.Name || u.Email;
+      if (val) personOptions.push({ value: val, label: label });
+    });
+    html += buildFilterCombo('person', currentLang === 'fr' ? '— Personne —' : '— Person —', personOptions, currentFilterAssignee, filterByAssignee);
+  }
 
   // Filtre Catégorie
   var allCategories = [];
@@ -2722,7 +2787,10 @@ function renderProjectSelector() {
 
   // Filtre Projet — combobox moderne avec recherche intégrée
   var selProj = currentProjectId ? projects.find(function(p) { return p.id === currentProjectId; }) : null;
-  var btnLabel = selProj ? sanitize(selProj.Name) : (currentLang === 'fr' ? 'Tous les projets' : 'All projects');
+  var allProjectsLabel = canSeeAllProjects()
+    ? (currentLang === 'fr' ? 'Tous les projets' : 'All projects')
+    : (currentLang === 'fr' ? 'Mes projets' : 'My projects');
+  var btnLabel = selProj ? sanitize(selProj.Name) : allProjectsLabel;
   var btnDotColor = selProj ? (selProj.Color || '#6366f1') : 'transparent';
   var btnClass = 'proj-combobox-btn' + (currentProjectId ? ' active' : '');
   html += '<div class="proj-combobox" id="proj-combobox">';
@@ -2738,7 +2806,7 @@ function renderProjectSelector() {
   // "All projects" option (always shown)
   html += '<div class="proj-option' + (!currentProjectId ? ' selected' : '') + '" data-id="" data-name="" data-always="1" onclick="selectProjectOption(\'\')">';
   html += '<span class="proj-dot" style="background:#94a3b8;opacity:.4;"></span>';
-  html += '<span>' + (currentLang === 'fr' ? 'Tous les projets' : 'All projects') + '</span>';
+  html += '<span>' + allProjectsLabel + '</span>';
   html += '</div>';
   // Project options — first 5 visible, rest hidden until search
   var allTasksForCount = tasks;
@@ -3174,7 +3242,7 @@ function getFilteredTasks() {
   if (currentFilterTag) {
     result = result.filter(function(t) { return t.Tag === currentFilterTag; });
   }
-  if (mineOnly && !currentProjectId) {
+  if ((mineOnly || shouldLimitToMyProjects()) && !currentProjectId) {
     var myIds = myProjectIdSet();
     result = result.filter(function(t) { return t.Project_Id && myIds[t.Project_Id]; });
   }
@@ -3212,6 +3280,7 @@ function refreshAllViews() {
     if (tab === 'stats') renderStatsView();
     if (tab === 'team') renderTeamView();
   }
+  applyBusinessRoleRestrictions();
 }
 
 // =============================================================================
@@ -5993,6 +6062,10 @@ async function deleteGroup(groupId) {
 // =============================================================================
 
 function openNewTaskModal(defaultStatus) {
+  if (!canEditWorkItems()) {
+    showToast(currentLang === 'fr' ? 'Vous n’avez pas les droits pour créer une tâche.' : 'You do not have permission to create a task.', 'error');
+    return;
+  }
   return startNewTask(defaultStatus); // approche brouillon -> éditeur complet
   // --- ancien formulaire de création (désactivé, conservé pour référence) ---
   editAssignees = [];
@@ -6182,7 +6255,7 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
     if (!newId) { showToast('Error', 'error'); return; }
     draftTaskId = newId;
     await loadAllData();
-    await removeCommentsForTask(newId);
+    await removeDraftChildren(newId);
     await loadAllData();
     openEditTaskModal(newId);
   } catch (e) { showToast('Error: ' + e.message, 'error'); }
@@ -6933,6 +7006,7 @@ async function addSubtask(parentTaskId) {
   var title = input.value.trim();
   if (!title) return;
 
+  var savedFormState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
@@ -6943,6 +7017,8 @@ async function addSubtask(parentTaskId) {
   var maxOrder = taskSubtasks.length > 0 ? Math.max.apply(null, taskSubtasks.map(function(st) { return st.Order || 0; })) : 0;
 
   try {
+    var savedTask = await saveTaskFormSilently(parentTaskId);
+    if (!savedTask) return;
     await grist.docApi.applyUserActions([
       ['AddRecord', SUBTASKS_TABLE, null, {
         Parent_Task_Id: parentTaskId,
@@ -6959,6 +7035,7 @@ async function addSubtask(parentTaskId) {
     editConsulted = savedConsulted;
     editInformed = savedInformed;
     openEditTaskModal(parentTaskId, true);
+    restoreTaskFormState(savedFormState);
     restoreModalScrollTop(scrollPos);
   } catch (e) {
     console.error('Error adding subtask:', e);
@@ -7756,7 +7833,7 @@ function closeModalForce() {
     var ti = document.getElementById('task-title');
     var titleVal = ti ? ti.value.trim() : '';
     if (titleVal) { updateTask(did); return; } // updateTask enregistre, ferme et recharge
-    removeCommentsForTask(did)
+    removeDraftChildren(did)
       .then(function () { return grist.docApi.applyUserActions([['RemoveRecord', TASKS_TABLE, did]]); })
       .then(function () { return loadAllData(); })
       .then(function () { refreshAllViews(); })
@@ -8662,6 +8739,10 @@ function populateProjectLead(selectedValue) {
 }
 
 function openProjectModal() {
+  if (!canEditWorkItems()) {
+    showToast(currentLang === 'fr' ? 'Vous n’avez pas les droits pour créer un projet.' : 'You do not have permission to create a project.', 'error');
+    return;
+  }
   document.getElementById('project-modal').style.display = 'flex';
   document.getElementById('edit-project-id').value = '';
   document.getElementById('project-name').value = '';
@@ -10609,12 +10690,18 @@ if (!isInsideGrist()) {
     await ensureTables();
     await loadSettings();
     await loadAllData();
+    applyRoleVisibilityDefaults();
+    renderProjectSelector();
+    refreshAllViews();
     updateNotificationBadge();
     await checkTimeBasedAutomations();
     await cleanupOldNotifications();
     updateNotificationBadge();
     restoreFilters(); // conserver les filtres en changeant de page / au rechargement
     try { var _sp = localStorage.getItem('pm-current-project'); if (_sp) currentProjectId = parseInt(_sp) || null; } catch (e) {}
+    applyRoleVisibilityDefaults();
+    renderProjectSelector();
+    refreshAllViews();
     restoreActiveTab();
     // Synchronise les choix de la colonne Status des sous-tâches avec les statuts personnalisés
     if (isOwner) syncSubtaskStatusChoices();
