@@ -1041,6 +1041,23 @@ function setField(record, entity, field, value) {
   }
 }
 
+function getInputValue(id, fallback) {
+  var el = document.getElementById(id);
+  if (!el) return fallback || '';
+  return el.value;
+}
+
+function requireTaskTitle() {
+  var titleEl = document.getElementById('task-title');
+  var title = titleEl ? titleEl.value.trim() : '';
+  if (!title) {
+    showToast(currentLang === 'fr' ? 'Ajoutez un titre avant d’enregistrer.' : 'Add a title before saving.', 'error');
+    if (titleEl) titleEl.focus();
+    return '';
+  }
+  return title;
+}
+
 // Get column name for a field using mapping
 function getColumnName(entity, field) {
   if (!columnMapping[entity]) return field;
@@ -6042,7 +6059,7 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
   if (prefill.estimatedHours) setField(record, 'tasks', 'estimatedHours', prefill.estimatedHours);
   if (currentProjectId) setField(record, 'tasks', 'projectId', currentProjectId);
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
-  record.Auto_Extend = true;
+  if (TASKS_TABLE === DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
   if (dateStr) { setField(record, 'tasks', 'startDate', toEpoch(dateStr)); setField(record, 'tasks', 'dueDate', toEpoch(dateStr)); }
   try {
     var res = await grist.docApi.applyUserActions([['AddRecord', TASKS_TABLE, null, record]]);
@@ -7631,7 +7648,7 @@ function closeModalForce() {
 // =============================================================================
 
 async function createTask() {
-  var title = document.getElementById('task-title').value.trim();
+  var title = requireTaskTitle();
   if (!title) return;
 
   var projectEl = document.getElementById('task-project');
@@ -7639,23 +7656,23 @@ async function createTask() {
 
   var record = {};
   setField(record, 'tasks', 'title', title);
-  setField(record, 'tasks', 'description', document.getElementById('task-desc').value.trim());
-  setField(record, 'tasks', 'status', document.getElementById('task-status').value);
-  setField(record, 'tasks', 'priority', document.getElementById('task-priority').value);
+  setField(record, 'tasks', 'description', getInputValue('task-desc').trim());
+  setField(record, 'tasks', 'status', getInputValue('task-status'));
+  setField(record, 'tasks', 'priority', getInputValue('task-priority'));
   setField(record, 'tasks', 'assignee', editAssignees.join(', '));
-  if (raciEnabled) {
+  if (raciEnabled && TASKS_TABLE === DEFAULT_TASKS_TABLE) {
     record.Accountable = editAccountable.join(', ');
     record.Consulted = editConsulted.join(', ');
     record.Informed = editInformed.join(', ');
   }
-  setField(record, 'tasks', 'group', document.getElementById('task-group').value);
-  setField(record, 'tasks', 'startDate', toEpoch(document.getElementById('task-start').value));
-  setField(record, 'tasks', 'dueDate', toEpoch(document.getElementById('task-due').value));
-  setField(record, 'tasks', 'category', document.getElementById('task-category').value.trim());
+  setField(record, 'tasks', 'group', getInputValue('task-group'));
+  setField(record, 'tasks', 'startDate', toEpoch(getInputValue('task-start')));
+  setField(record, 'tasks', 'dueDate', toEpoch(getInputValue('task-due')));
+  setField(record, 'tasks', 'category', getInputValue('task-category').trim());
   setField(record, 'tasks', 'projectId', projectId);
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
   // B4 : prolongation auto activée par défaut sur les nouvelles tâches (modifiable ensuite)
-  record.Auto_Extend = true;
+  if (TASKS_TABLE === DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
 
   // Add Tag only if the element exists
   var tagEl = document.getElementById('task-tag');
@@ -7687,13 +7704,13 @@ async function createTask() {
 }
 
 async function updateTask(taskId) {
-  var title = document.getElementById('task-title').value.trim();
+  var title = requireTaskTitle();
   if (!title) return;
   if (draftTaskId === taskId) draftTaskId = null; // ce brouillon devient une vraie tâche
 
   var task = tasks.find(function(t) { return t.id === taskId; });
   var wasNotDone = task && task.Status !== 'done';
-  var newStatus = document.getElementById('task-status').value;
+  var newStatus = getInputValue('task-status');
 
   if (newStatus === 'done' && isTaskBlocked(taskId)) {
     var blockers = getTaskDependencies(taskId).filter(function(b) { return b && b.Status !== 'done'; });
@@ -7710,19 +7727,19 @@ async function updateTask(taskId) {
 
   var record = {};
   setField(record, 'tasks', 'title', title);
-  setField(record, 'tasks', 'description', document.getElementById('task-desc').value.trim());
+  setField(record, 'tasks', 'description', getInputValue('task-desc').trim());
   setField(record, 'tasks', 'status', newStatus);
-  setField(record, 'tasks', 'priority', document.getElementById('task-priority').value);
+  setField(record, 'tasks', 'priority', getInputValue('task-priority'));
   setField(record, 'tasks', 'assignee', editAssignees.join(', '));
-  if (raciEnabled) {
+  if (raciEnabled && TASKS_TABLE === DEFAULT_TASKS_TABLE) {
     record.Accountable = editAccountable.join(', ');
     record.Consulted = editConsulted.join(', ');
     record.Informed = editInformed.join(', ');
   }
-  setField(record, 'tasks', 'group', document.getElementById('task-group').value);
-  setField(record, 'tasks', 'startDate', toEpoch(document.getElementById('task-start').value));
-  setField(record, 'tasks', 'dueDate', toEpoch(document.getElementById('task-due').value));
-  setField(record, 'tasks', 'category', document.getElementById('task-category').value.trim());
+  setField(record, 'tasks', 'group', getInputValue('task-group'));
+  setField(record, 'tasks', 'startDate', toEpoch(getInputValue('task-start')));
+  setField(record, 'tasks', 'dueDate', toEpoch(getInputValue('task-due')));
+  setField(record, 'tasks', 'category', getInputValue('task-category').trim());
   setField(record, 'tasks', 'projectId', projectId);
   setField(record, 'tasks', 'recurrence', newRecurrence);
   
