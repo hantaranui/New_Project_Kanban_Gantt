@@ -3094,9 +3094,9 @@ function updateStats() {
   var total = filteredTasks.length;
   var html = '';
   if (showArchivedTasks) {
-    html += '<div class="stat-card stat-total"><div><div class="stat-label">' + (currentLang === 'fr' ? 'Archivées' : 'Archived') + '</div><div class="stat-value">' + total + '</div></div><div class="stat-icon">📦</div></div>';
+    html += '<div class="stat-card stat-total"><div><div class="stat-label">' + (currentLang === 'fr' ? 'Archivées' : 'Archived') + '</div><div class="stat-value">' + total + '</div></div><div class="stat-icon"><span class="suite-stat-mark"></span></div></div>';
   } else {
-    html += '<div class="stat-card stat-total"><div><div class="stat-label">Total</div><div class="stat-value">' + total + '</div></div><div class="stat-icon">📋</div></div>';
+    html += '<div class="stat-card stat-total"><div><div class="stat-label">Total</div><div class="stat-value">' + total + '</div></div><div class="stat-icon"><span class="suite-stat-mark"></span></div></div>';
     var statuses = getKanbanStatuses();
     for (var i = 0; i < statuses.length; i++) {
       var s = statuses[i];

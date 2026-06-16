@@ -4081,6 +4081,254 @@
       margin-top: 20px;
     }
     .app-footer a { color: #ef4444; text-decoration: none; }
+
+    /* ========== LASUITE KANBAN PASS ========== */
+    .header-row > div:empty { display: none; }
+    .header-row {
+      max-width: var(--max-width);
+      margin-left: auto;
+      margin-right: auto;
+      justify-content: flex-end;
+    }
+
+    .btn-new-task,
+    .btn-primary {
+      background: var(--black) !important;
+      color: var(--white) !important;
+      border: var(--border-weight) solid var(--black) !important;
+      border-radius: var(--border-radius-3) !important;
+      box-shadow: 4px 4px 0 var(--blue);
+      font-weight: 900 !important;
+      letter-spacing: 0;
+    }
+    .btn-new-task:hover,
+    .btn-primary:hover:not(:disabled) {
+      background: var(--black) !important;
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0 var(--blue);
+    }
+    .btn-new-project,
+    .btn-secondary {
+      background: var(--white) !important;
+      color: var(--black) !important;
+      border: var(--border-weight) solid var(--black) !important;
+      border-radius: var(--border-radius-3) !important;
+      box-shadow: 4px 4px 0 var(--green);
+      font-weight: 900 !important;
+    }
+    .btn-new-project:hover,
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--light-green) !important;
+      color: var(--black) !important;
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0 var(--green);
+    }
+
+    .stats-row {
+      max-width: var(--max-width);
+      margin: 18px auto;
+      padding: 0 24px;
+      gap: 12px;
+    }
+    .stat-card {
+      min-width: 150px;
+      background: var(--white);
+      border: var(--border-weight) solid var(--black);
+      border-radius: var(--border-radius-3);
+      box-shadow: 5px 5px 0 var(--light-blue);
+      padding: 12px 16px;
+    }
+    .stat-card .stat-label {
+      color: var(--black);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .stat-card .stat-value {
+      color: var(--marked-color);
+      font-size: 28px;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .stat-card .stat-icon {
+      min-width: 28px;
+      display: flex;
+      justify-content: center;
+      opacity: 1;
+    }
+    .suite-stat-mark {
+      width: 22px;
+      height: 22px;
+      display: inline-block;
+      border: var(--border-weight) solid var(--black);
+      border-radius: 7px;
+      background: var(--green);
+      box-shadow: 3px 3px 0 var(--blue);
+      transform: rotate(-8deg);
+    }
+
+    #tab-kanban,
+    #tab-gantt,
+    #tab-team,
+    #tab-settings {
+      max-width: var(--max-width);
+      margin: 0 auto;
+    }
+    #tab-kanban > div:first-child {
+      align-items: center !important;
+      gap: 10px !important;
+      padding: 8px 0 14px !important;
+      color: var(--black) !important;
+      font-weight: 800;
+    }
+    #tab-kanban select,
+    .gantt-controls select,
+    .gantt-controls button,
+    input,
+    select,
+    textarea {
+      border: 2px solid var(--black) !important;
+      border-radius: var(--border-radius-4) !important;
+      color: var(--black) !important;
+      background: var(--white) !important;
+      font-family: var(--ls-font, 'Barlow', sans-serif) !important;
+      font-weight: 700;
+    }
+
+    .kanban-board {
+      gap: 16px;
+      padding: 4px 2px 18px;
+    }
+    .kanban-column {
+      min-width: 280px;
+      background: var(--white);
+      border: var(--border-weight) solid var(--black);
+      border-radius: var(--border-radius-2);
+      box-shadow: 7px 7px 0 var(--green);
+      overflow: hidden;
+    }
+    .kanban-col-header {
+      min-height: 54px;
+      padding: 13px 15px;
+      border-bottom: var(--border-weight) solid var(--black) !important;
+      background: var(--light-green);
+      color: var(--black) !important;
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .kanban-col-header > div:first-child {
+      min-width: 0;
+      line-height: 1.05;
+    }
+    .kanban-col-header .col-count {
+      width: auto;
+      min-width: 26px;
+      height: 24px;
+      padding: 0 8px;
+      border: 2px solid var(--black);
+      border-radius: 999px;
+      background: var(--white);
+      color: var(--black) !important;
+      font-weight: 900;
+    }
+    .kanban-col-header .col-add,
+    .btn-icon {
+      border: 2px solid var(--black);
+      background: var(--white);
+      color: var(--black);
+      border-radius: var(--border-radius-4);
+      font-weight: 900;
+    }
+    .kanban-col-header .col-add:hover,
+    .btn-icon:hover {
+      background: var(--green);
+      color: var(--black);
+    }
+    .kanban-cards {
+      padding: 12px;
+      background: linear-gradient(180deg, rgba(238, 255, 238, .55), rgba(251, 255, 250, .9));
+    }
+    .kanban-cards.drag-over {
+      background: var(--light-green);
+      outline: 3px dashed var(--blue);
+      outline-offset: -8px;
+    }
+    .kanban-empty {
+      color: var(--dark-blue);
+      font-weight: 700;
+    }
+    .kanban-add-btn {
+      margin: 10px 12px 12px;
+      border: 2px dashed var(--black);
+      border-radius: var(--border-radius-3);
+      background: var(--white);
+      color: var(--black);
+      font-weight: 900;
+    }
+    .kanban-add-btn:hover {
+      border-color: var(--black);
+      background: var(--green);
+      color: var(--black);
+    }
+    .kanban-column-collapsed {
+      border: var(--border-weight) solid var(--black);
+      border-radius: var(--border-radius-2);
+      background: var(--green);
+      box-shadow: 5px 5px 0 var(--blue);
+    }
+    .kanban-col-header-collapsed {
+      color: var(--black);
+      font-weight: 900;
+    }
+
+    .task-card {
+      background: var(--light-green) !important;
+      border: 2px solid var(--black) !important;
+      border-radius: var(--border-radius-3) !important;
+      box-shadow: 4px 4px 0 rgba(21, 182, 200, .35);
+      color: var(--black);
+    }
+    .task-card:hover {
+      box-shadow: 6px 6px 0 var(--blue);
+      transform: translateY(-2px);
+    }
+    .task-card-project-bar {
+      border-right: 2px solid var(--black);
+    }
+    .task-card-title {
+      color: var(--black) !important;
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+    .task-card-title:hover {
+      color: var(--marked-color) !important;
+      text-decoration-color: var(--blue);
+    }
+    .task-card-desc,
+    .task-card-date,
+    .task-card-row {
+      color: var(--black);
+      font-weight: 600;
+    }
+    .priority-badge,
+    .status-badge,
+    .task-card-status-badge,
+    .task-card-assignee,
+    .assignee-chip {
+      border: 1px solid var(--black);
+      border-radius: 999px;
+      background: var(--white) !important;
+      color: var(--black) !important;
+      font-weight: 800;
+    }
+    .priority-high { box-shadow: inset 0 -4px 0 rgba(239, 68, 68, .22); }
+    .priority-medium { box-shadow: inset 0 -4px 0 rgba(21, 182, 200, .24); }
+    .priority-low { box-shadow: inset 0 -4px 0 rgba(185, 255, 183, .8); }
+
+    footer[style] {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
@@ -4724,7 +4972,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=133"></script>
+  <script src="widget.js?v=134"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
