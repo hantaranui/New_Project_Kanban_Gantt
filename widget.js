@@ -1239,7 +1239,9 @@ function hasCurrentBusinessRole(role) {
 }
 
 function canSeeAllProjects() {
-  return isOwner || hasCurrentBusinessRole('admin');
+  var roles = getCurrentBusinessRoles();
+  if (roles.length > 0) return roles.indexOf('admin') !== -1;
+  return isOwner;
 }
 
 function shouldLimitToMyProjects() {
@@ -4000,11 +4002,9 @@ function renderTaskCard(task) {
   }
 
   html += '<div class="task-card-header">';
-  html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
-  html += '<div class="task-card-title" style="cursor:pointer;" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
-  if (cd.priority) html += '<span class="priority-badge priority-' + (task.Priority || 'medium') + '" style="font-size:11px;">' + priorityLabel(task.Priority) + '</span>';
-  html += '</div>';
-  html += '<div class="task-card-actions">';
+  html += '<div class="task-card-title" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
+  html += '<div class="task-card-meta-actions">';
+  if (cd.priority) html += '<span class="priority-badge priority-' + (task.Priority || 'medium') + '">' + priorityLabel(task.Priority) + '</span>';
   var _statusDef = getKanbanStatuses().find(function(st) { return st.key === task.Status; });
   var _statusColor = _statusDef ? _statusDef.color : '#94a3b8';
   html += '<span class="task-card-status-badge" style="background:' + _statusColor + '20;color:' + _statusColor + ';">' + statusLabel(task.Status) + '</span>';

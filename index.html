@@ -4310,24 +4310,46 @@
     .task-card-project-bar {
       border-right: 2px solid var(--black);
     }
+    .task-card-header {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: stretch !important;
+      gap: 8px !important;
+    }
     .task-card-title {
       color: var(--black) !important;
-      font-size: 15px;
+      display: block !important;
+      width: fit-content;
+      max-width: calc(100% - 8px);
+      min-width: 112px;
+      font-size: 16px;
       font-weight: 900;
       letter-spacing: 0;
-      max-width: 100%;
       white-space: normal;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-      line-height: 1.2;
+      overflow-wrap: normal;
+      word-break: normal;
+      line-height: 1.15;
       background: var(--yellow) !important;
       border: 2px solid var(--black);
       box-shadow: 2px 2px 0 var(--mint);
+      padding: 6px 10px;
+      border-radius: var(--border-radius-4);
+      cursor: pointer;
     }
     .task-card-title:hover {
       color: var(--marked-color) !important;
       text-decoration-color: var(--blue);
       background: var(--mint) !important;
+    }
+    .task-card-meta-actions {
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      flex-wrap: wrap !important;
+      min-width: 0;
+    }
+    .task-card-actions {
+      opacity: 1 !important;
     }
     .task-card-desc,
     .task-card-date,
@@ -4365,6 +4387,9 @@
       background: var(--white) !important;
       color: var(--black) !important;
       font-weight: 800;
+      font-size: 11px !important;
+      line-height: 1.2;
+      white-space: nowrap;
     }
     .priority-high { box-shadow: inset 0 -4px 0 rgba(239, 68, 68, .22); }
     .priority-medium { box-shadow: inset 0 -4px 0 rgba(21, 182, 200, .24); }
@@ -4726,6 +4751,80 @@
       max-height: 230px;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    /* ========== LASUITE GANTT ACCESSIBILITY PASS ========== */
+    #tab-gantt,
+    #tab-gantt * {
+      letter-spacing: 0 !important;
+    }
+    #gantt-task-count {
+      font-size: 16px !important;
+      line-height: 1.35;
+    }
+    .gantt-controls {
+      gap: 12px !important;
+      flex-wrap: wrap;
+    }
+    .gantt-controls span,
+    .gantt-controls select,
+    .gantt-controls button {
+      font-size: 15px !important;
+      line-height: 1.2 !important;
+    }
+    .gantt-controls select,
+    .gantt-controls button {
+      min-height: 42px !important;
+      padding: 8px 14px !important;
+    }
+    .gantt-container {
+      max-height: 72vh;
+    }
+    .gantt-task-label {
+      min-width: 340px !important;
+      max-width: 340px !important;
+      padding: 12px 14px !important;
+    }
+    .gantt-table th {
+      font-size: 13px !important;
+      line-height: 1.2 !important;
+      padding: 9px 8px !important;
+    }
+    .gantt-table thead th.gantt-task-label {
+      font-size: 18px !important;
+    }
+    .gantt-task-label .task-name {
+      font-size: 16px !important;
+      line-height: 1.25 !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+    }
+    .gantt-task-label .task-info {
+      font-size: 13px !important;
+      line-height: 1.35 !important;
+      margin-top: 5px !important;
+      white-space: normal !important;
+    }
+    .gantt-subtask-cell,
+    .gantt-subtask-cell span {
+      font-size: 13px !important;
+      line-height: 1.3 !important;
+    }
+    .gantt-bar {
+      top: 5px !important;
+      height: 30px !important;
+      min-height: 30px !important;
+      padding: 0 12px !important;
+      font-size: 13px !important;
+      line-height: 26px !important;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .gantt-cell {
+      min-width: 42px;
+      height: 42px !important;
     }
   </style>
 </head>
@@ -5370,7 +5469,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=139"></script>
+  <script src="widget.js?v=140"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
