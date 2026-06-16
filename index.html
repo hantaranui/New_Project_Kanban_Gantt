@@ -4692,6 +4692,21 @@
     .modal-detail-footer {
       border-top: 2px solid rgba(39, 26, 121, 0.12) !important;
     }
+    #archive-toggle-btn {
+      background: var(--white) !important;
+      color: var(--black) !important;
+      border: 2px solid var(--black) !important;
+      border-radius: var(--border-radius-3) !important;
+      box-shadow: 3px 3px 0 var(--mint);
+      font-weight: 900 !important;
+    }
+    #archive-toggle-btn:hover,
+    #archive-toggle-btn.active {
+      background: var(--yellow) !important;
+      color: var(--black) !important;
+      border-color: var(--black) !important;
+      box-shadow: 2px 2px 0 var(--blue);
+    }
   </style>
 </head>
 <body>
@@ -5335,7 +5350,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=137"></script>
+  <script src="widget.js?v=138"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>

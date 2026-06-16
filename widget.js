@@ -761,7 +761,28 @@ function getKanbanStatuses() {
 }
 async function saveKanbanStatuses() {
   await saveSetting('kanban_statuses', JSON.stringify(customKanbanStatuses));
+  await syncTaskStatusChoices();
   syncSubtaskStatusChoices();
+}
+
+async function syncTaskStatusChoices() {
+  try {
+    var statuses = getKanbanStatuses();
+    var choices = statuses.map(function(s) { return s.key; });
+    if (choices.indexOf('archived') === -1) choices.push('archived');
+    var choiceOptions = {};
+    statuses.forEach(function(s) {
+      if (s.color) choiceOptions[s.key] = { fillColor: s.color, textColor: '#271A79' };
+    });
+    choiceOptions.archived = { fillColor: '#EEFFEE', textColor: '#271A79' };
+    var statusCol = getColumnName('tasks', 'status');
+    await grist.docApi.applyUserActions([
+      ['ModifyColumn', TASKS_TABLE, statusCol, { widgetOptions: JSON.stringify({ choices: choices, choiceOptions: choiceOptions }) }]
+    ]);
+    taskTableColumns = null;
+  } catch (e) {
+    console.log('syncTaskStatusChoices:', e.message);
+  }
 }
 
 // Synchronise les choix (+ couleurs) de la colonne Status de PM_Subtasks avec les
@@ -1076,6 +1097,45 @@ async function keepExistingTaskColumns(record) {
     if (taskTableColumns.indexOf(key) !== -1) filtered[key] = record[key];
   });
   return filtered;
+}
+
+async function removeCommentsForTask(taskId) {
+  var toRemove = comments.filter(function(c) { return c.Task_Id === taskId; });
+  if (!toRemove.length) return;
+  await grist.docApi.applyUserActions(toRemove.map(function(c) {
+    return ['RemoveRecord', COMMENTS_TABLE, c.id];
+  }));
+}
+
+async function saveTaskFormSilently(taskId) {
+  var title = requireTaskTitle();
+  if (!title) return false;
+  var projectEl = document.getElementById('task-project');
+  var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
+  var record = {};
+  setField(record, 'tasks', 'title', title);
+  setField(record, 'tasks', 'description', getInputValue('task-desc').trim());
+  setField(record, 'tasks', 'status', getInputValue('task-status'));
+  setField(record, 'tasks', 'priority', getInputValue('task-priority'));
+  setField(record, 'tasks', 'assignee', editAssignees.join(', '));
+  setField(record, 'tasks', 'group', getInputValue('task-group'));
+  setField(record, 'tasks', 'startDate', toEpoch(getInputValue('task-start')));
+  setField(record, 'tasks', 'dueDate', toEpoch(getInputValue('task-due')));
+  setField(record, 'tasks', 'category', getInputValue('task-category').trim());
+  setField(record, 'tasks', 'projectId', projectId);
+  setField(record, 'tasks', 'recurrence', getInputValue('task-recurrence', 'none'));
+  var tagEl = document.getElementById('task-tag');
+  if (tagEl) setField(record, 'tasks', 'tag', tagEl.value.trim());
+  if (raciEnabled && TASKS_TABLE === DEFAULT_TASKS_TABLE) {
+    record.Accountable = editAccountable.join(', ');
+    record.Consulted = editConsulted.join(', ');
+    record.Informed = editInformed.join(', ');
+  }
+  record = await keepExistingTaskColumns(record);
+  await grist.docApi.applyUserActions([
+    ['UpdateRecord', TASKS_TABLE, taskId, record]
+  ]);
+  return true;
 }
 
 function captureTaskFormState() {
@@ -6122,6 +6182,8 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
     if (!newId) { showToast('Error', 'error'); return; }
     draftTaskId = newId;
     await loadAllData();
+    await removeCommentsForTask(newId);
+    await loadAllData();
     openEditTaskModal(newId);
   } catch (e) { showToast('Error: ' + e.message, 'error'); }
 }
@@ -7211,6 +7273,8 @@ async function addComment(taskId) {
   var savedInformed = editInformed.slice();
 
   try {
+    var savedTask = await saveTaskFormSilently(taskId);
+    if (!savedTask) return;
     await grist.docApi.applyUserActions([
       ['AddRecord', COMMENTS_TABLE, null, {
         Task_Id: taskId,
@@ -7692,7 +7756,8 @@ function closeModalForce() {
     var ti = document.getElementById('task-title');
     var titleVal = ti ? ti.value.trim() : '';
     if (titleVal) { updateTask(did); return; } // updateTask enregistre, ferme et recharge
-    grist.docApi.applyUserActions([['RemoveRecord', TASKS_TABLE, did]])
+    removeCommentsForTask(did)
+      .then(function () { return grist.docApi.applyUserActions([['RemoveRecord', TASKS_TABLE, did]]); })
       .then(function () { return loadAllData(); })
       .then(function () { refreshAllViews(); })
       .catch(function () {});
