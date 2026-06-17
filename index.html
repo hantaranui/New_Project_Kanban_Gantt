@@ -4826,6 +4826,47 @@
       min-width: 42px;
       height: 42px !important;
     }
+
+    /* ========== LASUITE READABILITY + QUIET CARDS ========== */
+    .task-card-title {
+      font-weight: 700 !important;
+      font-size: 15px !important;
+      line-height: 1.2 !important;
+    }
+    .task-card-meta-actions {
+      opacity: 1 !important;
+      max-height: none;
+      overflow: visible;
+      pointer-events: auto;
+    }
+    .task-card-meta-actions .task-card-status-badge,
+    .task-card-meta-actions .btn-icon {
+      opacity: 0 !important;
+      pointer-events: none;
+      transform: translateY(-2px);
+      transition: opacity .15s ease, transform .15s ease;
+    }
+    .task-card:hover .task-card-meta-actions .task-card-status-badge,
+    .task-card:hover .task-card-meta-actions .btn-icon,
+    .task-card:focus-within .task-card-meta-actions .task-card-status-badge,
+    .task-card:focus-within .task-card-meta-actions .btn-icon {
+      opacity: 1 !important;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+    .task-card-meta-actions .priority-badge {
+      opacity: 1;
+    }
+    .gantt-task-label .task-name,
+    .gantt-task-label .task-name strong,
+    .gantt-subtask-cell,
+    .gantt-subtask-cell span,
+    .gantt-bar {
+      font-weight: 600 !important;
+    }
+    .gantt-table thead th.gantt-task-label {
+      font-weight: 700 !important;
+    }
   </style>
 </head>
 <body>
@@ -5469,7 +5510,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=141"></script>
+  <script src="widget.js?v=142"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
