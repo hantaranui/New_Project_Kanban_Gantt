@@ -2568,9 +2568,10 @@ async function loadAllData() {
   try {
     var timeData = await grist.docApi.fetchTable(TIME_ENTRIES_TABLE);
     timeEntries = [];
+    activeTimers = {};
     if (timeData && timeData.id) {
       for (var i = 0; i < timeData.id.length; i++) {
-        timeEntries.push({
+        var entry = {
           id: timeData.id[i],
           Task_Id: timeData.Task_Id ? timeData.Task_Id[i] : null,
           User: timeData.User ? timeData.User[i] : '',
@@ -2578,11 +2579,16 @@ async function loadAllData() {
           End_Time: timeData.End_Time ? timeData.End_Time[i] : null,
           Duration: timeData.Duration ? timeData.Duration[i] : 0,
           Description: timeData.Description ? timeData.Description[i] : ''
-        });
+        };
+        timeEntries.push(entry);
+        if (entry.Task_Id && entry.Start_Time && !entry.End_Time) {
+          activeTimers[entry.Task_Id] = entry.Start_Time;
+        }
       }
     }
   } catch (e) {
     timeEntries = [];
+    activeTimers = {};
   }
 
   try {
@@ -3888,6 +3894,46 @@ function toggleCardExpand(taskId, ev) {
   renderKanbanView();
 }
 
+function getTaskDateProgress(task) {
+  if (!task || !task.Start_Date || !task.Due_Date || task.Due_Date <= task.Start_Date) return null;
+  var now = Math.floor(Date.now() / 1000);
+  if (now <= task.Start_Date) return 0;
+  if (now >= task.Due_Date) return 100;
+  return Math.max(0, Math.min(100, Math.round(((now - task.Start_Date) / (task.Due_Date - task.Start_Date)) * 100)));
+}
+
+function openCardSubtasksModal(taskId) {
+  var task = tasks.find(function(t) { return t.id === taskId; });
+  if (!task) return;
+  var taskSubtasks = getTaskSubtasks(taskId);
+  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+  html += '<div class="modal compact-subtasks-modal" onclick="event.stopPropagation()">';
+  html += '<div class="modal-header"><h3>' + (currentLang === 'fr' ? 'Sous-tâches' : 'Subtasks') + '</h3><button class="modal-close" onclick="closeModalForce()">✕</button></div>';
+  html += '<div class="modal-body">';
+  html += '<div class="compact-subtasks-title">' + sanitize(task.Title || '') + '</div>';
+  if (taskSubtasks.length === 0) {
+    html += '<div class="subtasks-empty">' + t('noSubtasks') + '</div>';
+  } else {
+    html += '<div class="compact-subtasks-list">';
+    taskSubtasks.forEach(function(st) {
+      html += '<label class="compact-subtask-item">';
+      html += '<input type="checkbox" ' + (st.Completed ? 'checked' : '') + ' onchange="toggleSubtaskFromPopup(' + st.id + ', ' + taskId + ', this.checked)">';
+      html += '<span class="' + (st.Completed ? 'completed' : '') + '">' + sanitize(st.Title) + '</span>';
+      html += '</label>';
+    });
+    html += '</div>';
+  }
+  html += '</div></div></div>';
+  document.getElementById('modal-container').innerHTML = html;
+}
+
+async function toggleSubtaskFromPopup(subtaskId, taskId, completed) {
+  await toggleSubtaskFromCard(subtaskId, completed);
+  await loadAllData();
+  openCardSubtasksModal(taskId);
+  renderKanbanView();
+}
+
 // Cocher/décocher une sous-tâche depuis le panneau déplié d'une tuile
 async function toggleSubtaskFromCard(subtaskId, completed) {
   try {
@@ -4017,17 +4063,25 @@ function renderTaskCard(task) {
   }
 
   html += '<div class="task-card-header">';
+  html += '<div class="task-card-topline">';
   if (cd.priority) html += '<div class="task-card-priority-text priority-text-' + (task.Priority || 'medium') + '">' + priorityLabel(task.Priority) + '</div>';
-  html += '<div class="task-card-title" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
-  if (projName) html += '<div class="task-card-project-name"><span style="background:' + projColor + ';"></span>' + sanitize(projName) + '</div>';
   html += '<div class="task-card-meta-actions">';
   var _isExpanded = !!expandedKanbanCards[task.id];
-  html += '<button class="btn-icon task-card-expand-btn" onclick="event.stopPropagation();toggleCardExpand(' + task.id + ', event)" title="' + (currentLang === 'fr' ? 'Détails' : 'Details') + '">' + (_isExpanded ? '🔼' : '🔽') + '</button>';
-  if (isOwner) html += '<button class="btn-icon" onclick="deleteTask(' + task.id + ')" title="' + t('delete') + '">🗑️</button>';
+  html += '<button class="btn-icon task-card-expand-btn" onclick="event.stopPropagation();toggleCardExpand(' + task.id + ', event)" title="' + (currentLang === 'fr' ? 'Détails' : 'Details') + '">' + (_isExpanded ? '▲' : '▼') + '</button>';
   html += '</div></div>';
+  html += '<div class="task-card-title" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
+  if (projName) html += '<div class="task-card-project-name"><span style="background:' + projColor + ';"></span>' + sanitize(projName) + '</div>';
+  html += '</div>';
 
   if (cd.description && task.Description) {
     html += '<div class="task-card-desc">' + sanitize(task.Description) + '</div>';
+  }
+
+  var dateProgress = getTaskDateProgress(task);
+  if (dateProgress !== null) {
+    html += '<div class="task-date-progress" title="' + (currentLang === 'fr' ? 'Avancement selon les dates' : 'Date progress') + '">';
+    html += '<div class="task-date-progress-fill" style="width:' + dateProgress + '%"></div>';
+    html += '</div>';
   }
 
   if (cd.subtasks && taskSubtasks.length > 0) {
@@ -4036,6 +4090,7 @@ function renderTaskCard(task) {
     html += '<div class="subtask-progress-row">';
     html += '<div class="subtask-progress-bar thin"><div class="subtask-progress-fill ' + barClass + '" style="width:' + progressPct + '%"></div></div>';
     html += '<span class="subtask-count">' + completedCount + '/' + taskSubtasks.length + '</span>';
+    html += '<button class="subtask-mini-btn" onclick="event.stopPropagation();openCardSubtasksModal(' + task.id + ')" title="' + (currentLang === 'fr' ? 'Sous-tâches' : 'Subtasks') + '">☑</button>';
     html += '</div></div>';
   }
 
@@ -4050,6 +4105,7 @@ function renderTaskCard(task) {
   var isTimerRunning = !!activeTimers[task.id];
   if (cd.time && (totalTime > 0 || isTimerRunning)) {
     html += '<span class="task-card-time' + (isTimerRunning ? ' timer-running' : '') + '">⏱️ ' + formatDurationShort(totalTime) + (isTimerRunning ? ' ●' : '') + '</span>';
+    if (isTimerRunning) html += '<button class="task-card-pause-btn" onclick="event.stopPropagation();pauseTimer(' + task.id + ')" title="' + (currentLang === 'fr' ? 'Pause' : 'Pause') + '">⏸</button>';
   }
   if (task.Recurrence && task.Recurrence !== 'none') {
     var recLabel = recurrenceSymbol(task.Recurrence);
@@ -6776,7 +6832,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   // Timer button
   html += '<div class="timer-control">';
   if (isTimerRunning) {
-    html += '<button class="timer-btn timer-stop" onclick="stopTimer(' + task.id + ')">⏹️ ' + t('stopTimer') + '</button>';
+    html += '<button class="timer-btn timer-stop" onclick="pauseTimer(' + task.id + ')">⏸️ Pause</button>';
     html += '<span class="timer-status running">● ' + t('timerRunning') + '</span>';
   } else {
     html += '<button class="timer-btn timer-start" onclick="startTimer(' + task.id + ')">▶️ ' + t('startTimer') + '</button>';
@@ -7420,9 +7476,27 @@ async function deleteComment(commentId, taskId) {
 // TIME TRACKING
 // =============================================================================
 
-function startTimer(taskId) {
-  activeTimers[taskId] = Math.floor(Date.now() / 1000);
-  openEditTaskModal(taskId);
+async function startTimer(taskId) {
+  if (activeTimers[taskId]) return;
+  var now = Math.floor(Date.now() / 1000);
+  try {
+    await grist.docApi.applyUserActions([
+      ['AddRecord', TIME_ENTRIES_TABLE, null, {
+        Task_Id: taskId,
+        User: currentUserEmail || 'Utilisateur',
+        Start_Time: now,
+        End_Time: null,
+        Duration: 0,
+        Description: currentLang === 'fr' ? 'Timer en cours' : 'Running timer'
+      }]
+    ]);
+    activeTimers[taskId] = now;
+    await loadAllData();
+    openEditTaskModal(taskId);
+  } catch (e) {
+    console.error('Error starting timer:', e);
+    showToast('Error: ' + e.message, 'error');
+  }
 }
 
 async function stopTimer(taskId) {
@@ -7431,18 +7505,31 @@ async function stopTimer(taskId) {
   var startTime = activeTimers[taskId];
   var endTime = Math.floor(Date.now() / 1000);
   var duration = endTime - startTime;
+  var openEntry = timeEntries.find(function(te) {
+    return te.Task_Id === taskId && te.Start_Time === startTime && !te.End_Time;
+  });
   
   try {
-    await grist.docApi.applyUserActions([
-      ['AddRecord', TIME_ENTRIES_TABLE, null, {
-        Task_Id: taskId,
-        User: currentUserEmail || 'Utilisateur',
-        Start_Time: startTime,
-        End_Time: endTime,
-        Duration: duration,
-        Description: ''
-      }]
-    ]);
+    if (openEntry) {
+      await grist.docApi.applyUserActions([
+        ['UpdateRecord', TIME_ENTRIES_TABLE, openEntry.id, {
+          End_Time: endTime,
+          Duration: duration,
+          Description: ''
+        }]
+      ]);
+    } else {
+      await grist.docApi.applyUserActions([
+        ['AddRecord', TIME_ENTRIES_TABLE, null, {
+          Task_Id: taskId,
+          User: currentUserEmail || 'Utilisateur',
+          Start_Time: startTime,
+          End_Time: endTime,
+          Duration: duration,
+          Description: ''
+        }]
+      ]);
+    }
     delete activeTimers[taskId];
     showToast(t('timeEntryAdded'), 'success');
     await loadAllData();
@@ -7451,6 +7538,10 @@ async function stopTimer(taskId) {
     console.error('Error stopping timer:', e);
     showToast('Error: ' + e.message, 'error');
   }
+}
+
+async function pauseTimer(taskId) {
+  await stopTimer(taskId);
 }
 
 async function addManualTimeEntry(taskId) {
