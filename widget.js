@@ -4008,11 +4008,8 @@ function renderTaskCard(task) {
   var priorityClass = 'priority-' + (task.Priority || 'medium');
   var projColor = getProjectColor(task.Project_Id);
   var projName = getProjectName(task.Project_Id);
-  var html = '<div class="task-card ' + priorityClass + (blocked ? ' task-blocked' : '') + '" draggable="true" ondragstart="onDragStart(event, ' + task.id + ')" data-id="' + task.id + '" ondblclick="openEditTaskModal(' + task.id + ')" style="border-left:none;display:flex;flex-direction:row;padding:0;overflow:visible;">';
-  html += '<div class="task-card-project-bar" style="background:' + projColor + ';min-width:22px;max-width:22px;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;text-orientation:mixed;flex-shrink:0;border-radius:14px 0 0 14px;padding:8px 0;">';
-  if (projName) html += '<span style="color:white;font-size:9px;font-weight:700;letter-spacing:0.5px;white-space:nowrap;">' + sanitize(projName) + '</span>';
-  html += '</div>';
-  html += '<div style="flex:1;padding:10px 12px;min-width:0;">';
+  var html = '<div class="task-card ' + priorityClass + (blocked ? ' task-blocked' : '') + '" draggable="true" ondragstart="onDragStart(event, ' + task.id + ')" data-id="' + task.id + '" ondblclick="openEditTaskModal(' + task.id + ')" style="border-left:none;padding:0;overflow:visible;">';
+  html += '<div class="task-card-body">';
 
   if (blocked) {
     var blockers = getTaskDependencies(task.id).filter(function(b) { return b && b.Status !== 'done'; });
@@ -4021,11 +4018,9 @@ function renderTaskCard(task) {
 
   html += '<div class="task-card-header">';
   html += '<div class="task-card-title" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
+  if (projName) html += '<div class="task-card-project-name"><span style="background:' + projColor + ';"></span>' + sanitize(projName) + '</div>';
   html += '<div class="task-card-meta-actions">';
   if (cd.priority) html += '<span class="priority-badge priority-' + (task.Priority || 'medium') + '">' + priorityLabel(task.Priority) + '</span>';
-  var _statusDef = getKanbanStatuses().find(function(st) { return st.key === task.Status; });
-  var _statusColor = _statusDef ? _statusDef.color : '#94a3b8';
-  html += '<span class="task-card-status-badge" style="background:' + _statusColor + '20;color:' + _statusColor + ';">' + statusLabel(task.Status) + '</span>';
   var _isExpanded = !!expandedKanbanCards[task.id];
   html += '<button class="btn-icon task-card-expand-btn" onclick="event.stopPropagation();toggleCardExpand(' + task.id + ', event)" title="' + (currentLang === 'fr' ? 'Détails' : 'Details') + '">' + (_isExpanded ? '🔼' : '🔽') + '</button>';
   if (isOwner) html += '<button class="btn-icon" onclick="deleteTask(' + task.id + ')" title="' + t('delete') + '">🗑️</button>';
@@ -4039,9 +4034,8 @@ function renderTaskCard(task) {
     var barClass = progressPct === 100 ? 'bar-done' : (progressPct >= 50 ? 'bar-progress' : 'bar-todo');
     html += '<div class="task-card-subtasks">';
     html += '<div class="subtask-progress-row">';
-    html += '<span class="subtask-icon">☑️</span>';
+    html += '<div class="subtask-progress-bar thin"><div class="subtask-progress-fill ' + barClass + '" style="width:' + progressPct + '%"></div></div>';
     html += '<span class="subtask-count">' + completedCount + '/' + taskSubtasks.length + '</span>';
-    html += '<div class="subtask-progress-bar"><div class="subtask-progress-fill ' + barClass + '" style="width:' + progressPct + '%"></div></div>';
     html += '</div></div>';
   }
 

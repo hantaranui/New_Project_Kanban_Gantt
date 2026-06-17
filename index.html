@@ -4867,6 +4867,93 @@
     .gantt-table thead th.gantt-task-label {
       font-weight: 700 !important;
     }
+
+    /* ========== LASUITE COMPACT KANBAN CARDS ========== */
+    .task-card-body {
+      padding: 10px 12px;
+      min-width: 0;
+      width: 100%;
+    }
+    .task-card-project-bar {
+      display: none !important;
+    }
+    .task-card-header {
+      gap: 6px !important;
+    }
+    .task-card-title {
+      min-width: 0 !important;
+      max-width: 100% !important;
+      width: auto !important;
+      font-size: 12px !important;
+      font-weight: 600 !important;
+      line-height: 1.25 !important;
+      padding: 4px 8px !important;
+      box-shadow: 1px 1px 0 var(--mint) !important;
+    }
+    .task-card-project-name {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      max-width: 100%;
+      color: var(--black);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.2;
+      opacity: .82;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .task-card-project-name span {
+      width: 8px;
+      height: 8px;
+      border: 1px solid var(--black);
+      border-radius: 999px;
+      flex: 0 0 8px;
+    }
+    .priority-badge {
+      padding: 2px 7px !important;
+      font-size: 10px !important;
+      font-weight: 700 !important;
+      border-width: 2px !important;
+    }
+    .priority-badge.priority-high {
+      background: #FAF56D !important;
+      box-shadow: inset 0 -5px 0 rgba(239, 68, 68, .45) !important;
+    }
+    .priority-badge.priority-medium {
+      background: #FBFFFA !important;
+      box-shadow: inset 0 -5px 0 rgba(21, 182, 200, .45) !important;
+    }
+    .priority-badge.priority-low {
+      background: #EEFFEE !important;
+      box-shadow: inset 0 -5px 0 rgba(169, 239, 197, .95) !important;
+    }
+    .task-card-meta-actions .task-card-status-badge {
+      display: none !important;
+    }
+    .subtask-progress-row {
+      gap: 7px !important;
+    }
+    .subtask-progress-bar.thin,
+    .subtask-progress-bar {
+      height: 4px !important;
+      border-radius: 999px !important;
+      background: rgba(39, 26, 121, .13) !important;
+      overflow: hidden;
+      flex: 1 1 auto;
+      min-width: 54px;
+    }
+    .subtask-progress-fill {
+      height: 100% !important;
+      border-radius: 999px !important;
+    }
+    .subtask-count {
+      font-size: 10px !important;
+      font-weight: 600 !important;
+      color: var(--black) !important;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -5510,7 +5597,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=142"></script>
+  <script src="widget.js?v=143"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
