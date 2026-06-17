@@ -1123,6 +1123,10 @@ async function removeDraftChildren(taskId) {
 async function saveTaskFormSilently(taskId) {
   var title = requireTaskTitle();
   if (!title) return false;
+  if (shouldLimitToMyProjects() && editAssignees.length === 0) {
+    var mine = myAssigneeValue();
+    if (mine) editAssignees = [mine];
+  }
   var projectEl = document.getElementById('task-project');
   var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
   var record = {};
@@ -1252,6 +1256,18 @@ function shouldLimitToMyProjects() {
 
 function canEditWorkItems() {
   return (isOwner || isEditor) && !hasCurrentBusinessRole('viewer');
+}
+
+function taskConcernsCurrentUser(task) {
+  var mine = myAssigneeValue();
+  var em = (currentUserEmail || '').toLowerCase().trim();
+  if (!task) return false;
+  if (mine) {
+    var assignees = (task.Assignee || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    if (assignees.indexOf(mine) !== -1) return true;
+  }
+  if (em && (task.Created_By || '').toLowerCase().trim() === em) return true;
+  return false;
 }
 
 function applyRoleVisibilityDefaults() {
@@ -2835,12 +2851,12 @@ function renderProjectSelector() {
   }
   html += '</div></div></div>';
 
-  // Bouton "Mes projets" (créés par moi OU assigné à moi)
-  if (currentUserEmail) {
+  // Bouton "Mes projets" (admin/owner seulement : en member/viewer c'est le mode naturel)
+  if (currentUserEmail && canSeeAllProjects()) {
     html += '<button class="btn-icon" onclick="toggleMyProjects()" title="' + (currentLang === 'fr' ? 'Mes projets : créés par moi ou qui me sont assignés' : 'My projects: created by or assigned to me') + '" style="width:auto;padding:0 12px;font-size:12px;font-weight:600;' + (mineOnly ? 'background:#6366f1;color:#fff;border-color:#6366f1;' : '') + '">👤 ' + (currentLang === 'fr' ? 'Mes projets' : 'My projects') + '</button>';
   }
 
-  if (currentFilterRole || currentFilterAssignee || currentFilterCategory || currentFilterTag || currentProjectId || mineOnly) {
+  if (currentFilterRole || currentFilterAssignee || currentFilterCategory || currentFilterTag || currentProjectId || (mineOnly && canSeeAllProjects())) {
     html += '<button class="btn-icon" onclick="resetFilters()" title="' + (currentLang === 'fr' ? 'Réinitialiser les filtres' : 'Reset filters') + '" style="color:#ef4444;">✕</button>';
   }
 
@@ -2855,11 +2871,11 @@ function renderProjectSelector() {
     var appEl = document.querySelector('.app-container') || document.body;
     appEl.insertBefore(banner, appEl.firstChild);
   }
-  if (currentFilterRole || currentFilterAssignee || currentFilterCategory || currentFilterTag || currentProjectId || mineOnly) {
+  if (currentFilterRole || currentFilterAssignee || currentFilterCategory || currentFilterTag || currentProjectId || (mineOnly && canSeeAllProjects())) {
     var proj2 = currentProjectId ? projects.find(function(p) { return p.id === currentProjectId; }) : null;
     var c2 = (proj2 && proj2.Color) ? proj2.Color : '#6366f1';
     var bits = [];
-    if (mineOnly) bits.push('👤 ' + (currentLang === 'fr' ? 'Mes projets' : 'My projects'));
+    if (mineOnly && canSeeAllProjects()) bits.push('👤 ' + (currentLang === 'fr' ? 'Mes projets' : 'My projects'));
     if (currentFilterRole) bits.push('👔 ' + sanitize(roleLabel(currentFilterRole)));
     if (currentFilterAssignee) {
       var u = users.find(function(x) { return (x.Email || x.Name) === currentFilterAssignee; });
@@ -3246,7 +3262,9 @@ function getFilteredTasks() {
   }
   if ((mineOnly || shouldLimitToMyProjects()) && !currentProjectId) {
     var myIds = myProjectIdSet();
-    result = result.filter(function(t) { return t.Project_Id && myIds[t.Project_Id]; });
+    result = result.filter(function(t) {
+      return (t.Project_Id && myIds[t.Project_Id]) || taskConcernsCurrentUser(t);
+    });
   }
   if (currentProjectId) {
     var cpid = Number(currentProjectId);
@@ -6234,6 +6252,10 @@ var draftTaskId = null; // id de la tâche brouillon en cours de création (appr
 async function startNewTask(defaultStatus, dateStr, prefill) {
   prefill = prefill || {};
   var statuses = getKanbanStatuses();
+  if (shouldLimitToMyProjects() && editAssignees.length === 0) {
+    var mine = myAssigneeValue();
+    if (mine) editAssignees = [mine];
+  }
   var record = {};
   setField(record, 'tasks', 'title', prefill.title || '');
   setField(record, 'tasks', 'status', defaultStatus || (statuses[0] && statuses[0].key) || 'todo');
@@ -6244,6 +6266,7 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
   if (prefill.tag) setField(record, 'tasks', 'tag', prefill.tag);
   if (prefill.recurrence && prefill.recurrence !== 'none') setField(record, 'tasks', 'recurrence', prefill.recurrence);
   if (prefill.estimatedHours) setField(record, 'tasks', 'estimatedHours', prefill.estimatedHours);
+  if (editAssignees.length > 0) setField(record, 'tasks', 'assignee', editAssignees.join(', '));
   if (currentProjectId) setField(record, 'tasks', 'projectId', currentProjectId);
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
   if (TASKS_TABLE === DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
@@ -7849,6 +7872,10 @@ function closeModalForce() {
 async function createTask() {
   var title = requireTaskTitle();
   if (!title) return;
+  if (shouldLimitToMyProjects() && editAssignees.length === 0) {
+    var mine = myAssigneeValue();
+    if (mine) editAssignees = [mine];
+  }
 
   var projectEl = document.getElementById('task-project');
   var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
@@ -7906,6 +7933,10 @@ async function createTask() {
 async function updateTask(taskId) {
   var title = requireTaskTitle();
   if (!title) return;
+  if (shouldLimitToMyProjects() && editAssignees.length === 0) {
+    var mine = myAssigneeValue();
+    if (mine) editAssignees = [mine];
+  }
   var wasDraft = draftTaskId === taskId;
 
   var task = tasks.find(function(t) { return t.id === taskId; });
