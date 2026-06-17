@@ -4017,10 +4017,10 @@ function renderTaskCard(task) {
   }
 
   html += '<div class="task-card-header">';
+  if (cd.priority) html += '<div class="task-card-priority-text priority-text-' + (task.Priority || 'medium') + '">' + priorityLabel(task.Priority) + '</div>';
   html += '<div class="task-card-title" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
   if (projName) html += '<div class="task-card-project-name"><span style="background:' + projColor + ';"></span>' + sanitize(projName) + '</div>';
   html += '<div class="task-card-meta-actions">';
-  if (cd.priority) html += '<span class="priority-badge priority-' + (task.Priority || 'medium') + '">' + priorityLabel(task.Priority) + '</span>';
   var _isExpanded = !!expandedKanbanCards[task.id];
   html += '<button class="btn-icon task-card-expand-btn" onclick="event.stopPropagation();toggleCardExpand(' + task.id + ', event)" title="' + (currentLang === 'fr' ? 'Détails' : 'Details') + '">' + (_isExpanded ? '🔼' : '🔽') + '</button>';
   if (isOwner) html += '<button class="btn-icon" onclick="deleteTask(' + task.id + ')" title="' + t('delete') + '">🗑️</button>';

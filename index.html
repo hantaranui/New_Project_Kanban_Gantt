@@ -4854,9 +4854,6 @@
       pointer-events: auto;
       transform: translateY(0);
     }
-    .task-card-meta-actions .priority-badge {
-      opacity: 1;
-    }
     .gantt-task-label .task-name,
     .gantt-task-label .task-name strong,
     .gantt-subtask-cell,
@@ -4911,23 +4908,21 @@
       border-radius: 999px;
       flex: 0 0 8px;
     }
-    .priority-badge {
-      padding: 2px 7px !important;
-      font-size: 10px !important;
-      font-weight: 700 !important;
-      border-width: 2px !important;
+    .task-card-priority-text {
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.1;
+      text-transform: uppercase;
+      letter-spacing: 0 !important;
     }
-    .priority-badge.priority-high {
-      background: #FAF56D !important;
-      box-shadow: inset 0 -5px 0 rgba(239, 68, 68, .45) !important;
+    .task-card-priority-text.priority-text-high {
+      color: #D7263D;
     }
-    .priority-badge.priority-medium {
-      background: #FBFFFA !important;
-      box-shadow: inset 0 -5px 0 rgba(21, 182, 200, .45) !important;
+    .task-card-priority-text.priority-text-medium {
+      color: var(--blue);
     }
-    .priority-badge.priority-low {
-      background: #EEFFEE !important;
-      box-shadow: inset 0 -5px 0 rgba(169, 239, 197, .95) !important;
+    .task-card-priority-text.priority-text-low {
+      color: #178A45;
     }
     .task-card-meta-actions .task-card-status-badge {
       display: none !important;
@@ -5597,7 +5592,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=143"></script>
+  <script src="widget.js?v=144"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
