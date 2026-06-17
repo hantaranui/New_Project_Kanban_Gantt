@@ -5036,6 +5036,83 @@
       text-decoration: line-through;
       opacity: .65;
     }
+    .card-quick-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      min-height: 20px;
+      padding: 2px 7px;
+      border: 1px solid rgba(39, 26, 121, .2);
+      border-radius: var(--border-radius-4);
+      background: var(--white);
+      color: var(--black);
+      font-size: 10px;
+      font-weight: 500;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .card-quick-btn:hover {
+      border-color: var(--black);
+      background: var(--light-green);
+    }
+    .task-card-taxonomy {
+      gap: 5px !important;
+      flex-wrap: wrap;
+    }
+    .task-card-category {
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .task-card-tag {
+      padding: 1px 6px;
+      border: 1px solid;
+      border-radius: var(--border-radius-4);
+      background: var(--white);
+      font-size: 10px;
+      font-weight: 500;
+      line-height: 1.2;
+    }
+    .task-card-assignee-row {
+      justify-content: flex-end !important;
+      flex-direction: row-reverse;
+      margin-top: 10px !important;
+    }
+    .task-card-assignee {
+      font-weight: 500 !important;
+    }
+    .quick-comments-list,
+    .quick-attachments-list {
+      display: grid;
+      gap: 8px;
+    }
+    .quick-comment-item,
+    .quick-attachment-item {
+      padding: 10px;
+      border: 1px solid rgba(39, 26, 121, .18);
+      border-radius: var(--border-radius-4);
+      background: var(--light-green);
+    }
+    .quick-comment-meta,
+    .quick-attachment-size {
+      color: rgba(39, 26, 121, .68);
+      font-size: 11px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .quick-comment-content,
+    .quick-attachment-name {
+      color: var(--black);
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .quick-attachment-item {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      gap: 8px;
+    }
   </style>
 </head>
 <body>
@@ -5679,7 +5756,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=145"></script>
+  <script src="widget.js?v=146"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>

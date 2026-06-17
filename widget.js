@@ -3927,6 +3927,68 @@ function openCardSubtasksModal(taskId) {
   document.getElementById('modal-container').innerHTML = html;
 }
 
+function openCardCommentsModal(taskId) {
+  var task = tasks.find(function(t) { return t.id === taskId; });
+  var taskComments = getTaskComments(taskId);
+  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+  html += '<div class="modal compact-subtasks-modal" onclick="event.stopPropagation()">';
+  html += '<div class="modal-header"><h3>' + t('comments') + '</h3><button class="modal-close" onclick="closeModalForce()">✕</button></div>';
+  html += '<div class="modal-body">';
+  if (task) html += '<div class="compact-subtasks-title">' + sanitize(task.Title || '') + '</div>';
+  if (taskComments.length === 0) {
+    html += '<div class="comments-empty">' + t('noComments') + '</div>';
+  } else {
+    html += '<div class="quick-comments-list">';
+    taskComments.forEach(function(cmt) {
+      html += '<div class="quick-comment-item">';
+      html += '<div class="quick-comment-meta">👤 ' + sanitize(cmt.Author || 'Anonyme') + ' · ' + formatTimeAgo(cmt.Created_At) + '</div>';
+      html += '<div class="quick-comment-content">' + sanitize(cmt.Content) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div></div></div>';
+  document.getElementById('modal-container').innerHTML = html;
+}
+
+function openAttachmentInNewTab(recordId) {
+  var att = _findAtt(recordId);
+  if (!att || !att.Data) return;
+  var win = window.open('', '_blank');
+  if (win) {
+    win.document.write('<iframe src="' + att.Data + '" style="border:0;width:100vw;height:100vh;"></iframe>');
+    win.document.title = att.File_Name || 'Attachment';
+  } else {
+    downloadAttachment(recordId);
+  }
+}
+
+function openCardAttachmentsModal(taskId) {
+  var task = tasks.find(function(t) { return t.id === taskId; });
+  var list = getTaskAttachments(taskId);
+  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+  html += '<div class="modal compact-subtasks-modal" onclick="event.stopPropagation()">';
+  html += '<div class="modal-header"><h3>' + (currentLang === 'fr' ? 'Pièces jointes' : 'Attachments') + '</h3><button class="modal-close" onclick="closeModalForce()">✕</button></div>';
+  html += '<div class="modal-body">';
+  if (task) html += '<div class="compact-subtasks-title">' + sanitize(task.Title || '') + '</div>';
+  if (list.length === 0) {
+    html += '<div class="attach-empty">' + (currentLang === 'fr' ? 'Aucune pièce jointe' : 'No attachments') + '</div>';
+  } else {
+    html += '<div class="quick-attachments-list">';
+    list.forEach(function(att) {
+      html += '<div class="quick-attachment-item">';
+      html += '<span class="quick-attachment-name">📎 ' + sanitize(att.File_Name || '') + '</span>';
+      html += '<span class="quick-attachment-size">' + formatFileSize(att.File_Size) + '</span>';
+      html += '<button class="attach-btn" onclick="openAttachmentInNewTab(' + att.id + ')">' + (currentLang === 'fr' ? 'Ouvrir' : 'Open') + '</button>';
+      html += '<button class="attach-btn" onclick="downloadAttachment(' + att.id + ')">' + (currentLang === 'fr' ? 'Télécharger' : 'Download') + '</button>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div></div></div>';
+  document.getElementById('modal-container').innerHTML = html;
+}
+
 async function toggleSubtaskFromPopup(subtaskId, taskId, completed) {
   await toggleSubtaskFromCard(subtaskId, completed);
   await loadAllData();
@@ -4050,6 +4112,7 @@ function renderTaskCard(task) {
   var completedCount = taskSubtasks.filter(function(st) { return st.Completed; }).length;
   var blocked = isTaskBlocked(task.id);
   var taskComments = getTaskComments(task.id);
+  var taskAttachments = getTaskAttachments(task.id);
 
   var priorityClass = 'priority-' + (task.Priority || 'medium');
   var projColor = getProjectColor(task.Project_Id);
@@ -4099,7 +4162,10 @@ function renderTaskCard(task) {
     html += '<span class="task-card-date">📅 ' + formatDate(task.Due_Date) + overdueHtml + '</span>';
   }
   if (cd.comments && taskComments.length > 0) {
-    html += '<span class="task-card-comments">💬 ' + taskComments.length + '</span>';
+    html += '<button class="task-card-comments card-quick-btn" onclick="event.stopPropagation();openCardCommentsModal(' + task.id + ')" title="' + t('comments') + '">💬 ' + taskComments.length + '</button>';
+  }
+  if (taskAttachments.length > 0) {
+    html += '<button class="task-card-attachments card-quick-btn" onclick="event.stopPropagation();openCardAttachmentsModal(' + task.id + ')" title="' + (currentLang === 'fr' ? 'Pièces jointes' : 'Attachments') + '">📎 ' + taskAttachments.length + '</button>';
   }
   var totalTime = getTaskTotalTime(task.id);
   var isTimerRunning = !!activeTimers[task.id];
@@ -4113,8 +4179,26 @@ function renderTaskCard(task) {
   }
   html += '</div>';
 
+  if ((cd.category && task.Category) || (cd.tags && task.Tag)) {
+    html += '<div class="task-card-row task-card-taxonomy">';
+    if (cd.category && task.Category) {
+      var catObj = categories.find(function(c) { return c.Name === task.Category; });
+      var catColor = catObj ? catObj.Color : '#6366f1';
+      html += '<span class="task-card-category" style="color:' + catColor + ';">' + sanitize(task.Category) + '</span>';
+    }
+    if (cd.tags && task.Tag) {
+      var tagList = task.Tag.split(',').map(function(tg) { return tg.trim(); }).filter(Boolean);
+      for (var ti = 0; ti < tagList.length; ti++) {
+        var tagObj = tags.find(function(tg) { return tg.Name === tagList[ti]; });
+        var tagColor = tagObj ? tagObj.Color : '#94a3b8';
+        html += '<span class="task-card-tag" style="border-color:' + tagColor + '80;color:' + tagColor + ';">' + sanitize(tagList[ti]) + '</span>';
+      }
+    }
+    html += '</div>';
+  }
+
   if (cd.assignee && task.Assignee) {
-    html += '<div class="task-card-row">';
+    html += '<div class="task-card-row task-card-assignee-row">';
     var assigneeList = task.Assignee.split(',').map(function(a) { return a.trim(); }).filter(Boolean);
     if (raciEnabled) {
       for (var ai = 0; ai < assigneeList.length; ai++) {
@@ -4136,24 +4220,6 @@ function renderTaskCard(task) {
     } else {
       for (var ai2 = 0; ai2 < assigneeList.length; ai2++) {
         html += '<span class="task-card-assignee">👤 ' + sanitize(getUserDisplayName(assigneeList[ai2])) + '</span>';
-      }
-    }
-    html += '</div>';
-  }
-
-  if ((cd.category && task.Category) || (cd.tags && task.Tag)) {
-    html += '<div class="task-card-row" style="gap:6px;flex-wrap:wrap;">';
-    if (cd.category && task.Category) {
-      var catObj = categories.find(function(c) { return c.Name === task.Category; });
-      var catColor = catObj ? catObj.Color : '#6366f1';
-      html += '<span style="font-size:10px;color:' + catColor + ';font-weight:700;">| ' + sanitize(task.Category) + '</span>';
-    }
-    if (cd.tags && task.Tag) {
-      var tagList = task.Tag.split(',').map(function(tg) { return tg.trim(); }).filter(Boolean);
-      for (var ti = 0; ti < tagList.length; ti++) {
-        var tagObj = tags.find(function(tg) { return tg.Name === tagList[ti]; });
-        var tagColor = tagObj ? tagObj.Color : '#94a3b8';
-        html += '<span style="font-size:10px;padding:1px 6px;border:1px solid ' + tagColor + '40;border-radius:4px;color:' + tagColor + ';font-weight:600;">' + sanitize(tagList[ti]) + '</span>';
       }
     }
     html += '</div>';
