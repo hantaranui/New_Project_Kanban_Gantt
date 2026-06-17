@@ -4846,6 +4846,11 @@
       transform: translateY(-2px);
       transition: opacity .15s ease, transform .15s ease;
     }
+    .task-card-topline .task-card-meta-actions .btn-icon {
+      opacity: 1 !important;
+      pointer-events: auto;
+      transform: none;
+    }
     .task-card:hover .task-card-meta-actions .task-card-status-badge,
     .task-card:hover .task-card-meta-actions .btn-icon,
     .task-card:focus-within .task-card-meta-actions .task-card-status-badge,
@@ -4915,6 +4920,24 @@
       text-transform: uppercase;
       letter-spacing: 0 !important;
     }
+    .task-card-topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 20px;
+    }
+    .task-card-topline .task-card-meta-actions {
+      margin-left: auto;
+    }
+    .task-card-topline .btn-icon {
+      width: auto !important;
+      min-width: 22px;
+      height: 20px !important;
+      padding: 0 6px !important;
+      font-size: 10px !important;
+      line-height: 1 !important;
+    }
     .task-card-priority-text.priority-text-high {
       color: #D7263D;
     }
@@ -4929,6 +4952,18 @@
     }
     .subtask-progress-row {
       gap: 7px !important;
+    }
+    .task-date-progress {
+      height: 3px;
+      margin: 8px 0 4px;
+      border-radius: 999px;
+      background: rgba(39, 26, 121, .14);
+      overflow: hidden;
+    }
+    .task-date-progress-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--blue);
     }
     .subtask-progress-bar.thin,
     .subtask-progress-bar {
@@ -4948,6 +4983,58 @@
       font-weight: 600 !important;
       color: var(--black) !important;
       white-space: nowrap;
+    }
+    .subtask-mini-btn,
+    .task-card-pause-btn {
+      min-width: 22px;
+      height: 20px;
+      padding: 0 6px;
+      border: 1px solid var(--black);
+      border-radius: var(--border-radius-4);
+      background: var(--white);
+      color: var(--black);
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .task-card-pause-btn {
+      background: var(--yellow);
+    }
+    .compact-subtasks-modal {
+      max-width: 460px !important;
+    }
+    .compact-subtasks-title {
+      margin-bottom: 12px;
+      color: var(--black);
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.25;
+    }
+    .compact-subtasks-list {
+      display: grid;
+      gap: 8px;
+    }
+    .compact-subtask-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border: 1px solid rgba(39, 26, 121, .22);
+      border-radius: var(--border-radius-4);
+      background: var(--light-green);
+      color: var(--black);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .compact-subtask-item input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--blue);
+    }
+    .compact-subtask-item .completed {
+      text-decoration: line-through;
+      opacity: .65;
     }
   </style>
 </head>
@@ -5592,7 +5679,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=144"></script>
+  <script src="widget.js?v=145"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
