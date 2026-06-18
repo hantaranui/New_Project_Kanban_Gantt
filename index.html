@@ -5152,19 +5152,25 @@
     .gantt-bar {
       font-weight: 500 !important;
     }
+    .gantt-task-label .task-name {
+      display: flex !important;
+      align-items: center !important;
+      gap: 7px !important;
+    }
     .gantt-focus-checkbox {
       width: 18px !important;
       height: 18px !important;
-      margin: 0 8px 0 0 !important;
+      margin: 0 !important;
       accent-color: var(--blue);
       cursor: pointer;
-      flex-shrink: 0;
+      flex: 0 0 auto;
     }
     .gantt-task-title-btn {
       appearance: none;
       border: 0;
       background: transparent;
       color: var(--black);
+      min-width: 0;
       font: inherit;
       font-weight: 500 !important;
       line-height: 1.25;
@@ -5222,6 +5228,43 @@
     .gantt-help-btn:focus-visible::after {
       opacity: 1;
       transform: translateY(0);
+    }
+    #tab-gantt.gantt-fullscreen {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 2147483647 !important;
+      width: 100vw !important;
+      max-width: none !important;
+      height: 100vh !important;
+      max-height: none !important;
+      margin: 0 !important;
+      padding: 22px 28px 28px !important;
+      box-sizing: border-box !important;
+      overflow: auto !important;
+      background: var(--white) !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+    }
+    #tab-gantt.gantt-fullscreen .section-title {
+      margin: 0 0 14px !important;
+      padding-right: 64px !important;
+    }
+    #tab-gantt.gantt-fullscreen .gantt-controls {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--white) !important;
+      margin-bottom: 18px !important;
+    }
+    #tab-gantt.gantt-fullscreen .gantt-container {
+      max-height: calc(100vh - 210px) !important;
+      height: calc(100vh - 210px) !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    #tab-gantt.gantt-fullscreen .gantt-table {
+      min-width: 100% !important;
     }
   </style>
 </head>
@@ -5866,7 +5909,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=149"></script>
+  <script src="widget.js?v=151"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
