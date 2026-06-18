@@ -2070,22 +2070,67 @@ async function ensureConfigAndSettingsTables(existingTables) {
   }
 }
 
+async function tableHasColumns(tableId, requiredColumns) {
+  try {
+    var data = await grist.docApi.fetchTable(tableId);
+    var columns = Object.keys(data || {}).filter(function(key) { return key !== 'id'; });
+    return requiredColumns.every(function(columnId) { return columns.indexOf(columnId) !== -1; });
+  } catch (e) {
+    return false;
+  }
+}
+
+async function hasValidMappedTaskTable(existingTables) {
+  var configTables = [CONFIG_TABLE, CLIENT_TABLE_NAMES.config, 'PM_Config'];
+  for (var c = 0; c < configTables.length; c++) {
+    var configTable = configTables[c];
+    if (existingTables.indexOf(configTable) === -1) continue;
+    try {
+      var configData = await grist.docApi.fetchTable(configTable);
+      var rows = configData && configData.id ? configData.id : [];
+      var taskTable = '';
+      var requiredColumns = [];
+      for (var i = 0; i < rows.length; i++) {
+        var key = configData.Config_Key && configData.Config_Key[i];
+        if (key === 'task_title') taskTable = configData.Table_Name[i] || taskTable;
+        if (key === 'task_title' || key === 'task_status') {
+          if (configData.Column_Name[i]) requiredColumns.push(configData.Column_Name[i]);
+        }
+      }
+      if (!taskTable || existingTables.indexOf(taskTable) === -1) continue;
+      if (requiredColumns.length < 2) continue;
+      if (await tableHasColumns(taskTable, requiredColumns)) return true;
+    } catch (e) {
+      console.warn('Impossible de vérifier le mapping:', e.message);
+    }
+  }
+  return false;
+}
+
+async function getInstallModeFromExistingSettings(existingTables) {
+  var settingsTables = [SETTINGS_TABLE, CLIENT_TABLE_NAMES.settings, 'PM_Settings'];
+  for (var i = 0; i < settingsTables.length; i++) {
+    var settingsTable = settingsTables[i];
+    if (existingTables.indexOf(settingsTable) === -1) continue;
+    var previousSettingsTable = SETTINGS_TABLE;
+    SETTINGS_TABLE = settingsTable;
+    var installMode = await getRawSettingValue('install_mode');
+    SETTINGS_TABLE = previousSettingsTable;
+    if (installMode) return installMode;
+  }
+  return '';
+}
+
 async function shouldShowClientSetup(existingTables) {
   existingTables = existingTables || await grist.docApi.listTables();
   if (hasFrenchClientTables(existingTables)) applyFrenchTableNames(true);
 
-  var taskTables = [TASKS_TABLE, CLIENT_TABLE_NAMES.tasks, 'PM_Tasks'];
-  var hasTaskTable = taskTables.some(function(tableId) { return existingTables.indexOf(tableId) !== -1; });
-  if (hasTaskTable) return false;
-
-  var settingsTables = [SETTINGS_TABLE, CLIENT_TABLE_NAMES.settings, 'PM_Settings'];
-  for (var i = 0; i < settingsTables.length; i++) {
-    if (existingTables.indexOf(settingsTables[i]) === -1) continue;
-    var previousSettingsTable = SETTINGS_TABLE;
-    SETTINGS_TABLE = settingsTables[i];
-    var installMode = await getRawSettingValue('install_mode');
-    SETTINGS_TABLE = previousSettingsTable;
-    if (installMode === 'french_auto' || installMode === 'mapping') return false;
+  var installMode = await getInstallModeFromExistingSettings(existingTables);
+  if (installMode === 'french_auto') {
+    return existingTables.indexOf(CLIENT_TABLE_NAMES.tasks) === -1;
+  }
+  if (installMode === 'mapping_complete') {
+    return !(await hasValidMappedTaskTable(existingTables));
   }
 
   return true;
@@ -2129,7 +2174,7 @@ async function setupUseExistingTables() {
     showToast('Préparation du mapping...', 'info');
     await ensureConfigAndSettingsTables(await grist.docApi.listTables());
     await loadSettings();
-    await saveSetting('install_mode', 'mapping');
+    await saveSetting('install_mode', 'mapping_started');
     await loadColumnMapping();
     switchTab('settings');
     setTimeout(function() { openColumnMappingModal(); }, 250);
@@ -2146,7 +2191,7 @@ async function ensureTables() {
     var existingTables = await grist.docApi.listTables();
     if (hasFrenchClientTables(existingTables)) applyFrenchTableNames(true);
     var installMode = await getRawSettingValue('install_mode');
-    var skipAutoCreateWorkTables = installMode === 'mapping';
+    var skipAutoCreateWorkTables = installMode === 'mapping' || installMode === 'mapping_started' || installMode === 'mapping_complete';
 
     // If PM_Config already exists load the mapping NOW so table vars reflect any
     // remapping the user has configured.  This prevents re-creating PM_Users etc.
@@ -10633,6 +10678,15 @@ async function saveColumnMapping() {
       }
     }
     if (actions.length > 0) await grist.docApi.applyUserActions(actions);
+    await loadColumnMapping();
+    var tablesAfterMapping = await grist.docApi.listTables();
+    if (await hasValidMappedTaskTable(tablesAfterMapping)) {
+      await saveSetting('install_mode', 'mapping_complete');
+    } else {
+      await saveSetting('install_mode', 'mapping_started');
+      showToast('Mapping incomplet : vérifiez au minimum la table des tâches, le titre et le statut.', 'error');
+      return;
+    }
     
     showToast('✓ Configuration sauvegardée', 'success');
     closeModalForce();
