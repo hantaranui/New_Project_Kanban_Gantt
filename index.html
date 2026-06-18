@@ -5184,6 +5184,42 @@
       text-decoration-thickness: 2px;
       text-underline-offset: 3px;
     }
+    .gantt-project-line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 4px 0 0 26px;
+      color: #5B55D9;
+      font-size: 11px !important;
+      line-height: 1.2 !important;
+      font-weight: 600 !important;
+      white-space: normal;
+    }
+    .gantt-project-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+    }
+    .gantt-mini-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      min-height: 20px;
+      padding: 1px 6px;
+      border: 1px solid rgba(39, 26, 121, .45);
+      border-radius: 6px;
+      background: var(--white);
+      color: var(--black);
+      font: inherit;
+      font-size: 11px !important;
+      line-height: 1.1 !important;
+      cursor: pointer;
+      vertical-align: middle;
+    }
+    .gantt-mini-btn:hover {
+      background: var(--green);
+    }
     .gantt-row-selected .gantt-task-label,
     .gantt-row-selected .gantt-cell {
       background: rgba(250, 245, 109, .28) !important;
@@ -5265,6 +5301,48 @@
     }
     #tab-gantt.gantt-fullscreen .gantt-table {
       min-width: 100% !important;
+    }
+    #tab-kanban.kanban-fullscreen {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 2147483647 !important;
+      width: 100vw !important;
+      max-width: none !important;
+      height: 100vh !important;
+      max-height: none !important;
+      margin: 0 !important;
+      padding: 22px 28px 28px !important;
+      box-sizing: border-box !important;
+      overflow: hidden !important;
+      background: var(--white) !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+    }
+    #tab-kanban.kanban-fullscreen > div:first-child {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      margin: 0 0 16px !important;
+      padding: 0 0 12px !important;
+      background: var(--white) !important;
+    }
+    #tab-kanban.kanban-fullscreen #archive-toggle-btn {
+      display: none !important;
+    }
+    #tab-kanban.kanban-fullscreen #kanban-board {
+      height: calc(100vh - 96px) !important;
+      max-height: calc(100vh - 96px) !important;
+      overflow: auto !important;
+      padding: 4px 6px 24px !important;
+      align-items: stretch !important;
+    }
+    #tab-kanban.kanban-fullscreen .kanban-column {
+      min-width: 340px !important;
+      flex: 1 0 340px !important;
+    }
+    #tab-kanban.kanban-fullscreen .kanban-cards {
+      min-height: calc(100vh - 220px) !important;
     }
   </style>
 </head>
@@ -5354,6 +5432,7 @@
           <option value="priority">Priorité</option>
         </select>
         <button id="archive-toggle-btn" class="btn btn-sm" onclick="toggleArchiveView()" style="margin-left:auto;padding:5px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;cursor:pointer;font-weight:600;">📦 Archives</button>
+        <button id="kanban-fullscreen-btn" class="btn btn-sm" onclick="toggleKanbanFullscreen()" title="Afficher le Kanban en plein écran" aria-label="Afficher le Kanban en plein écran" style="padding:5px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;cursor:pointer;font-weight:700;">⛶</button>
       </div>
       <div class="kanban-board" id="kanban-board"></div>
     </div>
@@ -5909,7 +5988,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=151"></script>
+  <script src="widget.js?v=153"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>

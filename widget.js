@@ -4674,9 +4674,9 @@ function toggleGanttSubtasks(taskId) {
   renderGanttView();
 }
 
-// Sous-tâches du Gantt : seulement celles avec une Due_Date (sinon impossible à positionner)
+// Sous-tâches du Gantt : on les affiche toutes. Celles sans date restent lisibles côté libellé.
 function getGanttSubtasks(taskId) {
-  return getTaskSubtasks(taskId).filter(function(st) { return st.Due_Date; });
+  return getTaskSubtasks(taskId);
 }
 
 // Construit la <td> de libellé d'une sous-tâche (indentée, allégée, cliquable)
@@ -4692,6 +4692,7 @@ function renderGanttSubtaskLabelCell(st, parentTaskId) {
     html += '<span style="font-size:9px;color:' + depColor + ';margin-left:6px;white-space:nowrap;" title="' + (currentLang === 'fr' ? 'Dépend de' : 'Depends on') + ' : ' + sanitize(stBlocker.Title) + '">🔗 ' + sanitize(stBlocker.Title).substring(0, 14) + '</span>';
   }
   if (st.Due_Date) html += '<span style="font-size:9px;color:#94a3b8;margin-left:6px;">📅 ' + formatDate(st.Due_Date) + '</span>';
+  else html += '<span style="font-size:9px;color:#94a3b8;margin-left:6px;">' + (currentLang === 'fr' ? 'sans date' : 'no date') + '</span>';
   if (st.Assignee) html += '<span style="font-size:9px;color:#94a3b8;margin-left:4px;">👤 ' + sanitize(st.Assignee).split(',')[0].trim().substring(0, 10) + '</span>';
   html += '</td>';
   return html;
@@ -4737,12 +4738,10 @@ function ganttDepBadge(task) {
 }
 
 function ganttChevron(task) {
-  if (getGanttSubtasks(task.id).length === 0) {
-    return '<span class="gantt-toggle gantt-toggle-empty"></span>';
-  }
+  if (getGanttSubtasks(task.id).length === 0) return '';
   var expanded = !!expandedGanttTasks[task.id];
   var icon = expanded ? '▼' : '▶';
-  return '<button type="button" class="gantt-toggle' + (expanded ? ' gantt-toggle-open' : '') + '" onclick="event.stopPropagation();toggleGanttSubtasks(' + task.id + ')" title="' + (currentLang === 'fr' ? 'Sous-tâches' : 'Subtasks') + '">' + icon + '</button>';
+  return '<button type="button" class="gantt-toggle" onclick="event.stopPropagation();toggleGanttSubtasks(' + task.id + ')" title="' + (currentLang === 'fr' ? 'Sous-tâches' : 'Subtasks') + '">' + icon + '</button>';
 }
 
 function getTaskExtensionEnd(task) {
@@ -4796,26 +4795,29 @@ function ganttTaskRowStart(task) {
 }
 
 function renderGanttTaskLabel(task) {
-  var dotClass = task.Priority === 'high' ? 'dot-high' : (task.Priority === 'medium' ? 'dot-medium' : 'dot-low');
   var assigneeNames = task.Assignee ? task.Assignee.split(',').map(function(a) { return getUserDisplayName(a.trim()); }).join(', ') : '';
   var ganttProjColor = getProjectColor(task.Project_Id);
   var ganttProjName = getProjectName(task.Project_Id);
   var checked = selectedGanttTaskId === task.id ? ' checked' : '';
   var focusTitle = currentLang === 'fr' ? 'Afficher cette tâche dans le Gantt' : 'Show this task in the Gantt';
   var openTitle = currentLang === 'fr' ? 'Ouvrir la fiche de la tâche' : 'Open task details';
+  var taskComments = getTaskComments(task.id);
+  var taskAttachments = getTaskAttachments(task.id);
 
   var html = '<td class="gantt-task-label">';
   html += '<div class="task-name">';
   html += '<input type="checkbox" class="gantt-focus-checkbox"' + checked + ' title="' + focusTitle + '" onclick="event.stopPropagation()" onchange="focusGanttTask(' + task.id + ', this.checked)">';
-  html += ganttChevron(task);
-  html += '<span class="priority-dot ' + dotClass + '"></span> ';
   html += '<button type="button" class="gantt-task-title-btn" onclick="openEditTaskModal(' + task.id + ')" title="' + openTitle + '">' + sanitize(task.Title) + '</button>';
-  if (ganttProjName) html += ' <span style="display:inline-block;background:' + ganttProjColor + ';color:white;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;vertical-align:middle;">' + sanitize(ganttProjName) + '</span>';
   html += ganttDepBadge(task) + '</div>';
+  if (ganttProjName) {
+    html += '<div class="gantt-project-line"><span class="gantt-project-dot" style="background:' + ganttProjColor + ';"></span>' + sanitize(ganttProjName) + '</div>';
+  }
   html += '<div class="task-info">';
   if (task.Priority) html += '<span class="gantt-priority-text ' + ganttPriorityClass(task.Priority) + '">' + priorityLabel(task.Priority) + '</span>';
   if (assigneeNames) html += ' 👤 ' + sanitize(assigneeNames);
   if (task.Due_Date) html += ' 📅 ' + formatDate(task.Due_Date);
+  if (taskComments.length > 0) html += ' <button class="gantt-mini-btn" onclick="event.stopPropagation();openCardCommentsModal(' + task.id + ')" title="' + t('comments') + '">💬 ' + taskComments.length + '</button>';
+  if (taskAttachments.length > 0) html += ' <button class="gantt-mini-btn" onclick="event.stopPropagation();openCardAttachmentsModal(' + task.id + ')" title="' + (currentLang === 'fr' ? 'Pièces jointes' : 'Attachments') + '">📎 ' + taskAttachments.length + '</button>';
   html += '</div></td>';
   return html;
 }
@@ -4874,10 +4876,11 @@ function renderGanttView() {
 
   // ===== WEEKS MODE =====
   if (ganttMode === 'weeks') {
-    var eightWeeksAgo = new Date(ganttYear, ganttMonth, 1);
-    eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
-    var startWeek = getISOWeek(eightWeeksAgo);
-    var numWeeks = 34;
+    var weekAnchor = (ganttYear === today.getFullYear() && ganttMonth === today.getMonth())
+      ? new Date(today)
+      : new Date(ganttYear, ganttMonth, 1);
+    var startWeek = getISOWeek(weekAnchor);
+    var numWeeks = 24;
     var weeks = [];
     for (var w = 0; w < numWeeks; w++) {
       var wn = startWeek + w;
@@ -5592,6 +5595,19 @@ function toggleGanttFullscreen() {
     btn.title = label;
     btn.setAttribute('aria-label', label);
     btn.setAttribute('data-tooltip', label);
+  }
+}
+
+function toggleKanbanFullscreen() {
+  var el = document.getElementById('tab-kanban');
+  var btn = document.getElementById('kanban-fullscreen-btn');
+  if (!el) return;
+  var on = el.classList.toggle('kanban-fullscreen');
+  if (btn) {
+    var label = on ? (currentLang === 'fr' ? 'Quitter le plein écran' : 'Exit fullscreen') : (currentLang === 'fr' ? 'Afficher le Kanban en plein écran' : 'Show Kanban fullscreen');
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+    btn.textContent = on ? '↙' : '⛶';
   }
 }
 
