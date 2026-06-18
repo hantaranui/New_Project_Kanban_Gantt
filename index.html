@@ -5147,6 +5147,82 @@
     .kanban-board .kanban-cards.drag-over {
       background: var(--light-green) !important;
     }
+    .gantt-task-label .task-name,
+    .gantt-task-label .task-name strong,
+    .gantt-bar {
+      font-weight: 500 !important;
+    }
+    .gantt-focus-checkbox {
+      width: 18px !important;
+      height: 18px !important;
+      margin: 0 8px 0 0 !important;
+      accent-color: var(--blue);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .gantt-task-title-btn {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--black);
+      font: inherit;
+      font-weight: 500 !important;
+      line-height: 1.25;
+      padding: 0;
+      text-align: left;
+      cursor: pointer;
+    }
+    .gantt-task-title-btn:hover {
+      color: var(--blue);
+      text-decoration: underline;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
+    }
+    .gantt-row-selected .gantt-task-label,
+    .gantt-row-selected .gantt-cell {
+      background: rgba(250, 245, 109, .28) !important;
+    }
+    .gantt-priority-text {
+      display: inline-block;
+      margin-right: 6px;
+      font-weight: 700;
+    }
+    .gantt-priority-high { color: #D7263D; }
+    .gantt-priority-medium { color: var(--blue); }
+    .gantt-priority-low { color: #1F9D55; }
+    .gantt-help-btn {
+      position: relative;
+      overflow: visible;
+    }
+    .gantt-help-btn::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      z-index: 30;
+      min-width: 190px;
+      max-width: 260px;
+      padding: 8px 10px;
+      border: 2px solid var(--black);
+      border-radius: var(--border-radius-4);
+      background: var(--white);
+      color: var(--black);
+      box-shadow: 4px 4px 0 var(--blue);
+      font-size: 12px !important;
+      line-height: 1.25 !important;
+      font-weight: 600 !important;
+      text-align: left;
+      white-space: normal;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-4px);
+      transition: opacity .12s ease, transform .12s ease;
+    }
+    .gantt-help-btn:hover::after,
+    .gantt-help-btn:focus-visible::after {
+      opacity: 1;
+      transform: translateY(0);
+    }
   </style>
 </head>
 <body>
@@ -5276,9 +5352,9 @@
         </select>
         <div style="flex:1;"></div>
         <div style="display:flex;gap:4px;">
-          <button class="btn-secondary btn-sm" onclick="ganttExpandAll()" title="Tout déplier">⊞</button>
-          <button class="btn-secondary btn-sm" onclick="ganttCollapseAll()" title="Tout replier">⊟</button>
-          <button class="btn-secondary btn-sm" id="gantt-fullscreen-btn" onclick="toggleGanttFullscreen()" title="Plein écran">⛶</button>
+          <button class="btn-secondary btn-sm gantt-help-btn" onclick="ganttExpandAll()" title="Afficher toutes les sous-tâches" aria-label="Afficher toutes les sous-tâches" data-tooltip="Afficher toutes les sous-tâches">⊞</button>
+          <button class="btn-secondary btn-sm gantt-help-btn" onclick="ganttCollapseAll()" title="Masquer toutes les sous-tâches" aria-label="Masquer toutes les sous-tâches" data-tooltip="Masquer toutes les sous-tâches">⊟</button>
+          <button class="btn-secondary btn-sm gantt-help-btn" id="gantt-fullscreen-btn" onclick="toggleGanttFullscreen()" title="Afficher le Gantt en plein écran" aria-label="Afficher le Gantt en plein écran" data-tooltip="Afficher le Gantt en plein écran">⛶</button>
           <button class="btn-secondary btn-sm" onclick="exportGanttPdf()" title="Export PDF" data-i18n-title="exportPdf">📄 PDF</button>
         </div>
         <div class="gantt-view-btns" style="display:flex;gap:4px;">
@@ -5790,7 +5866,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=148"></script>
+  <script src="widget.js?v=149"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>

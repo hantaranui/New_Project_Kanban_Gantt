@@ -882,6 +882,7 @@ var ganttCustomEnd = '';   // mode 'custom' : date de fin (YYYY-MM-DD)
 var ganttYear = new Date().getFullYear();
 var ganttMonth = new Date().getMonth();
 var expandedGanttTasks = {}; // taskId -> true quand les sous-tâches sont visibles dans le Gantt
+var selectedGanttTaskId = null;
 var calendarYear = new Date().getFullYear();
 var calendarMonth = new Date().getMonth();
 var calendarMode = 'month'; // 'month', 'week' or 'day'
@@ -4783,18 +4784,36 @@ function getGanttBarClass(task) {
   return 'gantt-bar-todo';
 }
 
+function ganttPriorityClass(priority) {
+  if (priority === 'high') return 'gantt-priority-high';
+  if (priority === 'low') return 'gantt-priority-low';
+  return 'gantt-priority-medium';
+}
+
+function ganttTaskRowStart(task) {
+  var selected = selectedGanttTaskId === task.id;
+  return '<tr class="gantt-task-row' + (selected ? ' gantt-row-selected' : '') + '" data-gantt-task-id="' + task.id + '">';
+}
+
 function renderGanttTaskLabel(task) {
   var dotClass = task.Priority === 'high' ? 'dot-high' : (task.Priority === 'medium' ? 'dot-medium' : 'dot-low');
   var assigneeNames = task.Assignee ? task.Assignee.split(',').map(function(a) { return getUserDisplayName(a.trim()); }).join(', ') : '';
   var ganttProjColor = getProjectColor(task.Project_Id);
   var ganttProjName = getProjectName(task.Project_Id);
+  var checked = selectedGanttTaskId === task.id ? ' checked' : '';
+  var focusTitle = currentLang === 'fr' ? 'Afficher cette tâche dans le Gantt' : 'Show this task in the Gantt';
+  var openTitle = currentLang === 'fr' ? 'Ouvrir la fiche de la tâche' : 'Open task details';
 
-  var html = '<td class="gantt-task-label gantt-clickable-label" onclick="openEditTaskModal(' + task.id + ')">';
-  html += '<div class="task-name">' + ganttChevron(task) + '<span class="priority-dot ' + dotClass + '"></span> <strong>' + sanitize(task.Title) + '</strong>';
+  var html = '<td class="gantt-task-label">';
+  html += '<div class="task-name">';
+  html += '<input type="checkbox" class="gantt-focus-checkbox"' + checked + ' title="' + focusTitle + '" onclick="event.stopPropagation()" onchange="focusGanttTask(' + task.id + ', this.checked)">';
+  html += ganttChevron(task);
+  html += '<span class="priority-dot ' + dotClass + '"></span> ';
+  html += '<button type="button" class="gantt-task-title-btn" onclick="openEditTaskModal(' + task.id + ')" title="' + openTitle + '">' + sanitize(task.Title) + '</button>';
   if (ganttProjName) html += ' <span style="display:inline-block;background:' + ganttProjColor + ';color:white;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;vertical-align:middle;">' + sanitize(ganttProjName) + '</span>';
   html += ganttDepBadge(task) + '</div>';
   html += '<div class="task-info">';
-  if (task.Priority) html += '🔥 ' + priorityLabel(task.Priority);
+  if (task.Priority) html += '<span class="gantt-priority-text ' + ganttPriorityClass(task.Priority) + '">' + priorityLabel(task.Priority) + '</span>';
   if (assigneeNames) html += ' 👤 ' + sanitize(assigneeNames);
   if (task.Due_Date) html += ' 📅 ' + formatDate(task.Due_Date);
   html += '</div></td>';
@@ -4888,7 +4907,7 @@ function renderGanttView() {
       var barClass = getGanttBarClass(task);
       var barCustomColor = getGanttBarColor(task);
       var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-      html += '<tr>';
+      html += ganttTaskRowStart(task);
       html += renderGanttTaskLabel(task);
 
       var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
@@ -4926,7 +4945,7 @@ function renderGanttView() {
         if (wi === barStartIdx) {
           var spanCols = barEndIdx - barStartIdx + 1;
           var widthPx = spanCols * 80;
-          html += '<div class="gantt-bar ' + barClass + '" style="left:2px;width:' + widthPx + 'px;cursor:pointer;' + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
+          html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + widthPx + 'px;cursor:pointer;' + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
         }
         if (wi === extStartIdx && extStartIdx >= 0) {
           var extSpan = extEndIdx - extStartIdx + 1;
@@ -5012,7 +5031,7 @@ function renderGanttView() {
     for (var ti = 0; ti < tasksWithDates.length; ti++) {
       var task = tasksWithDates[ti];
       var barClass = getGanttBarClass(task);
-      html += '<tr>' + renderGanttTaskLabel(task);
+      html += ganttTaskRowStart(task) + renderGanttTaskLabel(task);
 
       var yTStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
       var yTEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
@@ -5052,7 +5071,7 @@ function renderGanttView() {
         html += '<td class="gantt-cell" style="position:relative;min-width:' + colWidth + 'px;' + (isCurrent2 ? 'background:#fef2f2;' : '') + '">';
         if (ym === yBarStart) {
           var yBarW = (yBarEnd - yBarStart + 1) * colWidth;
-          html += '<div class="gantt-bar ' + barClass + '" style="left:2px;width:' + yBarW + 'px;cursor:pointer;' + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
+          html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + yBarW + 'px;cursor:pointer;' + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
         }
         if (ym === yExtStart && yExtStart >= 0) {
           var yExtW = (yExtEndIdx - yExtStart + 1) * colWidth;
@@ -5126,7 +5145,7 @@ function renderGanttView() {
       var barClass = getGanttBarClass(task);
       var barCustomColor = getGanttBarColor(task);
       var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-      html += '<tr>';
+      html += ganttTaskRowStart(task);
       html += renderGanttTaskLabel(task);
 
       var mTStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
@@ -5165,7 +5184,7 @@ function renderGanttView() {
         }
         if (m === mBarStartIdx) {
           var mBarWidth = (mBarEndIdx - mBarStartIdx + 1) * 80;
-          html += '<div class="gantt-bar ' + barClass + '" style="left:2px;width:' + mBarWidth + 'px;cursor:pointer;' + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
+          html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + mBarWidth + 'px;cursor:pointer;' + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
         }
         if (m === mExtStart && mExtStart >= 0) {
           var mExtW = (mExtEndI - mExtStart + 1) * 80;
@@ -5235,8 +5254,15 @@ function renderGanttView() {
       if (endDate > maxEnd) endDate = maxEnd;
     }
   } else {
-    startDate = new Date(ganttYear, ganttMonth - 1, 1);
-    endDate = new Date(ganttYear, ganttMonth + 2, 0);
+    if (ganttYear === today.getFullYear() && ganttMonth === today.getMonth()) {
+      startDate = new Date(today);
+      startDate.setDate(today.getDate() - 7);
+      endDate = new Date(today);
+      endDate.setDate(today.getDate() + 60);
+    } else {
+      startDate = new Date(ganttYear, ganttMonth, 1);
+      endDate = new Date(ganttYear, ganttMonth + 2, 0);
+    }
   }
   var days = [];
   var d = new Date(startDate);
@@ -5274,7 +5300,7 @@ function renderGanttView() {
     var barClass = getGanttBarClass(task);
     var barCustomColor = getGanttBarColor(task);
     var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-    html += '<tr>';
+    html += ganttTaskRowStart(task);
     html += renderGanttTaskLabel(task);
 
     var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
@@ -5324,7 +5350,7 @@ function renderGanttView() {
       if (di === barStartIdx) {
         var spanDays = barEndIdx - barStartIdx + 1;
         var widthPx = spanDays * 36;
-        html += '<div class="gantt-bar ' + barClass + '" style="left:2px;width:' + widthPx + 'px;cursor:pointer;' + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
+        html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + widthPx + 'px;cursor:pointer;' + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + '</div>';
       }
       if (di === dExtStartIdx && dExtStartIdx >= 0) {
         var dExtW = (dExtEndIdx - dExtStartIdx + 1) * 36;
@@ -5381,6 +5407,7 @@ function renderGanttView() {
 
   document.getElementById('gantt-view').innerHTML = html;
   initGanttDragScroll();
+  scrollGanttToToday();
 }
 
 function initGanttDragScroll() {
@@ -5424,6 +5451,29 @@ function initGanttDragScroll() {
   }, true);
 }
 
+function scrollGanttToToday() {
+  if (ganttMode !== 'days') return;
+  var container = document.querySelector('#gantt-view .gantt-container');
+  var todayCell = container ? container.querySelector('.today-col') : null;
+  if (!container || !todayCell) return;
+  var left = todayCell.offsetLeft - Math.max(80, container.clientWidth * 0.38);
+  container.scrollLeft = Math.max(0, left);
+}
+
+function scrollGanttToTask(taskId) {
+  var container = document.querySelector('#gantt-view .gantt-container');
+  var bar = container ? container.querySelector('[data-gantt-bar-task-id="' + taskId + '"]') : null;
+  if (!container || !bar) return;
+  var left = bar.offsetLeft - Math.max(80, container.clientWidth * 0.28);
+  container.scrollLeft = Math.max(0, left);
+}
+
+function focusGanttTask(taskId, checked) {
+  selectedGanttTaskId = checked ? taskId : null;
+  renderGanttView();
+  if (checked) setTimeout(function() { scrollGanttToTask(taskId); }, 0);
+}
+
 function setGanttYear(value) {
   ganttYear = Math.max(2020, Math.min(2050, parseInt(value)));
   renderGanttView();
@@ -5451,8 +5501,9 @@ function ganttNav(dir) {
 }
 
 function ganttToday() {
-  ganttYear = new Date().getFullYear();
-  ganttMonth = new Date().getMonth();
+  var today = new Date();
+  ganttYear = today.getFullYear();
+  ganttMonth = today.getMonth();
   renderGanttView();
 }
 
@@ -5536,7 +5587,12 @@ function toggleGanttFullscreen() {
   var btn = document.getElementById('gantt-fullscreen-btn');
   if (!el) return;
   var on = el.classList.toggle('gantt-fullscreen');
-  if (btn) btn.title = on ? (currentLang === 'fr' ? 'Quitter le plein écran' : 'Exit fullscreen') : (currentLang === 'fr' ? 'Plein écran' : 'Fullscreen');
+  if (btn) {
+    var label = on ? (currentLang === 'fr' ? 'Quitter le plein écran' : 'Exit fullscreen') : (currentLang === 'fr' ? 'Afficher le Gantt en plein écran' : 'Show Gantt fullscreen');
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('data-tooltip', label);
+  }
 }
 
 // =============================================================================
