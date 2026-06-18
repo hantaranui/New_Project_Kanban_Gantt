@@ -4262,7 +4262,10 @@ function renderTaskCard(task) {
     if (!task.Description && taskSubtasks.length === 0 && taskComments.length === 0) {
       html += '<div style="color:#94a3b8;font-size:12px;padding:4px 0;">' + (_fr ? 'Aucun détail pour le moment' : 'No details yet') + '</div>';
     }
-    html += '<button class="btn btn-sm" style="margin-top:8px;font-size:11px;padding:3px 10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();openEditTaskModal(' + task.id + ')">✏️ ' + (_fr ? 'Éditer la tâche' : 'Edit task') + '</button>';
+    html += '<div class="tcd-actions">';
+    html += '<button class="btn btn-sm" onclick="event.stopPropagation();openEditTaskModal(' + task.id + ')">✏️ ' + (_fr ? 'Éditer la tâche' : 'Edit task') + '</button>';
+    if (isOwner) html += '<button class="btn btn-sm tcd-delete-btn" onclick="event.stopPropagation();deleteTask(' + task.id + ')">🗑️ ' + t('delete') + '</button>';
+    html += '</div>';
     html += '</div>';
   }
 
