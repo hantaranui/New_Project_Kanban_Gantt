@@ -5113,6 +5113,40 @@
       align-items: center;
       gap: 8px;
     }
+    .tcd-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .tcd-actions .btn {
+      margin: 0 !important;
+      padding: 4px 9px !important;
+      border: 1px solid var(--black) !important;
+      border-radius: var(--border-radius-4) !important;
+      background: var(--white) !important;
+      color: var(--black) !important;
+      font-size: 11px !important;
+      font-weight: 600 !important;
+      cursor: pointer;
+    }
+    .tcd-actions .tcd-delete-btn {
+      color: #D7263D !important;
+      border-color: #D7263D !important;
+    }
+    .kanban-board .kanban-column {
+      background: var(--white) !important;
+    }
+    .kanban-board .kanban-col-header {
+      background: var(--light-green) !important;
+    }
+    .kanban-board .kanban-cards {
+      background: var(--white) !important;
+    }
+    .kanban-board .kanban-cards.drag-over {
+      background: var(--light-green) !important;
+    }
   </style>
 </head>
 <body>
@@ -5756,7 +5790,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=146"></script>
+  <script src="widget.js?v=148"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
