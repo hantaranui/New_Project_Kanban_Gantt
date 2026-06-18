@@ -2566,7 +2566,6 @@ async function ensureTables() {
       }
     }
 
-    showToast(t('tablesCreated'), 'success');
   } catch (e) {
     console.error('Error ensuring tables:', e);
   }
@@ -4892,23 +4891,42 @@ function getGanttSubtasks(taskId) {
   return getTaskSubtasks(taskId);
 }
 
-// Construit la <td> de libellé d'une sous-tâche (indentée, allégée, cliquable)
+// Construit la cellule de sous-tâche du Gantt : lisible, cochable, sans ouvrir la tâche parente.
 function renderGanttSubtaskLabelCell(st, parentTaskId) {
-  var completedClass = st.Completed ? ' style="text-decoration:line-through;opacity:0.5;"' : '';
-  var html = '<td class="gantt-task-label gantt-subtask-cell gantt-clickable-label" onclick="openEditTaskModal(' + parentTaskId + ')"' + completedClass + '>';
-  html += '<span style="font-size:10px;color:#94a3b8;margin-right:4px;">' + (isMilestone(st) ? '◆' : '↳') + '</span>';
-  html += '<span style="font-size:11px;' + (isMilestone(st) ? 'font-weight:700;' : '') + '">' + sanitize(st.Title) + '</span>';
-  // A1 : indicateur de dépendance entre sous-tâches
+  var completedClass = st.Completed ? ' completed' : '';
+  var html = '<td class="gantt-task-label gantt-subtask-cell' + completedClass + '">';
+  html += '<label class="gantt-subtask-label" onclick="event.stopPropagation()">';
+  html += '<span class="gantt-subtask-arrow">' + (isMilestone(st) ? '◆' : '↳') + '</span>';
+  html += '<input type="checkbox" class="gantt-subtask-checkbox" ' + (st.Completed ? 'checked' : '') + ' onchange="toggleGanttSubtask(' + st.id + ', this.checked)">';
+  html += '<span class="gantt-subtask-title">' + sanitize(st.Title) + '</span>';
+  html += '</label>';
+  var stMeta = '';
   var stBlocker = getSubtaskBlocker(st);
   if (stBlocker) {
     var depColor = stBlocker.Completed ? '#94a3b8' : '#ef4444';
-    html += '<span style="font-size:9px;color:' + depColor + ';margin-left:6px;white-space:nowrap;" title="' + (currentLang === 'fr' ? 'Dépend de' : 'Depends on') + ' : ' + sanitize(stBlocker.Title) + '">🔗 ' + sanitize(stBlocker.Title).substring(0, 14) + '</span>';
+    stMeta += '<span style="color:' + depColor + ';" title="' + (currentLang === 'fr' ? 'Dépend de' : 'Depends on') + ' : ' + sanitize(stBlocker.Title) + '">🔗 ' + sanitize(stBlocker.Title).substring(0, 14) + '</span>';
   }
-  if (st.Due_Date) html += '<span style="font-size:9px;color:#94a3b8;margin-left:6px;">📅 ' + formatDate(st.Due_Date) + '</span>';
-  else html += '<span style="font-size:9px;color:#94a3b8;margin-left:6px;">' + (currentLang === 'fr' ? 'sans date' : 'no date') + '</span>';
-  if (st.Assignee) html += '<span style="font-size:9px;color:#94a3b8;margin-left:4px;">👤 ' + sanitize(st.Assignee).split(',')[0].trim().substring(0, 10) + '</span>';
+  if (st.Due_Date) stMeta += '<span>📅 ' + formatDate(st.Due_Date) + '</span>';
+  else stMeta += '<span>' + (currentLang === 'fr' ? 'sans date' : 'no date') + '</span>';
+  if (st.Assignee) stMeta += '<span>👤 ' + sanitize(st.Assignee).split(',')[0].trim().substring(0, 10) + '</span>';
+  if (stMeta) html += '<div class="gantt-subtask-meta">' + stMeta + '</div>';
   html += '</td>';
   return html;
+}
+
+async function toggleGanttSubtask(subtaskId, completed) {
+  try {
+    await grist.docApi.applyUserActions([
+      ['UpdateRecord', SUBTASKS_TABLE, subtaskId, { Completed: completed }]
+    ]);
+    for (var i = 0; i < subtasks.length; i++) {
+      if (subtasks[i].id === subtaskId) { subtasks[i].Completed = completed; break; }
+    }
+    renderGanttView();
+  } catch (e) {
+    console.error('toggleGanttSubtask:', e);
+    showToast((currentLang === 'fr' ? 'Impossible de modifier la sous-tâche : ' : 'Could not update subtask: ') + e.message, 'error');
+  }
 }
 
 function isMilestone(st) { return st && st.Type === 'milestone'; }
@@ -4925,8 +4943,15 @@ function ganttSubtaskBarClass(st, parentTask) {
 
 // Bornes de la sous-tâche. B2 : un jalon est une date unique (Due_Date) → start = end.
 function getGanttSubtaskRange(st, parentTask) {
+  if (!st.Start_Date && !st.Due_Date) {
+    var far = new Date(8640000000000000);
+    return { start: far, end: far };
+  }
   var stEnd = st.Due_Date ? new Date(st.Due_Date * 1000) : (parentTask.Due_Date ? new Date(parentTask.Due_Date * 1000) : null);
-  if (!stEnd) return { start: new Date(), end: new Date() };
+  if (!stEnd) {
+    var far2 = new Date(8640000000000000);
+    return { start: far2, end: far2 };
+  }
   var stStart;
   if (isMilestone(st)) {
     stStart = new Date(stEnd); // jalon : un seul jour
