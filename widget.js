@@ -2073,8 +2073,21 @@ async function ensureConfigAndSettingsTables(existingTables) {
 async function shouldShowClientSetup(existingTables) {
   existingTables = existingTables || await grist.docApi.listTables();
   if (hasFrenchClientTables(existingTables)) applyFrenchTableNames(true);
-  if (existingTables.indexOf(CONFIG_TABLE) !== -1 || existingTables.indexOf('PM_Config') !== -1) return false;
-  if (existingTables.indexOf(TASKS_TABLE) !== -1 || existingTables.indexOf('PM_Tasks') !== -1) return false;
+
+  var taskTables = [TASKS_TABLE, CLIENT_TABLE_NAMES.tasks, 'PM_Tasks'];
+  var hasTaskTable = taskTables.some(function(tableId) { return existingTables.indexOf(tableId) !== -1; });
+  if (hasTaskTable) return false;
+
+  var settingsTables = [SETTINGS_TABLE, CLIENT_TABLE_NAMES.settings, 'PM_Settings'];
+  for (var i = 0; i < settingsTables.length; i++) {
+    if (existingTables.indexOf(settingsTables[i]) === -1) continue;
+    var previousSettingsTable = SETTINGS_TABLE;
+    SETTINGS_TABLE = settingsTables[i];
+    var installMode = await getRawSettingValue('install_mode');
+    SETTINGS_TABLE = previousSettingsTable;
+    if (installMode === 'french_auto' || installMode === 'mapping') return false;
+  }
+
   return true;
 }
 
@@ -11248,6 +11261,11 @@ if (!isInsideGrist()) {
     await loadWidgetPermissions();
     applyOwnerRestrictions();
     await ensureTables();
+    var postSetupTables = await grist.docApi.listTables();
+    if (await shouldShowClientSetup(postSetupTables)) {
+      showClientSetup();
+      return;
+    }
     await loadSettings();
     await loadAllData();
     applyRoleVisibilityDefaults();
