@@ -328,10 +328,10 @@ var i18n = {
     advancedConfig: 'Configuration avancée',
     mappingSubtitle: 'Mappez vos propres tables et colonnes Grist',
     configureMapping: 'Configurer le mapping',
-    mappingDescription: 'Par défaut, le widget utilise les tables PM_Tasks, PM_Users, etc. Vous pouvez mapper vos propres tables existantes pour réutiliser vos données.',
+    mappingDescription: 'Vous pouvez créer les tables en français ou mapper vos propres tables existantes pour réutiliser vos données.',
     mappingGuide: 'Consulter le guide complet du système de mapping',
     securityTitle: 'Sécurité du document',
-    securitySubtitle: 'Protégez les tables PM_* avec des règles d\'accès Grist (ACL)',
+    securitySubtitle: 'Protégez les tables du widget avec des règles d\'accès Grist (ACL)',
     raciMode: 'Mode RACI',
     raciSubtitle: 'Activez la matrice RACI pour définir les rôles sur chaque tâche',
     raciResponsible: 'Responsable (R)',
@@ -670,10 +670,10 @@ var i18n = {
     advancedConfig: 'Advanced configuration',
     mappingSubtitle: 'Map your own Grist tables and columns',
     configureMapping: 'Configure mapping',
-    mappingDescription: 'By default the widget uses PM_Tasks, PM_Users, etc. You can map your own existing tables to reuse your data.',
+    mappingDescription: 'You can create French default tables or map your own existing Grist tables.',
     mappingGuide: 'Read the complete mapping guide',
     securityTitle: 'Document security',
-    securitySubtitle: 'Protect PM_* tables with Grist access rules (ACL)',
+    securitySubtitle: 'Protect widget tables with Grist access rules (ACL)',
     raciMode: 'RACI Mode',
     raciSubtitle: 'Enable the RACI matrix to define roles on each task',
     raciResponsible: 'Responsible (R)',
@@ -856,6 +856,9 @@ async function loadSettings() {
     if (_settingsCache.notify_concerned) {
       notifyConcernedEnabled = _settingsCache.notify_concerned.value !== 'false';
     }
+    if (_settingsCache.ui_labels) {
+      try { uiLabels = Object.assign({}, defaultUiLabels, JSON.parse(_settingsCache.ui_labels.value)); } catch (e3) {}
+    }
   } catch (e) {
     console.log('[GristPM] PM_Settings not available yet');
   }
@@ -907,8 +910,80 @@ var SETTINGS_TABLE = 'PM_Settings';
 var NOTIFICATIONS_TABLE = 'PM_Notifications';
 var ACTIVITY_LOG_TABLE = 'PM_ActivityLog';
 var ATTACHMENTS_TABLE = 'PM_Attachments';
+var USER_INFO_TABLE = 'PM_UserInfo';
 var attachments = [];
 var activityLog = [];
+
+var CLIENT_TABLE_NAMES = {
+  tasks: 'Taches',
+  users: 'Utilisateurs',
+  groups: 'Equipes',
+  templates: 'Modeles',
+  subtasks: 'Sous_taches',
+  dependencies: 'Dependances',
+  comments: 'Commentaires',
+  timeEntries: 'Suivi_temps',
+  customFields: 'Champs_personnalises',
+  customFieldValues: 'Valeurs_champs_personnalises',
+  categories: 'Categories',
+  tags: 'Etiquettes',
+  projects: 'Projets',
+  config: 'Configuration_widget',
+  settings: 'Parametres_widget',
+  notifications: 'Notifications',
+  activityLog: 'Journal_activite',
+  attachments: 'Pieces_jointes',
+  userInfo: 'Infos_utilisateurs'
+};
+
+function applyFrenchTableNames(updateDefaults) {
+  TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
+  USERS_TABLE = CLIENT_TABLE_NAMES.users;
+  GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
+  TEMPLATES_TABLE = CLIENT_TABLE_NAMES.templates;
+  SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
+  DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
+  COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
+  TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
+  CUSTOM_FIELDS_TABLE = CLIENT_TABLE_NAMES.customFields;
+  CUSTOM_FIELD_VALUES_TABLE = CLIENT_TABLE_NAMES.customFieldValues;
+  CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
+  TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
+  PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
+  CONFIG_TABLE = CLIENT_TABLE_NAMES.config;
+  SETTINGS_TABLE = CLIENT_TABLE_NAMES.settings;
+  NOTIFICATIONS_TABLE = CLIENT_TABLE_NAMES.notifications;
+  ACTIVITY_LOG_TABLE = CLIENT_TABLE_NAMES.activityLog;
+  ATTACHMENTS_TABLE = CLIENT_TABLE_NAMES.attachments;
+  USER_INFO_TABLE = CLIENT_TABLE_NAMES.userInfo;
+  if (updateDefaults) {
+    DEFAULT_TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
+    DEFAULT_USERS_TABLE = CLIENT_TABLE_NAMES.users;
+    DEFAULT_PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
+    DEFAULT_CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
+    DEFAULT_TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
+  }
+}
+
+function hasFrenchClientTables(tableIds) {
+  return tableIds.indexOf(CLIENT_TABLE_NAMES.config) !== -1 || tableIds.indexOf(CLIENT_TABLE_NAMES.tasks) !== -1;
+}
+
+var defaultUiLabels = {
+  projects: 'Projets',
+  categories: 'Catégories',
+  tags: 'Tags',
+  statuses: 'Colonnes Kanban',
+  cardDisplay: 'Affichage des cartes',
+  raci: 'Mode RACI',
+  automations: 'Automatisations',
+  notifications: 'Notifications & e-mail',
+  security: 'Sécurité du document',
+  mapping: 'Configuration avancée'
+};
+var uiLabels = Object.assign({}, defaultUiLabels);
+function uiLabel(key) { return uiLabels[key] || defaultUiLabels[key] || key; }
+async function saveUiLabels() { await saveSetting('ui_labels', JSON.stringify(uiLabels)); }
 
 // Default table names — used to detect remapping: if a table var differs from
 // its default it means the user mapped it to an existing table, so we must NOT
@@ -1920,9 +1995,145 @@ function restoreActiveTab() {
 // INIT — CREATE TABLES IF NEEDED
 // =============================================================================
 
+async function getRawSettingValue(key) {
+  try {
+    var data = await grist.docApi.fetchTable(SETTINGS_TABLE);
+    if (!data || !data.Key) return null;
+    for (var i = 0; i < data.Key.length; i++) {
+      if (data.Key[i] === key) return data.Value[i];
+    }
+  } catch (e) {}
+  return null;
+}
+
+function buildDefaultConfigRecords() {
+  var defaultConfig = [
+    ['task_title', TASKS_TABLE, 'Title', 'Titre', true, 'Title'],
+    ['task_description', TASKS_TABLE, 'Description', 'Description', false, 'Description'],
+    ['task_status', TASKS_TABLE, 'Status', 'Statut', true, 'Status'],
+    ['task_priority', TASKS_TABLE, 'Priority', 'Priorité', true, 'Priority'],
+    ['task_assignee', TASKS_TABLE, 'Assignee', 'Assigné à', false, 'Assignee'],
+    ['task_group', TASKS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
+    ['task_start_date', TASKS_TABLE, 'Start_Date', 'Date début', false, 'Start_Date'],
+    ['task_due_date', TASKS_TABLE, 'Due_Date', 'Échéance', false, 'Due_Date'],
+    ['task_category', TASKS_TABLE, 'Category', 'Catégorie', false, 'Category'],
+    ['task_tag', TASKS_TABLE, 'Tag', 'Tag', false, 'Tag'],
+    ['task_recurrence', TASKS_TABLE, 'Recurrence', 'Récurrence', false, 'Recurrence'],
+    ['task_estimated_hours', TASKS_TABLE, 'Estimated_Hours', 'Heures estimées', false, 'Estimated_Hours'],
+    ['task_created_at', TASKS_TABLE, 'Created_At', 'Créé le', false, 'Created_At'],
+    ['task_project_id', PROJECTS_TABLE, 'Project_Id', 'Projet', false, 'Project_Id'],
+    ['user_name', USERS_TABLE, 'Name', 'Nom', true, 'Name'],
+    ['user_email', USERS_TABLE, 'Email', 'Email', true, 'Email'],
+    ['user_role', USERS_TABLE, 'Role', 'Rôle', false, 'Role'],
+    ['user_group', USERS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
+    ['project_name', PROJECTS_TABLE, 'Name', 'Nom', true, 'Name'],
+    ['project_description', PROJECTS_TABLE, 'Description', 'Description', false, 'Description'],
+    ['project_color', PROJECTS_TABLE, 'Color', 'Couleur', false, 'Color'],
+    ['project_status', PROJECTS_TABLE, 'Status', 'Statut', false, 'Status'],
+    ['category_name', CATEGORIES_TABLE, 'Name', 'Nom', true, 'Name'],
+    ['category_color', CATEGORIES_TABLE, 'Color', 'Couleur', false, 'Color'],
+    ['category_order', CATEGORIES_TABLE, 'Order', 'Ordre', false, 'Order'],
+    ['tag_name', TAGS_TABLE, 'Name', 'Nom', true, 'Name'],
+    ['tag_color', TAGS_TABLE, 'Color', 'Couleur', false, 'Color']
+  ];
+  return defaultConfig.map(function(row) {
+    return { Config_Key: row[0], Table_Name: row[1], Column_Name: row[2], Display_Label: row[3], Required: row[4], Default_Value: row[5] };
+  });
+}
+
+async function ensureConfigAndSettingsTables(existingTables) {
+  existingTables = existingTables || await grist.docApi.listTables();
+  if (existingTables.indexOf(CONFIG_TABLE) === -1) {
+    await grist.docApi.applyUserActions([
+      ['AddTable', CONFIG_TABLE, [
+        { id: 'Config_Key', type: 'Text' },
+        { id: 'Table_Name', type: 'Text' },
+        { id: 'Column_Name', type: 'Text' },
+        { id: 'Display_Label', type: 'Text' },
+        { id: 'Required', type: 'Bool' },
+        { id: 'Default_Value', type: 'Text' }
+      ]]
+    ]);
+    var configRecords = buildDefaultConfigRecords();
+    await grist.docApi.applyUserActions([
+      ['BulkAddRecord', CONFIG_TABLE, configRecords.map(function() { return null; }), configRecords]
+    ]);
+  }
+  existingTables = await grist.docApi.listTables();
+  if (existingTables.indexOf(SETTINGS_TABLE) === -1) {
+    await grist.docApi.applyUserActions([
+      ['AddTable', SETTINGS_TABLE, [
+        { id: 'Key', type: 'Text' },
+        { id: 'Value', type: 'Text' }
+      ]]
+    ]);
+  }
+}
+
+async function shouldShowClientSetup(existingTables) {
+  existingTables = existingTables || await grist.docApi.listTables();
+  if (hasFrenchClientTables(existingTables)) applyFrenchTableNames(true);
+  if (existingTables.indexOf(CONFIG_TABLE) !== -1 || existingTables.indexOf('PM_Config') !== -1) return false;
+  if (existingTables.indexOf(TASKS_TABLE) !== -1 || existingTables.indexOf('PM_Tasks') !== -1) return false;
+  return true;
+}
+
+function showClientSetup() {
+  var setup = document.getElementById('client-setup');
+  if (setup) setup.classList.remove('hidden');
+  var main = document.getElementById('main-content');
+  if (main) main.classList.add('hidden');
+}
+
+function hideClientSetup() {
+  var setup = document.getElementById('client-setup');
+  if (setup) setup.classList.add('hidden');
+  var main = document.getElementById('main-content');
+  if (main) main.classList.remove('hidden');
+}
+
+async function setupCreateFrenchTables() {
+  try {
+    applyFrenchTableNames(true);
+    hideClientSetup();
+    showToast('Création des tables en français...', 'info');
+    await ensureTables();
+    await loadSettings();
+    await saveSetting('install_mode', 'french_auto');
+    showToast('Tables créées. Rechargement du widget...', 'success');
+    setTimeout(function() { window.location.reload(); }, 700);
+  } catch (e) {
+    console.error('setupCreateFrenchTables:', e);
+    showToast('Erreur pendant la création : ' + e.message, 'error');
+    showClientSetup();
+  }
+}
+
+async function setupUseExistingTables() {
+  try {
+    applyFrenchTableNames(true);
+    hideClientSetup();
+    showToast('Préparation du mapping...', 'info');
+    await ensureConfigAndSettingsTables(await grist.docApi.listTables());
+    await loadSettings();
+    await saveSetting('install_mode', 'mapping');
+    await loadColumnMapping();
+    switchTab('settings');
+    setTimeout(function() { openColumnMappingModal(); }, 250);
+    showToast('Choisissez vos tables existantes dans le mapping.', 'success');
+  } catch (e) {
+    console.error('setupUseExistingTables:', e);
+    showToast('Erreur pendant la préparation : ' + e.message, 'error');
+    showClientSetup();
+  }
+}
+
 async function ensureTables() {
   try {
     var existingTables = await grist.docApi.listTables();
+    if (hasFrenchClientTables(existingTables)) applyFrenchTableNames(true);
+    var installMode = await getRawSettingValue('install_mode');
+    var skipAutoCreateWorkTables = installMode === 'mapping';
 
     // If PM_Config already exists load the mapping NOW so table vars reflect any
     // remapping the user has configured.  This prevents re-creating PM_Users etc.
@@ -1933,7 +2144,7 @@ async function ensureTables() {
 
     // Only auto-create a table when it (a) still has its default PM_* name
     // (meaning it has not been remapped) AND (b) does not yet exist.
-    if (TASKS_TABLE === DEFAULT_TASKS_TABLE && existingTables.indexOf(TASKS_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (TASKS_TABLE === DEFAULT_TASKS_TABLE && existingTables.indexOf(TASKS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', TASKS_TABLE, [
           { id: 'Title', type: 'Text' },
@@ -1953,7 +2164,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (USERS_TABLE === DEFAULT_USERS_TABLE && existingTables.indexOf(USERS_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (USERS_TABLE === DEFAULT_USERS_TABLE && existingTables.indexOf(USERS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', USERS_TABLE, [
           { id: 'Name', type: 'Text' },
@@ -1964,7 +2175,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (existingTables.indexOf(GROUPS_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(GROUPS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', GROUPS_TABLE, [
           { id: 'Name', type: 'Text' },
@@ -1973,7 +2184,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (existingTables.indexOf(TEMPLATES_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(TEMPLATES_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', TEMPLATES_TABLE, [
           { id: 'Title', type: 'Text' },
@@ -1990,7 +2201,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (existingTables.indexOf(SUBTASKS_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(SUBTASKS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', SUBTASKS_TABLE, [
           { id: 'Parent_Task_Id', type: 'Int' },
@@ -2008,7 +2219,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (existingTables.indexOf(DEPENDENCIES_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(DEPENDENCIES_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', DEPENDENCIES_TABLE, [
           { id: 'Task_Id', type: 'Int' },
@@ -2018,7 +2229,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (existingTables.indexOf(COMMENTS_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(COMMENTS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', COMMENTS_TABLE, [
           { id: 'Task_Id', type: 'Int' },
@@ -2029,7 +2240,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (existingTables.indexOf(TIME_ENTRIES_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(TIME_ENTRIES_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', TIME_ENTRIES_TABLE, [
           { id: 'Task_Id', type: 'Int' },
@@ -2042,7 +2253,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (existingTables.indexOf(CUSTOM_FIELDS_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(CUSTOM_FIELDS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', CUSTOM_FIELDS_TABLE, [
           { id: 'Name', type: 'Text' },
@@ -2054,7 +2265,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (existingTables.indexOf(CUSTOM_FIELD_VALUES_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(CUSTOM_FIELD_VALUES_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', CUSTOM_FIELD_VALUES_TABLE, [
           { id: 'Task_Id', type: 'Int' },
@@ -2064,7 +2275,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (CATEGORIES_TABLE === DEFAULT_CATEGORIES_TABLE && existingTables.indexOf(CATEGORIES_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (CATEGORIES_TABLE === DEFAULT_CATEGORIES_TABLE && existingTables.indexOf(CATEGORIES_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', CATEGORIES_TABLE, [
           { id: 'Name', type: 'Text' },
@@ -2074,7 +2285,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (TAGS_TABLE === DEFAULT_TAGS_TABLE && existingTables.indexOf(TAGS_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (TAGS_TABLE === DEFAULT_TAGS_TABLE && existingTables.indexOf(TAGS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', TAGS_TABLE, [
           { id: 'Name', type: 'Text' },
@@ -2084,7 +2295,7 @@ async function ensureTables() {
     }
 
     // D2 : table des pièces jointes (base64 dans une colonne texte File_Data)
-    if (existingTables.indexOf(ATTACHMENTS_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(ATTACHMENTS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', ATTACHMENTS_TABLE, [
           { id: 'Task_Id', type: 'Int' },
@@ -2107,7 +2318,7 @@ async function ensureTables() {
       }
     }
 
-    if (PROJECTS_TABLE === DEFAULT_PROJECTS_TABLE && existingTables.indexOf(PROJECTS_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (PROJECTS_TABLE === DEFAULT_PROJECTS_TABLE && existingTables.indexOf(PROJECTS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', PROJECTS_TABLE, [
           { id: 'Name', type: 'Text' },
@@ -2161,8 +2372,10 @@ async function ensureTables() {
       console.log('[GristPM] Migration CreatedBy ignorée :', e.message);
     }
 
-    // Create PM_Config table for column mapping configuration
-    if (existingTables.indexOf(CONFIG_TABLE) === -1) {
+    // Create configuration/settings tables for column mapping configuration
+    await ensureConfigAndSettingsTables(existingTables);
+    existingTables = await grist.docApi.listTables();
+    if (false && existingTables.indexOf(CONFIG_TABLE) === -1) {
       await grist.docApi.applyUserActions([
         ['AddTable', CONFIG_TABLE, [
           { id: 'Config_Key', type: 'Text' },
@@ -2237,7 +2450,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (existingTables.indexOf(NOTIFICATIONS_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(NOTIFICATIONS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', NOTIFICATIONS_TABLE, [
           { id: 'Task_Id', type: 'Int' },
@@ -2251,7 +2464,7 @@ async function ensureTables() {
       ]);
     }
 
-    if (existingTables.indexOf(ACTIVITY_LOG_TABLE) === -1) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(ACTIVITY_LOG_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', ACTIVITY_LOG_TABLE, [
           { id: 'Timestamp', type: 'Date' },
@@ -4795,6 +5008,7 @@ function ganttTaskRowStart(task) {
 }
 
 function renderGanttTaskLabel(task) {
+  var dotClass = task.Priority === 'high' ? 'dot-high' : (task.Priority === 'medium' ? 'dot-medium' : 'dot-low');
   var assigneeNames = task.Assignee ? task.Assignee.split(',').map(function(a) { return getUserDisplayName(a.trim()); }).join(', ') : '';
   var ganttProjColor = getProjectColor(task.Project_Id);
   var ganttProjName = getProjectName(task.Project_Id);
@@ -4807,10 +5021,11 @@ function renderGanttTaskLabel(task) {
   var html = '<td class="gantt-task-label">';
   html += '<div class="task-name">';
   html += '<input type="checkbox" class="gantt-focus-checkbox"' + checked + ' title="' + focusTitle + '" onclick="event.stopPropagation()" onchange="focusGanttTask(' + task.id + ', this.checked)">';
+  html += '<span class="priority-dot ' + dotClass + '" title="' + priorityLabel(task.Priority) + '"></span>';
   html += '<button type="button" class="gantt-task-title-btn" onclick="openEditTaskModal(' + task.id + ')" title="' + openTitle + '">' + sanitize(task.Title) + '</button>';
   html += ganttDepBadge(task) + '</div>';
   if (ganttProjName) {
-    html += '<div class="gantt-project-line"><span class="gantt-project-dot" style="background:' + ganttProjColor + ';"></span>' + sanitize(ganttProjName) + '</div>';
+    html += '<div class="gantt-project-line" style="--project-color:' + ganttProjColor + ';">' + sanitize(ganttProjName) + '</div>';
   }
   html += '<div class="task-info">';
   if (task.Priority) html += '<span class="gantt-priority-text ' + ganttPriorityClass(task.Priority) + '">' + priorityLabel(task.Priority) + '</span>';
@@ -9176,6 +9391,8 @@ function renderSettingsView() {
   renderAutomationsSection();
   renderNotifyConcernedToggle();
   renderSecuritySection();
+  renderUiLabelSettings();
+  applyUiLabelsToSettingsHeadings();
 }
 
 var _statusDragIndex = null;
@@ -9321,6 +9538,52 @@ async function removeKanbanStatus(index) {
 
 
 
+function renderUiLabelSettings() {
+  var container = document.getElementById('ui-label-settings');
+  if (!container) return;
+  var keys = ['projects', 'categories', 'tags', 'statuses', 'cardDisplay', 'raci', 'automations', 'notifications', 'security', 'mapping'];
+  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">';
+  keys.forEach(function(key) {
+    html += '<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:#271A79;">';
+    html += '<span>' + sanitize(defaultUiLabels[key]) + '</span>';
+    html += '<input type="text" data-ui-label-key="' + key + '" value="' + sanitize(uiLabel(key)) + '" style="padding:7px 9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;">';
+    html += '</label>';
+  });
+  html += '</div><button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="saveUiLabelSettings()">💾 Enregistrer les titres</button>';
+  container.innerHTML = html;
+}
+
+async function saveUiLabelSettings() {
+  var inputs = document.querySelectorAll('#ui-label-settings [data-ui-label-key]');
+  inputs.forEach(function(inp) {
+    var key = inp.getAttribute('data-ui-label-key');
+    uiLabels[key] = (inp.value || defaultUiLabels[key] || key).trim();
+  });
+  await saveUiLabels();
+  applyUiLabelsToSettingsHeadings();
+  renderCardDisplaySettings();
+  showToast('Titres enregistrés', 'success');
+}
+
+function applyUiLabelsToSettingsHeadings() {
+  var map = {
+    'settings-title-projects': 'projects',
+    'settings-title-categories': 'categories',
+    'settings-title-tags': 'tags',
+    'settings-title-statuses': 'statuses',
+    'settings-title-card-display': 'cardDisplay',
+    'settings-title-raci': 'raci',
+    'settings-title-automations': 'automations',
+    'settings-title-notifications': 'notifications',
+    'settings-title-security': 'security',
+    'settings-title-mapping': 'mapping'
+  };
+  Object.keys(map).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = uiLabel(map[id]);
+  });
+}
+
 function renderCardDisplaySettings() {
   var container = document.getElementById('card-display-settings');
   if (!container) return;
@@ -9329,8 +9592,8 @@ function renderCardDisplaySettings() {
     { key: 'description', label: currentLang === 'fr' ? 'Description' : 'Description' },
     { key: 'date',        label: currentLang === 'fr' ? 'Date d\'échéance' : 'Due date' },
     { key: 'assignee',    label: currentLang === 'fr' ? 'Assigné à' : 'Assignee' },
-    { key: 'tags',        label: 'Tags' },
-    { key: 'category',    label: currentLang === 'fr' ? 'Catégorie' : 'Category' },
+    { key: 'tags',        label: uiLabel('tags') },
+    { key: 'category',    label: uiLabel('categories') },
     { key: 'time',        label: currentLang === 'fr' ? 'Temps passé' : 'Time spent' },
     { key: 'subtasks',    label: currentLang === 'fr' ? 'Sous-tâches' : 'Subtasks' },
     { key: 'comments',    label: currentLang === 'fr' ? 'Commentaires' : 'Comments' }
@@ -9358,26 +9621,31 @@ async function toggleCardDisplay(key, value) {
 // SECURITY — ACL RULES FOR PM_* TABLES
 // =============================================================================
 
-var PM_ACL_RULES = [
-  { tableId: 'PM_Settings',        ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-  { tableId: 'PM_Categories',      ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-  { tableId: 'PM_Tags',            ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-  { tableId: 'PM_Config',          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-  { tableId: 'PM_Templates',       ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-  { tableId: 'PM_Tasks',           ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-  { tableId: 'PM_Subtasks',        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-  { tableId: 'PM_Comments',        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-  { tableId: 'PM_TimeEntries',     ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-  { tableId: 'PM_CustomFieldValues', ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-  { tableId: 'PM_CustomFields',    ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-  { tableId: 'PM_Dependencies',    ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-  { tableId: 'PM_Users',           ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-  { tableId: 'PM_Groups',          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-  { tableId: 'PM_Projects',        ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-  { tableId: 'PM_UserInfo',        ownerPerms: '+CRUDS', editorPerms: '+RCUD' },
-  { tableId: 'PM_Notifications',   ownerPerms: '+CRUDS', editorPerms: '+RCUD' },
-  { tableId: 'PM_ActivityLog',     ownerPerms: '+CRUDS', editorPerms: '+RC-UD' }
-];
+function getAclRules() {
+  return [
+    { tableId: SETTINGS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: CATEGORIES_TABLE,      ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: TAGS_TABLE,            ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: CONFIG_TABLE,          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: TEMPLATES_TABLE,       ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: TASKS_TABLE,           ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: SUBTASKS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: COMMENTS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: TIME_ENTRIES_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: CUSTOM_FIELD_VALUES_TABLE, ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: CUSTOM_FIELDS_TABLE,   ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: DEPENDENCIES_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: USERS_TABLE,           ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: GROUPS_TABLE,          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: PROJECTS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: USER_INFO_TABLE,       ownerPerms: '+CRUDS', editorPerms: '+RCUD' },
+    { tableId: NOTIFICATIONS_TABLE,   ownerPerms: '+CRUDS', editorPerms: '+RCUD' },
+    { tableId: ACTIVITY_LOG_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RC-UD' },
+    { tableId: ATTACHMENTS_TABLE,     ownerPerms: '+CRUDS', editorPerms: '+RCU-D' }
+  ].filter(function(rule, index, arr) {
+    return rule.tableId && arr.findIndex(function(r) { return r.tableId === rule.tableId; }) === index;
+  });
+}
 
 async function checkSecurityStatus() {
   try {
@@ -9397,8 +9665,9 @@ async function checkSecurityStatus() {
     var existingTables = await grist.docApi.listTables();
 
     var results = [];
-    for (var r = 0; r < PM_ACL_RULES.length; r++) {
-      var rule = PM_ACL_RULES[r];
+    var aclRules = getAclRules();
+    for (var r = 0; r < aclRules.length; r++) {
+      var rule = aclRules[r];
       var tableExists = existingTables.indexOf(rule.tableId) !== -1;
       if (!tableExists) continue;
 
@@ -9437,8 +9706,8 @@ async function applySecurityRules() {
 
   var confirmed = await showConfirmModal(
     currentLang === 'fr'
-      ? 'Cela va créer des règles d\'accès (ACL) pour protéger les tables PM_*. Les owners garderont tous les droits. Les éditeurs pourront créer et modifier les tâches mais pas les supprimer ni modifier les paramètres. Le document sera rechargé automatiquement.'
-      : 'This will create access rules (ACL) to protect PM_* tables. Owners keep full rights. Editors can create and edit tasks but cannot delete them or modify settings. The document will reload automatically.',
+      ? 'Cela va créer des règles d\'accès (ACL) pour protéger les tables du widget. Les owners garderont tous les droits. Les éditeurs pourront créer et modifier les tâches mais pas les supprimer ni modifier les paramètres. Le document sera rechargé automatiquement.'
+      : 'This will create access rules (ACL) to protect widget tables. Owners keep full rights. Editors can create and edit tasks but cannot delete them or modify settings. The document will reload automatically.',
     currentLang === 'fr' ? 'Sécuriser le document' : 'Secure document',
     currentLang === 'fr' ? 'Confirmer' : 'Confirm'
   );
@@ -9474,8 +9743,9 @@ async function applySecurityRules() {
     var actions = [];
     var tempResourceId = -1;
 
-    for (var r = 0; r < PM_ACL_RULES.length; r++) {
-      var rule = PM_ACL_RULES[r];
+    var aclRules = getAclRules();
+    for (var r = 0; r < aclRules.length; r++) {
+      var rule = aclRules[r];
       if (existingTables.indexOf(rule.tableId) === -1) continue;
 
       var resKey = rule.tableId + ':*';
@@ -9532,8 +9802,8 @@ async function applySecurityRules() {
 async function removeSecurityRules() {
   var confirmed = await showConfirmModal(
     currentLang === 'fr'
-      ? 'Cela va supprimer toutes les règles d\'accès créées par le widget sur les tables PM_*. Le document sera rechargé automatiquement.'
-      : 'This will remove all access rules created by the widget on PM_* tables. The document will reload automatically.',
+      ? 'Cela va supprimer toutes les règles d\'accès créées par le widget sur ses tables. Le document sera rechargé automatiquement.'
+      : 'This will remove all access rules created by the widget on its tables. The document will reload automatically.',
     currentLang === 'fr' ? 'Retirer la sécurité' : 'Remove security',
     currentLang === 'fr' ? 'Confirmer' : 'Confirm'
   );
@@ -9845,7 +10115,7 @@ async function renderSecuritySection() {
 
   if (results.length === 0) {
     container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:12px;font-size:13px;">' +
-      (currentLang === 'fr' ? 'Aucune table PM_* détectée' : 'No PM_* tables detected') + '</div>';
+      (currentLang === 'fr' ? 'Aucune table du widget détectée' : 'No widget tables detected') + '</div>';
     return;
   }
 
@@ -10852,8 +11122,16 @@ if (!isInsideGrist()) {
   (async function() {
     await grist.ready({ requiredAccess: 'full' });
 
+    var setupTables = await grist.docApi.listTables();
+    if (hasFrenchClientTables(setupTables)) applyFrenchTableNames(true);
+    if (await shouldShowClientSetup(setupTables)) {
+      showClientSetup();
+      return;
+    }
+
     // --- Role detection (Owner / Editor / Viewer) ---
-    var USER_INFO_TABLE = 'PM_UserInfo';
+    var bootTables = await grist.docApi.listTables();
+    if (hasFrenchClientTables(bootTables)) applyFrenchTableNames(true);
     var helperWriteSucceeded = false;
 
     // Step 1: Ensure helper table with trigger formula user.Email

@@ -1208,7 +1208,7 @@
       box-shadow: 0 0 0 2px rgba(0,0,0,0.05);
     }
     .dot-high { background: #ef4444; }
-    .dot-medium { background: #f59e0b; }
+    .dot-medium { background: var(--blue); }
     .dot-low { background: #22c55e; }
 
     /* ========== TABLE VIEW ========== */
@@ -5185,21 +5185,19 @@
       text-underline-offset: 3px;
     }
     .gantt-project-line {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin: 4px 0 0 26px;
-      color: #5B55D9;
-      font-size: 11px !important;
+      display: block;
+      width: calc(100% - 32px);
+      box-sizing: border-box;
+      margin: 5px 0 0 32px;
+      padding: 3px 7px;
+      border-radius: 5px;
+      background: var(--project-color, #5B55D9);
+      color: var(--white);
+      font-size: 10px !important;
       line-height: 1.2 !important;
       font-weight: 600 !important;
       white-space: normal;
-    }
-    .gantt-project-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      flex: 0 0 auto;
+      overflow-wrap: anywhere;
     }
     .gantt-mini-btn {
       display: inline-flex;
@@ -5344,6 +5342,96 @@
     #tab-kanban.kanban-fullscreen .kanban-cards {
       min-height: calc(100vh - 220px) !important;
     }
+    .client-setup {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      background: var(--white);
+      color: var(--black);
+      font-family: var(--ls-font, 'Barlow', sans-serif);
+    }
+    .client-setup.hidden { display: none !important; }
+    .client-setup-panel {
+      width: min(980px, 100%);
+      border: var(--border-weight) solid var(--black);
+      border-radius: var(--border-radius-2);
+      box-shadow: 9px 9px 0 var(--green);
+      background: var(--white);
+      padding: 26px;
+    }
+    .client-setup-head {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .client-setup-logo {
+      width: 64px;
+      height: 64px;
+      flex: 0 0 auto;
+    }
+    .client-setup h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+      line-height: 1.05;
+      font-weight: 800;
+      color: var(--black);
+    }
+    .client-setup p {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.35;
+      font-weight: 600;
+      color: var(--black);
+    }
+    .client-setup-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 22px;
+    }
+    .client-setup-card {
+      border: 2px solid var(--black);
+      border-radius: var(--border-radius-3);
+      background: var(--white);
+      padding: 18px;
+      box-shadow: 5px 5px 0 var(--blue);
+    }
+    .client-setup-card.alt { box-shadow-color: var(--yellow); }
+    .client-setup-card h2 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      line-height: 1.15;
+      color: var(--black);
+    }
+    .client-setup-card ul {
+      margin: 12px 0 18px 20px;
+      padding: 0;
+      font-size: 14px;
+      line-height: 1.45;
+      font-weight: 600;
+    }
+    .client-setup-card button {
+      min-height: 44px;
+      padding: 10px 16px;
+      border: 2px solid var(--black);
+      border-radius: var(--border-radius-4);
+      background: var(--green);
+      color: var(--black);
+      box-shadow: 4px 4px 0 var(--blue);
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .client-setup-card.alt button {
+      background: var(--yellow);
+      box-shadow-color: var(--green);
+    }
+    @media (max-width: 720px) {
+      .client-setup-options { grid-template-columns: 1fr; }
+      .client-setup-head { align-items: flex-start; }
+    }
   </style>
 </head>
 <body>
@@ -5352,6 +5440,49 @@
   <div class="not-in-grist hidden" id="not-in-grist">
     <h2>📋 Gestion de Projet</h2>
     <p data-i18n="notInGrist">Ce widget doit être utilisé dans Grist.</p>
+  </div>
+
+  <!-- CLIENT SETUP -->
+  <div class="client-setup hidden" id="client-setup">
+    <div class="client-setup-panel">
+      <div class="client-setup-head">
+        <div class="client-setup-logo suite-logo" aria-label="LaSuite.coop">
+          <svg viewBox="0 0 329 331" fill="none" xmlns="http://www.w3.org/2000/svg" style="--marked-color:#15B6C8;--text-color:#271A79;--second-marked-color:#B9FFB7">
+            <path d="M30 115c0-46.9442 38.0558-85 85-85H244c46.944 0 85 38.0558 85 85V246c0 46.944-38.056 85-85 85H115c-46.9442 0-85-38.056-85-85V115z" fill="var(--marked-color)"/>
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M244 42H115c-40.3168 0-73 32.6832-73 73V246c0 40.317 32.6832 73 73 73H244c40.317 0 73-32.683 73-73V115c0-40.3168-32.683-73-73-73zM115 30c-46.9442 0-85 38.0558-85 85V246c0 46.944 38.0558 85 85 85H244c46.944 0 85-38.056 85-85V115c0-46.9442-38.056-85-85-85H115z" fill="var(--text-color)"/>
+            <path d="M0 64C0 28.6538 28.6538 0 64 0H236c35.346 0 64 28.6538 64 64V236c0 35.346-28.654 64-64 64H64c-35.3462 0-64-28.654-64-64V64z" fill="var(--second-marked-color)"/>
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M236 12H64C35.2812 12 12 35.2812 12 64V236c0 28.719 23.2812 52 52 52H236c28.719 0 52-23.281 52-52V64c0-28.7188-23.281-52-52-52zM64 0C28.6538 0 0 28.6538 0 64V236c0 35.346 28.6538 64 64 64H236c35.346 0 64-28.654 64-64V64c0-35.3462-28.654-64-64-64H64z" fill="var(--text-color)"/>
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M140.585 139.932l18.758 23.314C161.2 162.547 163.598 161.839 165.282 162.008 168.83 162.291 171.903 164.022 174.503 167.203 177.104 170.383 178.19 173.739 177.763 177.273 177.415 180.741 175.612 183.808 172.353 186.474L146.718 207.44C143.538 210.041 140.175 211.199 136.628 210.917 133.16 210.569 130.126 208.805 127.526 205.625 124.926 202.445 123.8 199.12 124.147 195.652 124.574 192.119 126.378 189.052 129.557 186.451 130.034 186.061 130.262 185.61 130.24 185.097 130.219 184.583 129.941 184.081 129.406 183.59l-16.359-18.062C111.992 164.4 111.107 164.129 110.392 164.714 104.669 169.395 100.759 174.914 98.6619 181.273 96.5001 187.551 96.2348 194.203 97.8658 201.227 99.5113 208.107 102.999 214.806 108.329 221.325 113.66 227.844 119.644 232.568 126.283 235.497 132.857 238.345 139.586 239.276 146.472 238.288 153.372 237.155 159.882 234.086 166.003 229.08l24.085-19.699c6.041-4.941 10.261-10.648 12.662-17.122C205.085 185.706 205.509 178.924 204.023 171.915 202.471 164.826 199.03 158.021 193.7 151.502 188.37 144.983 182.497 140.234 176.082 137.255 169.602 134.197 163.071 133.104 156.49 133.976 153.16 134.345 149.939 135.223 146.827 136.608L146.482 136.754S145.464 137.24 145.365 137.299C144.83 137.62 144.347 137.924 143.901 138.205 142.917 138.823 142.109 139.331 141.308 139.672 141.068 139.766 140.827 139.853 140.585 139.932z" fill="var(--marked-color)"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Configurer le widget Kanban & Gantt</h1>
+          <p>Choisissez comment connecter le widget à vos données Grist.</p>
+        </div>
+      </div>
+      <div class="client-setup-options">
+        <div class="client-setup-card">
+          <h2>Créer les tables automatiquement</h2>
+          <p>Le widget crée une structure prête à l’emploi avec des noms de tables en français.</p>
+          <ul>
+            <li>Taches, Projets, Utilisateurs, Sous_taches</li>
+            <li>Categories, Etiquettes, Pieces_jointes</li>
+            <li>Configuration_widget et Parametres_widget</li>
+          </ul>
+          <button onclick="setupCreateFrenchTables()">Créer les tables françaises</button>
+        </div>
+        <div class="client-setup-card alt">
+          <h2>Utiliser des tables existantes</h2>
+          <p>Le widget ne crée que la configuration, puis vous mappez vos tables et colonnes existantes.</p>
+          <ul>
+            <li>Utile si le client a déjà ses propres tables</li>
+            <li>Mapping modifiable ensuite dans Paramètres</li>
+            <li>Aucune table de tâches ajoutée automatiquement</li>
+          </ul>
+          <button onclick="setupUseExistingTables()">Configurer le mapping</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- MAIN CONTENT -->
@@ -5654,7 +5785,7 @@
         <div class="settings-section">
           <div class="settings-section-header">
             <div>
-              <h3 data-i18n="manageProjects">Projets</h3>
+              <h3 id="settings-title-projects">Projets</h3>
               <p data-i18n="projectsSubtitle">Gérez vos projets</p>
             </div>
             <button class="btn btn-primary btn-sm" onclick="openProjectModal()">+ <span data-i18n="addProject">Ajouter</span></button>
@@ -5666,7 +5797,7 @@
         <div class="settings-section">
           <div class="settings-section-header">
             <div>
-              <h3 data-i18n="categories">Catégories</h3>
+              <h3 id="settings-title-categories">Catégories</h3>
               <p data-i18n="categoriesSubtitle">Gérez les catégories de tâches</p>
             </div>
             <button class="btn btn-primary btn-sm" onclick="openCategoriesModal()">+ <span data-i18n="addCategory">Ajouter</span></button>
@@ -5678,7 +5809,7 @@
         <div class="settings-section">
           <div class="settings-section-header">
             <div>
-              <h3 data-i18n="tags">Tags</h3>
+              <h3 id="settings-title-tags">Tags</h3>
               <p data-i18n="tagsSubtitle">Gérez les tags pour vos tâches</p>
             </div>
             <button class="btn btn-primary btn-sm" onclick="openTagsModal()">+ <span data-i18n="addTag">Ajouter</span></button>
@@ -5686,11 +5817,22 @@
           <div id="tags-list" class="settings-content"></div>
         </div>
 
+        <!-- UI LABELS SECTION -->
+        <div class="settings-section" style="grid-column: 1 / -1;">
+          <div class="settings-section-header">
+            <div>
+              <h3>Titres de l’interface</h3>
+              <p>Renommez les sections visibles dans les paramètres et l’affichage des cartes.</p>
+            </div>
+          </div>
+          <div id="ui-label-settings" class="settings-content"></div>
+        </div>
+
         <!-- KANBAN STATUSES -->
         <div class="settings-section">
           <div class="settings-section-header">
             <div>
-              <h3>📊 <span data-i18n="manageStatuses">Colonnes Kanban</span></h3>
+              <h3>📊 <span id="settings-title-statuses">Colonnes Kanban</span></h3>
               <p data-i18n="statusesSubtitle">Personnalisez les colonnes de statut du Kanban</p>
             </div>
             <button class="btn btn-primary btn-sm" onclick="addKanbanStatus()">+ <span data-i18n="addStatus">Ajouter</span></button>
@@ -5702,7 +5844,7 @@
         <div class="settings-section">
           <div class="settings-section-header">
             <div>
-              <h3>🎨 <span data-i18n="cardDisplayTitle">Affichage des cartes</span></h3>
+              <h3>🎨 <span id="settings-title-card-display">Affichage des cartes</span></h3>
               <p data-i18n="cardDisplaySubtitle">Choisissez les éléments visibles sur les cartes Kanban</p>
             </div>
           </div>
@@ -5713,7 +5855,7 @@
         <div class="settings-section">
           <div class="settings-section-header">
             <div>
-              <h3>📋 <span data-i18n="raciMode">Mode RACI</span></h3>
+              <h3>📋 <span id="settings-title-raci">Mode RACI</span></h3>
               <p data-i18n="raciSubtitle">Activez la matrice RACI pour définir les rôles sur chaque tâche</p>
             </div>
           </div>
@@ -5726,7 +5868,7 @@
         <div class="settings-section" style="grid-column: 1 / -1;">
           <div class="settings-section-header" style="display:flex;justify-content:space-between;align-items:center;">
             <div>
-              <h3>⚡ <span data-i18n="automationTitle">Automatisations</span></h3>
+              <h3>⚡ <span id="settings-title-automations">Automatisations</span></h3>
               <p data-i18n="automationSubtitle">Actions automatiques quand les tâches changent</p>
             </div>
             <button class="btn btn-primary btn-sm" onclick="openAddAutomationRuleModal()">+ <span data-i18n="addRule">Ajouter une règle</span></button>
@@ -5738,7 +5880,7 @@
         <div class="settings-section" style="grid-column: 1 / -1;">
           <div class="settings-section-header">
             <div>
-              <h3>🔔 <span data-i18n="notifEmailTitle">Notifications & e-mail</span></h3>
+              <h3>🔔 <span id="settings-title-notifications">Notifications & e-mail</span></h3>
               <p data-i18n="notifEmailSubtitle">Prévenir les utilisateurs concernés et, en option, envoyer un e-mail via un webhook</p>
             </div>
           </div>
@@ -5779,8 +5921,8 @@
         <div class="settings-section" style="grid-column: 1 / -1;">
           <div class="settings-section-header">
             <div>
-              <h3>🛡️ <span data-i18n="securityTitle">Sécurité du document</span></h3>
-              <p data-i18n="securitySubtitle">Protégez les tables PM_* avec des règles d'accès Grist (ACL)</p>
+              <h3>🛡️ <span id="settings-title-security">Sécurité du document</span></h3>
+              <p data-i18n="securitySubtitle">Protégez les tables du widget avec des règles d'accès Grist (ACL)</p>
             </div>
           </div>
           <div id="security-status" class="settings-content"></div>
@@ -5790,14 +5932,14 @@
         <div class="settings-section" style="grid-column: 1 / -1;">
           <div class="settings-section-header">
             <div>
-              <h3>🔧 <span data-i18n="advancedConfig">Configuration avancée</span></h3>
+              <h3>🔧 <span id="settings-title-mapping">Configuration avancée</span></h3>
               <p data-i18n="mappingSubtitle">Mappez vos propres tables et colonnes Grist</p>
             </div>
             <button class="btn btn-secondary btn-sm" onclick="openColumnMappingModal()">⚙️ <span data-i18n="configureMapping">Configurer le mapping</span></button>
           </div>
           <div class="settings-content">
             <p style="color:#64748b;font-size:13px;margin-bottom:12px;" data-i18n="mappingDescription">
-              Par défaut, le widget utilise les tables PM_Tasks, PM_Users, etc. Vous pouvez mapper vos propres tables existantes pour réutiliser vos données.
+              Vous pouvez créer les tables en français ou mapper vos propres tables existantes pour réutiliser vos données.
             </p>
             <a href="https://github.com/isaytoo/grist-project-manager-widget/blob/main/GUIDE_MAPPING.md"
                target="_blank"
@@ -5988,7 +6130,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=153"></script>
+  <script src="widget.js?v=157"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
