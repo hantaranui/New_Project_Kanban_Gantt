@@ -11208,6 +11208,8 @@ function exportTasks(format) {
 // =============================================================================
 
 if (!isInsideGrist()) {
+  var setupScreen = document.getElementById('client-setup');
+  if (setupScreen) setupScreen.classList.add('hidden');
   document.getElementById('not-in-grist').classList.remove('hidden');
   document.getElementById('main-content').classList.add('hidden');
 } else {
@@ -11220,6 +11222,7 @@ if (!isInsideGrist()) {
       showClientSetup();
       return;
     }
+    hideClientSetup();
 
     // --- Role detection (Owner / Editor / Viewer) ---
     var bootTables = await grist.docApi.listTables();
@@ -11320,6 +11323,7 @@ if (!isInsideGrist()) {
       showClientSetup();
       return;
     }
+    hideClientSetup();
     await loadSettings();
     await loadAllData();
     applyRoleVisibilityDefaults();
