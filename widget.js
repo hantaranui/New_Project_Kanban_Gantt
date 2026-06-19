@@ -2121,17 +2121,24 @@ async function getInstallModeFromExistingSettings(existingTables) {
   return '';
 }
 
+async function hasUsableDefaultTaskTable(existingTables) {
+  var candidates = [CLIENT_TABLE_NAMES.tasks, 'PM_Tasks'];
+  for (var i = 0; i < candidates.length; i++) {
+    var tableId = candidates[i];
+    if (existingTables.indexOf(tableId) === -1) continue;
+    if (await tableHasColumns(tableId, ['Title', 'Status'])) return true;
+  }
+  return false;
+}
+
 async function shouldShowClientSetup(existingTables) {
   existingTables = existingTables || await grist.docApi.listTables();
   if (hasFrenchClientTables(existingTables)) applyFrenchTableNames(true);
 
-  var installMode = await getInstallModeFromExistingSettings(existingTables);
-  if (installMode === 'french_auto') {
-    return existingTables.indexOf(CLIENT_TABLE_NAMES.tasks) === -1;
-  }
-  if (installMode === 'mapping_complete') {
-    return !(await hasValidMappedTaskTable(existingTables));
-  }
+  // Installation automatique ou mapping déjà faits : on se base sur la structure réelle,
+  // pas seulement sur un marqueur de réglage qui peut échouer selon les droits Grist.
+  if (await hasUsableDefaultTaskTable(existingTables)) return false;
+  if (await hasValidMappedTaskTable(existingTables)) return false;
 
   return true;
 }
@@ -2150,19 +2157,31 @@ function hideClientSetup() {
   if (main) main.classList.remove('hidden');
 }
 
+function formatAccessError(error) {
+  var message = error && error.message ? error.message : String(error || '');
+  if (/access not granted|access denied|permission|autorisation/i.test(message)) {
+    return 'Accès complet non accordé. Dans le panneau du widget Grist, mettez le niveau d’accès sur “Accès complet au document”, puis réessayez.';
+  }
+  return message;
+}
+
 async function setupCreateFrenchTables() {
   try {
     applyFrenchTableNames(true);
     hideClientSetup();
     showToast('Création des tables en français...', 'info');
     await ensureTables();
+    var tablesAfterCreate = await grist.docApi.listTables();
+    if (!(await hasUsableDefaultTaskTable(tablesAfterCreate))) {
+      throw new Error('La table Taches n’a pas pu être vérifiée après création. Vérifiez que le widget a un accès complet au document.');
+    }
     await loadSettings();
     await saveSetting('install_mode', 'french_auto');
     showToast('Tables créées. Rechargement du widget...', 'success');
     setTimeout(function() { window.location.reload(); }, 700);
   } catch (e) {
     console.error('setupCreateFrenchTables:', e);
-    showToast('Erreur pendant la création : ' + e.message, 'error');
+    showToast('Erreur pendant la création : ' + formatAccessError(e), 'error');
     showClientSetup();
   }
 }
@@ -2172,16 +2191,12 @@ async function setupUseExistingTables() {
     applyFrenchTableNames(true);
     hideClientSetup();
     showToast('Préparation du mapping...', 'info');
-    await ensureConfigAndSettingsTables(await grist.docApi.listTables());
-    await loadSettings();
-    await saveSetting('install_mode', 'mapping_started');
-    await loadColumnMapping();
     switchTab('settings');
     setTimeout(function() { openColumnMappingModal(); }, 250);
     showToast('Choisissez vos tables existantes dans le mapping.', 'success');
   } catch (e) {
     console.error('setupUseExistingTables:', e);
-    showToast('Erreur pendant la préparation : ' + e.message, 'error');
+    showToast('Erreur pendant la préparation : ' + formatAccessError(e), 'error');
     showClientSetup();
   }
 }
@@ -10650,7 +10665,16 @@ async function saveColumnMapping() {
       }
     }
     
-    // Update PM_Config table (update existing, add missing)
+    // Crée seulement maintenant les tables de configuration nécessaires au mapping.
+    try {
+      await ensureConfigAndSettingsTables(await grist.docApi.listTables());
+      await loadSettings();
+    } catch (accessError) {
+      showToast(formatAccessError(accessError), 'error');
+      return;
+    }
+
+    // Update configuration table (update existing, add missing)
     var configData = await grist.docApi.fetchTable(CONFIG_TABLE);
     var actions = [];
     for (var i = 0; i < updates.length; i++) {
@@ -10696,7 +10720,7 @@ async function saveColumnMapping() {
     refreshAllViews();
   } catch (e) {
     console.error('Error saving column mapping:', e);
-    showToast('Erreur lors de la sauvegarde: ' + e.message, 'error');
+    showToast('Erreur lors de la sauvegarde: ' + formatAccessError(e), 'error');
   }
 }
 
