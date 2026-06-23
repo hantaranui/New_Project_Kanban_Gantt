@@ -2,6 +2,7 @@
 // GRIST PROJECT MANAGER WIDGET
 // =============================================================================
 
+var APP_VERSION = '166';
 var currentLang = 'fr';
 
 var i18n = {
@@ -2163,6 +2164,39 @@ function formatAccessError(error) {
     return 'Accès complet non accordé. Dans le panneau du widget Grist, mettez le niveau d’accès sur “Accès complet au document”, puis réessayez.';
   }
   return message;
+}
+
+function writeSetupDiagnostic(lines, type) {
+  var box = document.getElementById('client-setup-diagnostics');
+  if (!box) return;
+  box.className = 'client-setup-diagnostics ' + (type || '');
+  box.innerHTML = lines.map(function(line) { return '<div>' + sanitize(String(line)) + '</div>'; }).join('');
+}
+
+async function runSetupDiagnostic() {
+  var lines = ['Diagnostic v' + APP_VERSION];
+  try {
+    var tables = await grist.docApi.listTables();
+    lines.push('Tables vues par le widget : ' + (tables.length ? tables.join(', ') : 'aucune'));
+    var hasTaches = tables.indexOf(CLIENT_TABLE_NAMES.tasks) !== -1;
+    var hasPmTasks = tables.indexOf('PM_Tasks') !== -1;
+    lines.push('Table Taches détectée : ' + (hasTaches ? 'oui' : 'non'));
+    lines.push('Table PM_Tasks détectée : ' + (hasPmTasks ? 'oui' : 'non'));
+    lines.push('Structure utilisable : ' + ((await hasUsableDefaultTaskTable(tables)) ? 'oui' : 'non'));
+    lines.push('Mapping utilisable : ' + ((await hasValidMappedTaskTable(tables)) ? 'oui' : 'non'));
+    if (await shouldShowClientSetup(tables)) {
+      lines.push('Conclusion : installation non reconnue, le choix création/mapping doit rester affiché.');
+      writeSetupDiagnostic(lines, 'warning');
+    } else {
+      lines.push('Conclusion : installation reconnue. Ouverture du widget...');
+      writeSetupDiagnostic(lines, 'success');
+      hideClientSetup();
+      setTimeout(function() { window.location.reload(); }, 600);
+    }
+  } catch (e) {
+    lines.push('Erreur : ' + formatAccessError(e));
+    writeSetupDiagnostic(lines, 'error');
+  }
 }
 
 async function setupCreateFrenchTables() {

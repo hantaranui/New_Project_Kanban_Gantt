@@ -5479,6 +5479,47 @@
       background: var(--yellow);
       box-shadow-color: var(--green);
     }
+    .client-setup-tools {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+    .client-setup-version {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--dark-blue);
+    }
+    .client-setup-diagnostics {
+      display: none;
+      margin-top: 14px;
+      padding: 12px;
+      border: 2px solid var(--black);
+      border-radius: var(--border-radius-4);
+      background: #fff;
+      font-size: 13px;
+      line-height: 1.35;
+      font-weight: 700;
+      white-space: normal;
+    }
+    .client-setup-diagnostics.warning,
+    .client-setup-diagnostics.success,
+    .client-setup-diagnostics.error { display: block; }
+    .client-setup-diagnostics.warning { box-shadow: 4px 4px 0 var(--yellow); }
+    .client-setup-diagnostics.success { box-shadow: 4px 4px 0 var(--green); }
+    .client-setup-diagnostics.error { box-shadow: 4px 4px 0 #ff8aa0; }
+    .client-setup-check {
+      min-height: 40px;
+      padding: 8px 14px;
+      border: 2px solid var(--black);
+      border-radius: var(--border-radius-4);
+      background: var(--white);
+      color: var(--black);
+      box-shadow: 4px 4px 0 var(--light-blue);
+      font-weight: 800;
+      cursor: pointer;
+    }
     @media (max-width: 720px) {
       .client-setup-options { grid-template-columns: 1fr; }
       .client-setup-head { align-items: flex-start; }
@@ -5533,6 +5574,11 @@
           <button onclick="setupUseExistingTables()">Configurer le mapping</button>
         </div>
       </div>
+      <div class="client-setup-tools">
+        <button class="client-setup-check" onclick="runSetupDiagnostic()">Vérifier l’installation</button>
+        <span class="client-setup-version">Diagnostic v166</span>
+      </div>
+      <div id="client-setup-diagnostics" class="client-setup-diagnostics"></div>
     </div>
   </div>
 
@@ -6181,7 +6227,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=165"></script>
+  <script src="widget.js?v=166"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
