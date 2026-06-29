@@ -5531,6 +5531,25 @@
       .client-setup-options { grid-template-columns: 1fr; }
       .client-setup-head { align-items: flex-start; }
     }
+
+    /* Correctif final : titre des cartes Kanban bleu, jaune au survol. */
+    .kanban-board .task-card .task-card-title,
+    .kanban-board .task-card.priority-high .task-card-title,
+    .kanban-board .task-card.priority-medium .task-card-title,
+    .kanban-board .task-card.priority-low .task-card-title {
+      background: var(--blue) !important;
+      color: var(--black) !important;
+      border-color: var(--black) !important;
+    }
+    .kanban-board .task-card .task-card-title:hover,
+    .kanban-board .task-card.priority-high .task-card-title:hover,
+    .kanban-board .task-card.priority-medium .task-card-title:hover,
+    .kanban-board .task-card.priority-low .task-card-title:hover {
+      background: var(--yellow) !important;
+      color: var(--black) !important;
+      text-decoration-color: var(--blue) !important;
+    }
+
   </style>
 </head>
 <body>
@@ -5583,7 +5602,7 @@
       </div>
       <div class="client-setup-tools">
         <button class="client-setup-check" onclick="runSetupDiagnostic()">Vérifier l’installation</button>
-        <span class="client-setup-version">Diagnostic v167</span>
+        <span class="client-setup-version">Diagnostic v168</span>
       </div>
       <div id="client-setup-diagnostics" class="client-setup-diagnostics"></div>
     </div>
@@ -6234,7 +6253,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=167"></script>
+  <script src="widget.js?v=168"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
