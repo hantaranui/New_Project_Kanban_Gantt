@@ -4890,7 +4890,14 @@
       font-weight: 600 !important;
       line-height: 1.25 !important;
       padding: 4px 8px !important;
+      background: var(--blue) !important;
+      color: var(--black) !important;
       box-shadow: 1px 1px 0 var(--mint) !important;
+    }
+    .task-card-title:hover {
+      background: var(--yellow) !important;
+      color: var(--black) !important;
+      text-decoration-color: var(--blue) !important;
     }
     .task-card-project-name {
       display: inline-flex;
@@ -5576,7 +5583,7 @@
       </div>
       <div class="client-setup-tools">
         <button class="client-setup-check" onclick="runSetupDiagnostic()">Vérifier l’installation</button>
-        <span class="client-setup-version">Diagnostic v166</span>
+        <span class="client-setup-version">Diagnostic v167</span>
       </div>
       <div id="client-setup-diagnostics" class="client-setup-diagnostics"></div>
     </div>
@@ -6227,7 +6234,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=166"></script>
+  <script src="widget.js?v=167"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>
