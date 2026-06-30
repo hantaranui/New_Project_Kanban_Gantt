@@ -4329,17 +4329,17 @@
       overflow-wrap: normal;
       word-break: normal;
       line-height: 1.15;
-      background: var(--yellow) !important;
-      border: 2px solid var(--black);
+      background: #15B6C8 !important;
+      border: 4px solid red;
       box-shadow: 2px 2px 0 var(--mint);
       padding: 6px 10px;
       border-radius: var(--border-radius-4);
       cursor: pointer;
     }
     .task-card-title:hover {
-      color: var(--marked-color) !important;
-      text-decoration-color: var(--blue);
-      background: var(--mint) !important;
+      color: var(--black) !important;
+      text-decoration-color: var(--yellow);
+      background: var(--yellow) !important;
     }
     .task-card-meta-actions {
       display: flex !important;
@@ -4890,14 +4890,7 @@
       font-weight: 600 !important;
       line-height: 1.25 !important;
       padding: 4px 8px !important;
-      background: var(--blue) !important;
-      color: var(--black) !important;
       box-shadow: 1px 1px 0 var(--mint) !important;
-    }
-    .task-card-title:hover {
-      background: var(--yellow) !important;
-      color: var(--black) !important;
-      text-decoration-color: var(--blue) !important;
     }
     .task-card-project-name {
       display: inline-flex;
@@ -5532,24 +5525,21 @@
       .client-setup-head { align-items: flex-start; }
     }
 
-    /* Correctif final : titre des cartes Kanban bleu, jaune au survol. */
-    .kanban-board .task-card .task-card-title,
-    .kanban-board .task-card.priority-high .task-card-title,
-    .kanban-board .task-card.priority-medium .task-card-title,
-    .kanban-board .task-card.priority-low .task-card-title {
-      background: var(--blue) !important;
-      color: var(--black) !important;
-      border-color: var(--black) !important;
+    /* ===== CORRECTIF COULEURS TITRE KANBAN ===== */
+    .task-card .task-card-title,
+    .task-card.priority-high .task-card-title,
+    .task-card.priority-medium .task-card-title,
+    .task-card.priority-low .task-card-title {
+      background: var(--mint) !important;
+      border: 2px solid var(--black) !important;
     }
-    .kanban-board .task-card .task-card-title:hover,
-    .kanban-board .task-card.priority-high .task-card-title:hover,
-    .kanban-board .task-card.priority-medium .task-card-title:hover,
-    .kanban-board .task-card.priority-low .task-card-title:hover {
+    .task-card .task-card-title:hover,
+    .task-card.priority-high .task-card-title:hover,
+    .task-card.priority-medium .task-card-title:hover,
+    .task-card.priority-low .task-card-title:hover {
       background: var(--yellow) !important;
       color: var(--black) !important;
-      text-decoration-color: var(--blue) !important;
     }
-
   </style>
 </head>
 <body>
@@ -5602,7 +5592,7 @@
       </div>
       <div class="client-setup-tools">
         <button class="client-setup-check" onclick="runSetupDiagnostic()">Vérifier l’installation</button>
-        <span class="client-setup-version">Diagnostic v168</span>
+        <span class="client-setup-version">Diagnostic v166</span>
       </div>
       <div id="client-setup-diagnostics" class="client-setup-diagnostics"></div>
     </div>
@@ -6253,7 +6243,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=168"></script>
+  <script src="widget.js?v=166"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>

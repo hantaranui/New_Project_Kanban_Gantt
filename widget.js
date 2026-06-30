@@ -3568,16 +3568,24 @@ function getFilteredTasks() {
     // Identifiants attendus dans task.Assignee : Email en priorité, sinon Name
     var roleIds = users
       .filter(function(u) { return userMatchesRole(u, currentFilterRole); })
-      .map(function(u) { return u.Email || u.Name; });
+      .reduce(function(acc, u) {
+        if (u.Email) acc.push(u.Email);
+        if (u.Name) acc.push(u.Name);
+        return acc;
+      }, []);
     result = result.filter(function(t) {
       var list = (t.Assignee || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
       return list.some(function(a) { return roleIds.indexOf(a) !== -1; });
     });
   }
   if (currentFilterAssignee) {
+    var assigneeUser = users.find(function(x) { return (x.Email || x.Name) === currentFilterAssignee; });
+    var assigneeIds = [currentFilterAssignee];
+    if (assigneeUser && assigneeUser.Name) assigneeIds.push(assigneeUser.Name);
+    if (assigneeUser && assigneeUser.Email) assigneeIds.push(assigneeUser.Email);
     result = result.filter(function(t) {
       var list = (t.Assignee || '').split(',').map(function(s) { return s.trim(); });
-      return list.indexOf(currentFilterAssignee) !== -1;
+      return list.some(function(a) { return assigneeIds.indexOf(a) !== -1; });
     });
   }
   if (currentFilterCategory) {
