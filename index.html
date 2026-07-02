@@ -2796,16 +2796,83 @@
     }
     .dep-add-row {
       display: flex;
+      align-items: flex-start;
       gap: 6px;
       margin-top: 8px;
     }
-    .dep-add-row select {
+    .dep-combobox {
+      position: relative;
       flex: 1;
-      padding: 6px 10px;
+      min-width: 0;
+    }
+    .dep-search-input {
+      width: 100%;
+      min-height: 34px;
+      padding: 7px 34px 7px 10px;
       border: 1px solid #e2e8f0;
       border-radius: 6px;
+      background: white;
+      color: #1e293b;
+      font: inherit;
       font-size: 12px;
-      font-family: inherit;
+    }
+    .dep-search-input:focus {
+      outline: none;
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+    }
+    .dep-toggle-btn {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      width: 30px;
+      height: 30px;
+      border: 0;
+      background: transparent;
+      color: #271a79;
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .dep-options {
+      display: none;
+      position: absolute;
+      z-index: 40;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      max-height: 210px;
+      overflow-y: auto;
+      padding: 4px;
+      background: white;
+      border: 2px solid #271a79;
+      border-radius: 6px;
+      box-shadow: 4px 4px 0 #a9efc5;
+    }
+    .dep-combobox.open .dep-options {
+      display: block;
+    }
+    .dep-option {
+      display: block;
+      width: 100%;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 4px;
+      background: white;
+      color: #271a79;
+      text-align: left;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .dep-option:hover,
+    .dep-option:focus {
+      outline: none;
+      background: #eeffee;
+    }
+    .dep-option-empty {
+      padding: 9px 10px;
+      color: #64748b;
+      font-size: 12px;
+      font-style: italic;
     }
     .dep-add-btn {
       width: 30px;
@@ -5281,6 +5348,44 @@
     .gantt-priority-high { color: #D7263D; }
     .gantt-priority-medium { color: var(--blue); }
     .gantt-priority-low { color: #1F9D55; }
+    .gantt-dep-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      padding: 1px 3px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      font: inherit;
+      font-size: 10px;
+      cursor: pointer;
+    }
+    .gantt-dep-badge:hover,
+    .gantt-dep-badge:focus-visible {
+      outline: 2px solid currentColor;
+      outline-offset: 1px;
+      background: white;
+    }
+    .gantt-dep-depends { color: #8b5cf6; }
+    .gantt-dep-blocks { color: #b45309; }
+    #gantt-dependency-tooltip {
+      display: none;
+      position: fixed;
+      z-index: 2147483647;
+      width: max-content;
+      max-width: min(340px, calc(100vw - 16px));
+      padding: 9px 11px;
+      border: 2px solid var(--black);
+      border-radius: var(--border-radius-4);
+      background: var(--white);
+      color: var(--black);
+      box-shadow: 4px 4px 0 var(--yellow);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+      white-space: normal;
+      pointer-events: none;
+    }
     .gantt-help-btn {
       position: relative;
       overflow: visible;
@@ -5626,10 +5731,11 @@
       </div>
       <div class="header-row" style="margin-top:12px;">
         <div></div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div id="project-selector" class="project-selector"></div>
-          <button class="btn-new-project" onclick="openProjectModal()">+ <span data-i18n="newProject">Nouveau projet</span></button>
-          <button class="btn-new-task" onclick="openNewTaskModal()">+ <span data-i18n="newTask">Nouvelle tâche</span></button>
+	        <div style="display:flex;align-items:center;gap:10px;">
+	          <div id="project-selector" class="project-selector"></div>
+	          <button class="btn-icon-header" id="notifications-btn" onclick="event.stopPropagation(); showNotifications()" title="Notifications" aria-label="Notifications">🔔<span class="notif-badge" id="notif-badge"></span></button>
+	          <button class="btn-new-project" onclick="openProjectModal()">+ <span data-i18n="newProject">Nouveau projet</span></button>
+	          <button class="btn-new-task" onclick="openNewTaskModal()">+ <span data-i18n="newTask">Nouvelle tâche</span></button>
         </div>
       </div>
     </div>
@@ -6243,7 +6349,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=166"></script>
+  <script src="widget.js?v=181"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>

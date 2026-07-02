@@ -1146,8 +1146,16 @@ function getInputValue(id, fallback) {
   return el.value;
 }
 
+function getEstimatedHoursInput() {
+  var raw = String(getInputValue('task-estimated-hours', '')).trim().replace(',', '.');
+  if (!raw) return 0;
+  var value = parseFloat(raw);
+  return isFinite(value) && value >= 0 ? value : 0;
+}
+
 function requireTaskTitle() {
-  var titleEl = document.getElementById('task-title');
+  var modal = document.getElementById('modal-container');
+  var titleEl = modal ? modal.querySelector('#task-title') : null;
   var title = titleEl ? titleEl.value.trim() : '';
   if (!title) {
     showToast(currentLang === 'fr' ? 'Ajoutez un titre avant d’enregistrer.' : 'Add a title before saving.', 'error');
@@ -1192,9 +1200,28 @@ async function removeSubtasksForTask(taskId) {
   }));
 }
 
+async function removeAttachmentsForTask(taskId) {
+  var toRemove = attachments.filter(function(attachment) { return attachment.Task_Id === taskId; });
+  if (!toRemove.length) return;
+  await grist.docApi.applyUserActions(toRemove.map(function(attachment) {
+    return ['RemoveRecord', ATTACHMENTS_TABLE, attachment.id];
+  }));
+}
+
+async function removeTimeEntriesForTask(taskId) {
+  var toRemove = timeEntries.filter(function(entry) { return entry.Task_Id === taskId; });
+  if (!toRemove.length) return;
+  await grist.docApi.applyUserActions(toRemove.map(function(entry) {
+    return ['RemoveRecord', TIME_ENTRIES_TABLE, entry.id];
+  }));
+  delete activeTimers[taskId];
+}
+
 async function removeDraftChildren(taskId) {
   await removeCommentsForTask(taskId);
   await removeSubtasksForTask(taskId);
+  await removeAttachmentsForTask(taskId);
+  await removeTimeEntriesForTask(taskId);
 }
 
 async function saveTaskFormSilently(taskId) {
@@ -1218,6 +1245,7 @@ async function saveTaskFormSilently(taskId) {
   setField(record, 'tasks', 'category', getInputValue('task-category').trim());
   setField(record, 'tasks', 'projectId', projectId);
   setField(record, 'tasks', 'recurrence', getInputValue('task-recurrence', 'none'));
+  setField(record, 'tasks', 'estimatedHours', getEstimatedHoursInput());
   var tagEl = document.getElementById('task-tag');
   if (tagEl) setField(record, 'tasks', 'tag', tagEl.value.trim());
   if (raciEnabled && TASKS_TABLE === DEFAULT_TASKS_TABLE) {
@@ -1233,6 +1261,7 @@ async function saveTaskFormSilently(taskId) {
 }
 
 function captureTaskFormState() {
+  var autoExtendEl = document.getElementById('task-auto-extend');
   return {
     title: getInputValue('task-title'),
     description: getInputValue('task-desc'),
@@ -1243,7 +1272,11 @@ function captureTaskFormState() {
     due: getInputValue('task-due'),
     category: getInputValue('task-category'),
     project: getInputValue('task-project'),
-    tag: getInputValue('task-tag')
+    tag: getInputValue('task-tag'),
+    recurrence: getInputValue('task-recurrence', 'none'),
+    estimatedHours: getInputValue('task-estimated-hours'),
+    extensionDate: getInputValue('task-extension-date'),
+    autoExtend: autoExtendEl ? autoExtendEl.checked : null
   };
 }
 
@@ -1259,11 +1292,16 @@ function restoreTaskFormState(state) {
     ['task-due', state.due],
     ['task-category', state.category],
     ['task-project', state.project],
-    ['task-tag', state.tag]
+    ['task-tag', state.tag],
+    ['task-recurrence', state.recurrence],
+    ['task-estimated-hours', state.estimatedHours],
+    ['task-extension-date', state.extensionDate]
   ].forEach(function(pair) {
     var el = document.getElementById(pair[0]);
     if (el && pair[1] !== undefined && pair[1] !== null) el.value = pair[1];
   });
+  var autoExtendEl = document.getElementById('task-auto-extend');
+  if (autoExtendEl && state.autoExtend !== null) autoExtendEl.checked = state.autoExtend;
 }
 
 // Get column name for a field using mapping
@@ -1799,7 +1837,11 @@ function downloadAttachment(recordId) {
 }
 
 async function deleteAttachment(recordId, taskId) {
-  if (!confirm(currentLang === 'fr' ? 'Supprimer cette pièce jointe ?' : 'Delete this attachment?')) return;
+  var confirmed = await showConfirmModal(
+    currentLang === 'fr' ? 'Supprimer cette pièce jointe ?' : 'Delete this attachment?',
+    currentLang === 'fr' ? 'Supprimer la pièce jointe' : 'Delete attachment'
+  );
+  if (!confirmed) return;
   try {
     await grist.docApi.applyUserActions([['RemoveRecord', ATTACHMENTS_TABLE, recordId]]);
     await loadAllData();
@@ -2441,15 +2483,20 @@ async function ensureTables() {
       ]);
     }
 
-    // Migration Project_Id : s'exécute APRÈS PM_Projects (install fraîche ou upgrade)
+    // Migration Project_Id : s'exécute APRÈS la création de la table des projets.
     // Séparé du bloc "existingTables" pour couvrir aussi les installations fraîches.
     try {
       var taskColsCheck = Object.keys(await grist.docApi.fetchTable(TASKS_TABLE));
       if (taskColsCheck.indexOf('Project_Id') === -1) {
         await grist.docApi.applyUserActions([
-          ['AddColumn', TASKS_TABLE, 'Project_Id', { type: 'Ref:PM_Projects' }]
+          ['AddColumn', TASKS_TABLE, 'Project_Id', { type: 'Ref:' + PROJECTS_TABLE }]
         ]);
-        console.log('[GristPM] Project_Id ajouté à PM_Tasks');
+        console.log('[GristPM] Project_Id ajouté à ' + TASKS_TABLE);
+      } else {
+        // Répare notamment les documents français créés avec Ref:PM_Projects.
+        await grist.docApi.applyUserActions([
+          ['ModifyColumn', TASKS_TABLE, 'Project_Id', { type: 'Ref:' + PROJECTS_TABLE }]
+        ]);
       }
     } catch (e) {
       console.log('[GristPM] Migration Project_Id ignorée :', e.message);
@@ -4724,14 +4771,17 @@ async function onDrop(e) {
         }
       }
       showToast(t('taskMoved'), 'success');
-      if (draggedTask && oldVal !== newValue) {
-        var dropChanges = {};
-        if (field === 'Status') dropChanges.status = { from: oldVal, to: newValue };
+	      if (draggedTask && oldVal !== newValue) {
+	        var dropChanges = {};
+	        if (field === 'Status') dropChanges.status = { from: oldVal, to: newValue };
         if (field === 'Priority') dropChanges.priority = { from: oldVal, to: newValue };
         if (Object.keys(dropChanges).length > 0) {
-          await evaluateAutomationRules(Object.assign({}, draggedTask, record), dropChanges);
-        }
-        logActivity('status_changed', draggedTaskId, draggedTask.Title, oldVal + ' → ' + newValue);
+	          await evaluateAutomationRules(Object.assign({}, draggedTask, record), dropChanges);
+	        }
+	        if (field === 'Status' && newValue === 'done' && oldVal !== 'done') {
+	          await notifyTaskCompleted(Object.assign({}, draggedTask, record));
+	        }
+	        logActivity('status_changed', draggedTaskId, draggedTask.Title, oldVal + ' → ' + newValue);
       }
       refreshAllViews();
     } catch (err) {
@@ -5085,9 +5135,42 @@ function ganttDepBadge(task) {
   var deps = getTaskDependencies(task.id);
   var blocks = getTasksDependingOn(task.id);
   var html = '';
-  if (deps.length > 0) html += ' <span title="' + (currentLang === 'fr' ? 'Dépend de: ' : 'Depends on: ') + deps.map(function(d) { return sanitize(d.Title); }).join(', ') + '" style="font-size:10px;color:#8b5cf6;cursor:help;">🔗' + deps.length + '</span>';
-  if (blocks.length > 0) html += ' <span title="' + (currentLang === 'fr' ? 'Bloque: ' : 'Blocks: ') + blocks.map(function(d) { return sanitize(d.Title); }).join(', ') + '" style="font-size:10px;color:#f59e0b;cursor:help;">⏳' + blocks.length + '</span>';
+  if (deps.length > 0) {
+    var dependsText = (currentLang === 'fr' ? 'Cette tâche dépend de : ' : 'This task depends on: ') + deps.map(function(d) { return d.Title; }).join(', ') + '.';
+    html += ' <button type="button" class="gantt-dep-badge gantt-dep-depends" data-tooltip="' + sanitize(dependsText) + '" aria-label="' + sanitize(dependsText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">🔗' + deps.length + '</button>';
+  }
+  if (blocks.length > 0) {
+    var blocksText = (currentLang === 'fr' ? 'Cette tâche bloque : ' : 'This task blocks: ') + blocks.map(function(d) { return d.Title; }).join(', ') + (currentLang === 'fr' ? '. La tâche indiquée attend que celle-ci soit terminée.' : '. The listed task is waiting for this one to be completed.');
+    html += ' <button type="button" class="gantt-dep-badge gantt-dep-blocks" data-tooltip="' + sanitize(blocksText) + '" aria-label="' + sanitize(blocksText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">⏳' + blocks.length + '</button>';
+  }
   return html;
+}
+
+function showGanttDependencyTooltip(event) {
+  var target = event && event.currentTarget;
+  if (!target) return;
+  var message = target.getAttribute('data-tooltip');
+  if (!message) return;
+  var tooltip = document.getElementById('gantt-dependency-tooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.id = 'gantt-dependency-tooltip';
+    tooltip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tooltip);
+  }
+  tooltip.textContent = message;
+  tooltip.style.display = 'block';
+  var rect = target.getBoundingClientRect();
+  var left = Math.min(Math.max(8, rect.left), window.innerWidth - tooltip.offsetWidth - 8);
+  var top = rect.bottom + 8;
+  if (top + tooltip.offsetHeight > window.innerHeight - 8) top = rect.top - tooltip.offsetHeight - 8;
+  tooltip.style.left = left + 'px';
+  tooltip.style.top = Math.max(8, top) + 'px';
+}
+
+function hideGanttDependencyTooltip() {
+  var tooltip = document.getElementById('gantt-dependency-tooltip');
+  if (tooltip) tooltip.style.display = 'none';
 }
 
 function ganttChevron(task) {
@@ -5822,14 +5905,23 @@ function scrollGanttToTask(taskId) {
   var container = document.querySelector('#gantt-view .gantt-container');
   var bar = container ? container.querySelector('[data-gantt-bar-task-id="' + taskId + '"]') : null;
   if (!container || !bar) return;
-  var left = bar.offsetLeft - Math.max(80, container.clientWidth * 0.28);
-  container.scrollLeft = Math.max(0, left);
+  var stickyLabel = container.querySelector('.gantt-task-label');
+  var labelWidth = stickyLabel ? stickyLabel.offsetWidth : 260;
+  var containerRect = container.getBoundingClientRect();
+  var barRect = bar.getBoundingClientRect();
+  var barContentLeft = container.scrollLeft + (barRect.left - containerRect.left);
+  container.scrollLeft = Math.max(0, barContentLeft - labelWidth - 12);
 }
 
 function focusGanttTask(taskId, checked) {
   selectedGanttTaskId = checked ? taskId : null;
-  renderGanttView();
-  if (checked) setTimeout(function() { scrollGanttToTask(taskId); }, 0);
+  document.querySelectorAll('#gantt-view .gantt-task-row').forEach(function(row) {
+    var isSelected = checked && Number(row.getAttribute('data-gantt-task-id')) === Number(taskId);
+    row.classList.toggle('gantt-row-selected', isSelected);
+    var checkbox = row.querySelector('.gantt-focus-checkbox');
+    if (checkbox) checkbox.checked = isSelected;
+  });
+  if (checked) requestAnimationFrame(function() { scrollGanttToTask(taskId); });
 }
 
 function setGanttYear(value) {
@@ -6866,7 +6958,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   if (task.Group_Name) html += '<span style="font-size:12px;color:#64748b;">' + sanitize(task.Group_Name) + '</span>';
   html += '<span class="status-badge status-' + task.Status + '">● ' + statusLabel(task.Status) + '</span>';
   html += '<div style="flex:1;"></div>';
-  html += '<button class="btn btn-primary" onclick="updateTask(' + task.id + ')" style="padding:6px 16px;font-size:12px;border-radius:8px;margin-right:8px;">💾 ' + t('save') + '</button>';
+  html += '<button type="button" id="task-save-top-' + task.id + '" class="btn btn-primary" onclick="event.preventDefault();event.stopPropagation();updateTask(' + task.id + ')" style="padding:6px 16px;font-size:12px;border-radius:8px;margin-right:8px;">💾 ' + t('save') + '</button>';
   html += '<button class="modal-close" onclick="closeModalForce()">✕</button>';
   html += '</div>';
 
@@ -6960,7 +7052,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📂</span>';
   html += '<span class="detail-field-label">' + t('project') + '</span>';
-  html += '<div class="detail-field-value"><select id="task-project">' + projectOptions + '</select></div>';
+  html += '<div class="detail-field-value"><select id="task-project" onchange="refreshDependencyTaskOptions(' + task.id + ', true)">' + projectOptions + '</select></div>';
   html += '</div>';
 
   // Category
@@ -7139,8 +7231,8 @@ function openEditTaskModal(taskId, preserveAssignees) {
 
   // Add subtask input
   html += '<div class="subtask-add-row">';
-  html += '<input type="text" id="new-subtask-input" class="subtask-input" placeholder="' + t('subtaskPlaceholder') + '" onkeypress="if(event.key===\'Enter\')addSubtask(' + task.id + ')" />';
-  html += '<button class="subtask-add-btn" onclick="addSubtask(' + task.id + ')">+</button>';
+  html += '<input type="text" id="new-subtask-input" class="subtask-input" placeholder="' + t('subtaskPlaceholder') + '" onkeypress="if(event.key===\'Enter\'){event.preventDefault();addSubtask(' + task.id + ');}" />';
+  html += '<button type="button" class="subtask-add-btn" onclick="event.preventDefault();addSubtask(' + task.id + ')">+</button>';
   html += '</div>';
   html += '</div>';
 
@@ -7190,16 +7282,13 @@ function openEditTaskModal(taskId, preserveAssignees) {
   
   // Add dependency
   html += '<div class="dep-add-row">';
-  html += '<select id="dep-select">';
-  html += '<option value="">-- ' + t('selectTask') + ' --</option>';
-  var availableTasks = getFilteredTasks().filter(function(t) {
-    return t.id !== task.id && !taskDeps.some(function(d) { return d.id === t.id; });
-  });
-  for (var ti = 0; ti < availableTasks.length; ti++) {
-    html += '<option value="' + availableTasks[ti].id + '">' + sanitize(availableTasks[ti].Title) + '</option>';
-  }
-  html += '</select>';
-  html += '<button class="dep-add-btn" onclick="addDependency(' + task.id + ')">+</button>';
+  html += '<div class="dep-combobox" id="dep-combobox">';
+  html += '<input type="search" id="dep-search" class="dep-search-input" role="combobox" aria-autocomplete="list" aria-controls="dep-options" aria-expanded="false" placeholder="' + (currentLang === 'fr' ? 'Sélectionner ou rechercher une tâche...' : 'Select or search for a task...') + '" onfocus="openDependencyTaskOptions(' + task.id + ')" oninput="clearDependencyTaskSelection();openDependencyTaskOptions(' + task.id + ')" onkeydown="if(event.key===\'Escape\')closeDependencyTaskOptions()" autocomplete="off" />';
+  html += '<input type="hidden" id="dep-select" value="" />';
+  html += '<button type="button" class="dep-toggle-btn" onclick="toggleDependencyTaskOptions(' + task.id + ')" title="' + (currentLang === 'fr' ? 'Afficher les tâches' : 'Show tasks') + '">⌄</button>';
+  html += '<div id="dep-options" class="dep-options" role="listbox"></div>';
+  html += '</div>';
+  html += '<button type="button" class="dep-add-btn" onclick="addDependency(' + task.id + ')">+</button>';
   html += '</div>';
   html += '</div>';
 
@@ -7278,7 +7367,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   // Add comment input
   html += '<div class="comment-add-row">';
   html += '<textarea id="new-comment-input" class="comment-input" placeholder="' + t('commentPlaceholder') + '" rows="2"></textarea>';
-  html += '<button class="comment-add-btn" onclick="addComment(' + task.id + ')">' + t('addComment') + '</button>';
+  html += '<button type="button" class="comment-add-btn" onclick="event.preventDefault();addComment(' + task.id + ')">' + t('addComment') + '</button>';
   html += '</div>';
   html += '</div>';
 
@@ -7322,10 +7411,12 @@ function openEditTaskModal(taskId, preserveAssignees) {
   var totalTime = getTaskTotalTime(task.id);
   var isTimerRunning = !!activeTimers[task.id];
   var taskTimeEntries = getTaskTimeEntries(task.id);
-  html += '<div class="detail-card time-card">';
-  html += '<h4>⏱️ ' + t('timeTracking') + '</h4>';
-  
-  // Timer button
+	  html += '<div class="detail-card time-card">';
+	  html += '<h4>⏱️ ' + t('timeTracking') + '</h4>';
+	  html += '<label for="task-estimated-hours" style="display:block;font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;">' + t('estimatedTime') + ' (h)</label>';
+	  html += '<input type="number" id="task-estimated-hours" min="0" step="0.5" value="' + (task.Estimated_Hours || '') + '" placeholder="Ex. 8" class="form-input" style="width:100%;margin-bottom:10px;" />';
+	  
+	  // Timer button
   html += '<div class="timer-control">';
   if (isTimerRunning) {
     html += '<button class="timer-btn timer-stop" onclick="pauseTimer(' + task.id + ')">⏸️ Pause</button>';
@@ -7410,8 +7501,8 @@ function openEditTaskModal(taskId, preserveAssignees) {
   if (isOwner) html += '<button class="btn-danger" onclick="deleteTask(' + task.id + ')">' + t('delete') + '</button>';
   else html += '<div></div>';
   html += '<div style="display:flex;gap:8px;">';
-  html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t('cancel') + '</button>';
-  html += '<button class="btn btn-primary" onclick="updateTask(' + task.id + ')">' + t('save') + '</button>';
+  html += '<button type="button" class="btn btn-secondary" onclick="event.preventDefault();closeModalForce()">' + t('cancel') + '</button>';
+  html += '<button type="button" class="btn btn-primary" onclick="saveTaskFromFooter(' + task.id + ', event)">' + t('save') + '</button>';
   html += '</div></div>';
 
   html += '</div></div>'; // end modal + overlay
@@ -7419,6 +7510,20 @@ function openEditTaskModal(taskId, preserveAssignees) {
   document.getElementById('modal-container').innerHTML = html;
   // D2 : remplir la liste des pièces jointes (token asynchrone à part)
   renderAttachmentsSection(task.id);
+  refreshDependencyTaskOptions(task.id);
+}
+
+function saveTaskFromFooter(taskId, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  var topSaveButton = document.getElementById('task-save-top-' + taskId);
+  if (topSaveButton) {
+    topSaveButton.click();
+  } else {
+    updateTask(taskId);
+  }
 }
 
 function getRaciArray(varName) {
@@ -7552,9 +7657,12 @@ async function quickAction(taskId, newStatus) {
     for (var i = 0; i < tasks.length; i++) {
       if (tasks[i].id === taskId) { tasks[i].Status = newStatus; break; }
     }
-    showToast(t('taskMoved'), 'success');
-    
-    // Create next occurrence if task is recurring and just completed
+	    showToast(t('taskMoved'), 'success');
+	    if (newStatus === 'done' && wasNotDone && task) {
+	      await notifyTaskCompleted(Object.assign({}, task, { Status: newStatus }));
+	    }
+	    
+	    // Create next occurrence if task is recurring and just completed
     if (newStatus === 'done' && wasNotDone && task && task.Recurrence && task.Recurrence !== 'none') {
       await createNextOccurrence(task);
     }
@@ -7575,7 +7683,7 @@ async function addSubtask(parentTaskId) {
   var title = input.value.trim();
   if (!title) return;
 
-  var savedFormState = captureTaskFormState();
+  var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
@@ -7586,12 +7694,12 @@ async function addSubtask(parentTaskId) {
   var maxOrder = taskSubtasks.length > 0 ? Math.max.apply(null, taskSubtasks.map(function(st) { return st.Order || 0; })) : 0;
 
   try {
-    var savedTask = await saveTaskFormSilently(parentTaskId);
-    if (!savedTask) return;
     await grist.docApi.applyUserActions([
       ['AddRecord', SUBTASKS_TABLE, null, {
         Parent_Task_Id: parentTaskId,
         Title: title,
+        Status: 'todo',
+        Priority: 'medium',
         Completed: false,
         Order: maxOrder + 1,
         Created_At: Math.floor(Date.now() / 1000)
@@ -7604,7 +7712,7 @@ async function addSubtask(parentTaskId) {
     editConsulted = savedConsulted;
     editInformed = savedInformed;
     openEditTaskModal(parentTaskId, true);
-    restoreTaskFormState(savedFormState);
+    restoreTaskFormState(formState);
     restoreModalScrollTop(scrollPos);
   } catch (e) {
     console.error('Error adding subtask:', e);
@@ -7658,15 +7766,23 @@ async function toggleSubtask(subtaskId, completed) {
 }
 
 async function deleteSubtask(subtaskId, parentTaskId) {
+  var confirmed = await showConfirmModal(
+    currentLang === 'fr' ? 'Supprimer cette sous-tâche ?' : 'Delete this subtask?',
+    currentLang === 'fr' ? 'Supprimer la sous-tâche' : 'Delete subtask'
+  );
+  if (!confirmed) return;
+  var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
   var scrollPos = getModalScrollTop();
   try {
-    await grist.docApi.applyUserActions([
-      ['RemoveRecord', SUBTASKS_TABLE, subtaskId]
-    ]);
+    var actions = subtasks
+      .filter(function(st) { return st.Blocked_By_Subtask_Id === subtaskId; })
+      .map(function(st) { return ['UpdateRecord', SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }]; });
+    actions.push(['RemoveRecord', SUBTASKS_TABLE, subtaskId]);
+    await grist.docApi.applyUserActions(actions);
     showToast(t('subtaskDeleted'), 'info');
     await loadAllData();
     editAssignees = savedAssignees;
@@ -7674,6 +7790,7 @@ async function deleteSubtask(subtaskId, parentTaskId) {
     editConsulted = savedConsulted;
     editInformed = savedInformed;
     openEditTaskModal(parentTaskId, true);
+    restoreTaskFormState(formState);
     restoreModalScrollTop(scrollPos);
   } catch (e) {
     console.error('Error deleting subtask:', e);
@@ -7848,10 +7965,122 @@ async function generateSubtaskOccurrences(subtaskId, parentTaskId) {
 // DEPENDENCIES CRUD
 // =============================================================================
 
+function normalizeDependencyProjectId(value) {
+  var parsed = parseInt(value, 10);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+function getDependencyCandidates(taskId, projectId, query) {
+  var normalizedProjectId = normalizeDependencyProjectId(projectId);
+  if (!normalizedProjectId) return [];
+  var normalizedQuery = String(query || '').trim().toLowerCase();
+  var existingDependencyIds = {};
+  getTaskDependencies(taskId).forEach(function(dependency) {
+    existingDependencyIds[dependency.id] = true;
+  });
+
+  return tasks.filter(function(candidate) {
+    if (candidate.id === taskId || candidate.Status === 'archived' || existingDependencyIds[candidate.id]) return false;
+    if (normalizeDependencyProjectId(candidate.Project_Id) !== normalizedProjectId) return false;
+    if (normalizedQuery && String(candidate.Title || '').toLowerCase().indexOf(normalizedQuery) === -1) return false;
+    if (shouldLimitToMyProjects()) {
+      var myIds = myProjectIdSet();
+      if (!((candidate.Project_Id && myIds[candidate.Project_Id]) || taskConcernsCurrentUser(candidate))) return false;
+    }
+    return true;
+  }).sort(function(a, b) {
+    return String(a.Title || '').localeCompare(String(b.Title || ''));
+  });
+}
+
+function refreshDependencyTaskOptions(taskId, resetSelection) {
+  var selectedInput = document.getElementById('dep-select');
+  var optionsContainer = document.getElementById('dep-options');
+  if (!selectedInput || !optionsContainer) return;
+  var projectEl = document.getElementById('task-project');
+  var searchEl = document.getElementById('dep-search');
+  if (resetSelection) {
+    selectedInput.value = '';
+    if (searchEl) searchEl.value = '';
+  }
+  var candidates = getDependencyCandidates(taskId, projectEl ? projectEl.value : 0, searchEl ? searchEl.value : '');
+  optionsContainer.innerHTML = '';
+
+  if (!normalizeDependencyProjectId(projectEl ? projectEl.value : 0)) {
+    var noProject = document.createElement('div');
+    noProject.className = 'dep-option-empty';
+    noProject.textContent = currentLang === 'fr' ? 'Choisissez d’abord un projet.' : 'Choose a project first.';
+    optionsContainer.appendChild(noProject);
+    return;
+  }
+  if (!candidates.length) {
+    var empty = document.createElement('div');
+    empty.className = 'dep-option-empty';
+    empty.textContent = currentLang === 'fr' ? 'Aucune tâche correspondante.' : 'No matching task.';
+    optionsContainer.appendChild(empty);
+    return;
+  }
+
+  candidates.forEach(function(candidate) {
+    var option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'dep-option';
+    option.setAttribute('role', 'option');
+    option.textContent = candidate.Title || '';
+    option.onclick = function() { selectDependencyTask(candidate.id); };
+    optionsContainer.appendChild(option);
+  });
+}
+
+function clearDependencyTaskSelection() {
+  var selectedInput = document.getElementById('dep-select');
+  if (selectedInput) selectedInput.value = '';
+}
+
+function openDependencyTaskOptions(taskId) {
+  refreshDependencyTaskOptions(taskId);
+  var combobox = document.getElementById('dep-combobox');
+  var searchEl = document.getElementById('dep-search');
+  if (combobox) combobox.classList.add('open');
+  if (searchEl) searchEl.setAttribute('aria-expanded', 'true');
+}
+
+function closeDependencyTaskOptions() {
+  var combobox = document.getElementById('dep-combobox');
+  var searchEl = document.getElementById('dep-search');
+  if (combobox) combobox.classList.remove('open');
+  if (searchEl) searchEl.setAttribute('aria-expanded', 'false');
+}
+
+function toggleDependencyTaskOptions(taskId) {
+  var combobox = document.getElementById('dep-combobox');
+  if (combobox && combobox.classList.contains('open')) closeDependencyTaskOptions();
+  else openDependencyTaskOptions(taskId);
+}
+
+function selectDependencyTask(taskId) {
+  var selectedTask = tasks.find(function(candidate) { return candidate.id === taskId; });
+  var selectedInput = document.getElementById('dep-select');
+  var searchEl = document.getElementById('dep-search');
+  if (!selectedTask || !selectedInput || !searchEl) return;
+  selectedInput.value = String(selectedTask.id);
+  searchEl.value = selectedTask.Title || '';
+  closeDependencyTaskOptions();
+}
+
 async function addDependency(taskId) {
   var select = document.getElementById('dep-select');
   var dependsOnId = parseInt(select.value);
   if (!dependsOnId) return;
+  var projectEl = document.getElementById('task-project');
+  var selectedProjectId = normalizeDependencyProjectId(projectEl ? projectEl.value : 0);
+  var dependsOnTask = tasks.find(function(candidate) { return candidate.id === dependsOnId; });
+  if (!dependsOnTask || normalizeDependencyProjectId(dependsOnTask.Project_Id) !== selectedProjectId) {
+    showToast(currentLang === 'fr' ? 'La dépendance doit appartenir au même projet.' : 'The dependency must belong to the same project.', 'error');
+    refreshDependencyTaskOptions(taskId);
+    return;
+  }
+  var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
@@ -7872,6 +8101,8 @@ async function addDependency(taskId) {
     editConsulted = savedConsulted;
     editInformed = savedInformed;
     openEditTaskModal(taskId, true);
+    restoreTaskFormState(formState);
+    refreshDependencyTaskOptions(taskId);
   } catch (e) {
     console.error('Error adding dependency:', e);
     showToast('Error: ' + e.message, 'error');
@@ -7883,6 +8114,12 @@ async function removeDependency(taskId, dependsOnTaskId) {
     return d.Task_Id === taskId && d.Depends_On_Task_Id === dependsOnTaskId;
   });
   if (!dep) return;
+  var confirmed = await showConfirmModal(
+    currentLang === 'fr' ? 'Supprimer cette dépendance ?' : 'Delete this dependency?',
+    currentLang === 'fr' ? 'Supprimer la dépendance' : 'Delete dependency'
+  );
+  if (!confirmed) return;
+  var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
@@ -7899,6 +8136,7 @@ async function removeDependency(taskId, dependsOnTaskId) {
     editConsulted = savedConsulted;
     editInformed = savedInformed;
     openEditTaskModal(taskId, true);
+    restoreTaskFormState(formState);
   } catch (e) {
     console.error('Error removing dependency:', e);
   }
@@ -7912,15 +8150,14 @@ async function addComment(taskId) {
   var textarea = document.getElementById('new-comment-input');
   var content = textarea.value.trim();
   if (!content) return;
-  var savedFormState = captureTaskFormState();
+  var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
+  var scrollPos = getModalScrollTop();
 
   try {
-    var savedTask = await saveTaskFormSilently(taskId);
-    if (!savedTask) return;
     await grist.docApi.applyUserActions([
       ['AddRecord', COMMENTS_TABLE, null, {
         Task_Id: taskId,
@@ -7939,7 +8176,8 @@ async function addComment(taskId) {
     editConsulted = savedConsulted;
     editInformed = savedInformed;
     openEditTaskModal(taskId, true);
-    restoreTaskFormState(savedFormState);
+    restoreTaskFormState(formState);
+    restoreModalScrollTop(scrollPos);
   } catch (e) {
     console.error('Error adding comment:', e);
     showToast('Error: ' + e.message, 'error');
@@ -7948,6 +8186,12 @@ async function addComment(taskId) {
 
 async function deleteComment(commentId, taskId) {
   if (!isOwner) return;
+  var confirmed = await showConfirmModal(
+    currentLang === 'fr' ? 'Supprimer ce commentaire ?' : 'Delete this comment?',
+    currentLang === 'fr' ? 'Supprimer le commentaire' : 'Delete comment'
+  );
+  if (!confirmed) return;
+  var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
@@ -7963,6 +8207,7 @@ async function deleteComment(commentId, taskId) {
     editConsulted = savedConsulted;
     editInformed = savedInformed;
     openEditTaskModal(taskId, true);
+    restoreTaskFormState(formState);
   } catch (e) {
     console.error('Error deleting comment:', e);
   }
@@ -8214,6 +8459,11 @@ async function addCustomField() {
 
 async function deleteCustomField(fieldId) {
   if (!isOwner) return;
+  var confirmed = await showConfirmModal(
+    currentLang === 'fr' ? 'Supprimer ce champ personnalisé et toutes ses valeurs ?' : 'Delete this custom field and all its values?',
+    currentLang === 'fr' ? 'Supprimer le champ' : 'Delete field'
+  );
+  if (!confirmed) return;
   
   try {
     // Delete field values first
@@ -8477,6 +8727,7 @@ async function createTask() {
   setField(record, 'tasks', 'dueDate', toEpoch(getInputValue('task-due')));
   setField(record, 'tasks', 'category', getInputValue('task-category').trim());
   setField(record, 'tasks', 'projectId', projectId);
+  setField(record, 'tasks', 'estimatedHours', getEstimatedHoursInput());
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
   // B4 : prolongation auto activée par défaut sur les nouvelles tâches (modifiable ensuite)
   if (TASKS_TABLE === DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
@@ -8496,9 +8747,7 @@ async function createTask() {
     showToast(t('taskCreated'), 'success');
     logActivity('task_created', newTaskId, title, '');
     if (newTaskId) {
-      var concernedNew = editAssignees.slice();
-      if (raciEnabled) concernedNew = concernedNew.concat(editAccountable, editConsulted, editInformed);
-      await notifyConcernedUsers(newTaskId, concernedNew, 'task_created', title);
+	      await notifyConcernedUsers(newTaskId, editAssignees.slice(), 'task_assigned', title);
     }
     closeModalForce();
     await loadAllData();
@@ -8554,6 +8803,7 @@ async function updateTask(taskId) {
   setField(record, 'tasks', 'category', getInputValue('task-category').trim());
   setField(record, 'tasks', 'projectId', projectId);
   setField(record, 'tasks', 'recurrence', newRecurrence);
+  setField(record, 'tasks', 'estimatedHours', getEstimatedHoursInput());
   
   // Add Tag only if the element exists
   var tagEl = document.getElementById('task-tag');
@@ -8594,10 +8844,22 @@ async function updateTask(taskId) {
     }
     logActivity(autoChanges.status ? 'status_changed' : 'task_updated', taskId, title, logDetails.join(', '));
 
-    // Notification intégrée des utilisateurs concernés (R/A/C/I) à la modification
-    var concernedUpd = editAssignees.slice();
-    if (raciEnabled) concernedUpd = concernedUpd.concat(editAccountable, editConsulted, editInformed);
-    await notifyConcernedUsers(taskId, concernedUpd, 'task_updated', title);
+	    if (autoChanges.assignee) {
+	      var previousAssignees = splitRecipientValues(task ? task.Assignee : '');
+	      var previousKeys = {};
+	      previousAssignees.forEach(function(value) {
+	        var email = resolveUserEmail(value);
+	        previousKeys[(email || value).toLowerCase()] = true;
+	      });
+	      var newlyAssigned = editAssignees.filter(function(value) {
+	        var email = resolveUserEmail(value);
+	        return !previousKeys[(email || String(value)).toLowerCase()];
+	      });
+	      await notifyConcernedUsers(taskId, newlyAssigned, 'task_assigned', title);
+	    }
+	    if (newStatus === 'done' && wasNotDone) {
+	      await notifyTaskCompleted(Object.assign({}, task, record, { id: taskId, Project_Id: projectId, Title: title }));
+	    }
 
     // Create next occurrence if task is recurring and just completed
     if (newStatus === 'done' && wasNotDone && newRecurrence && newRecurrence !== 'none') {
@@ -8615,13 +8877,49 @@ async function updateTask(taskId) {
 
 async function deleteTask(taskId) {
   if (!isOwner) return;
-  var confirmed = await showConfirmModal(t('confirmDelete'), currentLang === 'fr' ? 'Supprimer la tâche' : 'Delete task');
+  var relatedSubtasks = subtasks.filter(function(st) { return st.Parent_Task_Id === taskId; });
+  var confirmationMessage = currentLang === 'fr'
+    ? 'Supprimer cette tâche et ses ' + relatedSubtasks.length + ' sous-tâche(s) ? Cette action est irréversible.'
+    : 'Delete this task and its ' + relatedSubtasks.length + ' subtask(s)? This action cannot be undone.';
+  var confirmed = await showConfirmModal(confirmationMessage, currentLang === 'fr' ? 'Supprimer la tâche' : 'Delete task');
   if (!confirmed) return;
   try {
-    await grist.docApi.applyUserActions([
-      ['RemoveRecord', TASKS_TABLE, taskId]
-    ]);
     var deletedTask = tasks.find(function(t2) { return t2.id === taskId; });
+    var deletedSubtaskIds = {};
+    var actions = [];
+    relatedSubtasks.forEach(function(st) { deletedSubtaskIds[st.id] = true; });
+
+    subtasks.forEach(function(st) {
+      if (st.Parent_Task_Id !== taskId && deletedSubtaskIds[st.Blocked_By_Subtask_Id]) {
+        actions.push(['UpdateRecord', SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }]);
+      }
+    });
+    dependencies.forEach(function(dep) {
+      if (dep.Task_Id === taskId || dep.Depends_On_Task_Id === taskId) actions.push(['RemoveRecord', DEPENDENCIES_TABLE, dep.id]);
+    });
+    comments.forEach(function(comment) {
+      if (comment.Task_Id === taskId) actions.push(['RemoveRecord', COMMENTS_TABLE, comment.id]);
+    });
+    timeEntries.forEach(function(entry) {
+      if (entry.Task_Id === taskId) actions.push(['RemoveRecord', TIME_ENTRIES_TABLE, entry.id]);
+    });
+    customFieldValues.forEach(function(value) {
+      if (value.Task_Id === taskId) actions.push(['RemoveRecord', CUSTOM_FIELD_VALUES_TABLE, value.id]);
+    });
+    attachments.forEach(function(attachment) {
+      if (attachment.Task_Id === taskId) actions.push(['RemoveRecord', ATTACHMENTS_TABLE, attachment.id]);
+    });
+    pmNotifications.forEach(function(notification) {
+      if (notification.Task_Id === taskId) actions.push(['RemoveRecord', NOTIFICATIONS_TABLE, notification.id]);
+    });
+    relatedSubtasks.forEach(function(st) {
+      actions.push(['RemoveRecord', SUBTASKS_TABLE, st.id]);
+    });
+    actions.push(['RemoveRecord', TASKS_TABLE, taskId]);
+
+    await grist.docApi.applyUserActions(actions);
+    if (draftTaskId === taskId) draftTaskId = null;
+    document.getElementById('modal-container').innerHTML = '';
     showToast(t('taskDeleted'), 'info');
     logActivity('task_deleted', taskId, deletedTask ? deletedTask.Title : '', '');
     await loadAllData();
@@ -9501,7 +9799,10 @@ async function saveProject() {
 }
 
 async function deleteProject(projectId) {
-  var confirmed = await showConfirmModal(t('confirmDelete'), currentLang === 'fr' ? 'Supprimer le projet' : 'Delete project');
+  var confirmed = await showConfirmModal(
+    currentLang === 'fr' ? 'Supprimer ce projet ?' : 'Delete this project?',
+    currentLang === 'fr' ? 'Supprimer le projet' : 'Delete project'
+  );
   if (!confirmed) return;
   
   try {
@@ -9669,6 +9970,12 @@ async function editKanbanStatus(index) {
 async function removeKanbanStatus(index) {
   ensureCustomStatuses();
   if (customKanbanStatuses.length <= 2) return;
+  var status = customKanbanStatuses[index];
+  var confirmed = await showConfirmModal(
+    currentLang === 'fr' ? 'Supprimer le statut « ' + status.label_fr + ' » ?' : 'Delete status "' + status.label_en + '"?',
+    currentLang === 'fr' ? 'Supprimer le statut' : 'Delete status'
+  );
+  if (!confirmed) return;
   var removed = customKanbanStatuses.splice(index, 1)[0];
   await saveKanbanStatuses();
   renderKanbanStatusesList();
@@ -10199,6 +10506,11 @@ async function saveAutomationRuleFromModal() {
 }
 
 async function deleteAutomationRule(index) {
+  var confirmed = await showConfirmModal(
+    currentLang === 'fr' ? 'Supprimer cette règle d’automatisation ?' : 'Delete this automation rule?',
+    currentLang === 'fr' ? 'Supprimer la règle' : 'Delete rule'
+  );
+  if (!confirmed) return;
   automationRules.splice(index, 1);
   await saveSetting('automation_rules', JSON.stringify(automationRules));
   renderAutomationsSection();
@@ -10885,7 +11197,25 @@ function getMyNotifications() {
 }
 
 function getUnreadCount() {
-  return getMyNotifications().filter(function(n) { return !n.Is_Read; }).length;
+	return getMyNotifications().filter(function(n) { return !n.Is_Read; }).length;
+}
+
+function getComputedAlertKey(task, type) {
+	return 'computed:' + type + ':' + Number(task && task.Due_Date || 0);
+}
+
+function isComputedAlertRead(taskId, type) {
+	var email = (currentUserEmail || '').toLowerCase().trim();
+	var task = tasks.find(function(item) { return Number(item.id) === Number(taskId); });
+	var alertKey = getComputedAlertKey(task, type);
+	return pmNotifications.some(function(n) {
+	  return Number(n.Task_Id) === Number(taskId) && n.Type === type && n.Is_Read &&
+	    (n.User_Email || '').toLowerCase().trim() === email && n.Rule_Id === alertKey;
+	});
+}
+
+function getUnreadComputedTasks(tasksList, type) {
+	return tasksList.filter(function(task) { return !isComputedAlertRead(task.id, type); });
 }
 
 function updateNotificationBadge() {
@@ -10893,8 +11223,8 @@ function updateNotificationBadge() {
   var hasOverdueRule = automationRules.some(function(r) { return r.enabled && r.trigger === 'overdue'; });
   var hasApproachingRule = automationRules.some(function(r) { return r.enabled && r.trigger === 'approaching_deadline'; });
   var computed = 0;
-  if (!hasOverdueRule) computed += getOverdueTasks().length;
-  if (!hasApproachingRule) computed += getUpcomingTasks().length;
+	if (!hasOverdueRule) computed += getUnreadComputedTasks(getOverdueTasks(), 'computed_overdue').length;
+	if (!hasApproachingRule) computed += getUnreadComputedTasks(getUpcomingTasks(), 'computed_upcoming').length;
   var total = unread + computed;
   var badge = document.getElementById('notif-badge');
   if (badge) {
@@ -10909,8 +11239,8 @@ function showNotifications() {
   var readRecent = myNotifs.filter(function(n) { return n.Is_Read; }).slice(0, 10);
   var hasOverdueRule = automationRules.some(function(r) { return r.enabled && r.trigger === 'overdue'; });
   var hasApproachingRule = automationRules.some(function(r) { return r.enabled && r.trigger === 'approaching_deadline'; });
-  var overdue = !hasOverdueRule ? getOverdueTasks() : [];
-  var upcoming = !hasApproachingRule ? getUpcomingTasks() : [];
+	var overdue = !hasOverdueRule ? getUnreadComputedTasks(getOverdueTasks(), 'computed_overdue') : [];
+	var upcoming = !hasApproachingRule ? getUnreadComputedTasks(getUpcomingTasks(), 'computed_upcoming') : [];
 
   var html = '<div class="notif-dropdown" id="notif-dropdown">';
   html += '<div class="notif-header" style="display:flex;justify-content:space-between;align-items:center;">';
@@ -10924,7 +11254,7 @@ function showNotifications() {
     html += '<div style="padding:6px 16px;font-size:10px;color:#3b82f6;font-weight:700;">🔵 ' + unread.length + ' ' + t('notifUnread') + '</div>';
     for (var ui = 0; ui < unread.length; ui++) {
       var n = unread[ui];
-      html += '<div class="notif-item" style="display:flex;align-items:center;gap:6px;font-weight:600;" onclick="openEditTaskModal(' + n.Task_Id + '); closeNotifications();">';
+	      html += '<div class="notif-item" style="display:flex;align-items:center;gap:6px;font-weight:600;" onclick="openNotification(' + n.id + ', ' + n.Task_Id + ');">';
       html += '<div style="flex:1;">';
       html += '<div class="notif-item-title">' + sanitize(n.Message) + '</div>';
       html += '<div class="notif-item-date">' + formatDate(n.Created_At) + '</div>';
@@ -10937,7 +11267,7 @@ function showNotifications() {
   if (overdue.length > 0) {
     html += '<div style="padding:6px 16px;font-size:10px;color:#ef4444;font-weight:700;">⚠️ ' + overdue.length + ' ' + t('overdueTasksAlert') + '</div>';
     for (var oi = 0; oi < overdue.length; oi++) {
-      html += '<div class="notif-item overdue" onclick="openEditTaskModal(' + overdue[oi].id + '); closeNotifications();">';
+	      html += '<div class="notif-item overdue" onclick="openComputedNotification(' + overdue[oi].id + ', \'computed_overdue\');">';
       html += '<div class="notif-item-title">' + sanitize(overdue[oi].Title) + '</div>';
       html += '<div class="notif-item-date">📅 ' + formatDate(overdue[oi].Due_Date) + '</div>';
       html += '</div>';
@@ -10946,7 +11276,7 @@ function showNotifications() {
   if (upcoming.length > 0) {
     html += '<div style="padding:6px 16px;font-size:10px;color:#f59e0b;font-weight:700;">📅 ' + upcoming.length + ' ' + t('upcomingTasksAlert') + '</div>';
     for (var upi = 0; upi < upcoming.length; upi++) {
-      html += '<div class="notif-item upcoming" onclick="openEditTaskModal(' + upcoming[upi].id + '); closeNotifications();">';
+	      html += '<div class="notif-item upcoming" onclick="openComputedNotification(' + upcoming[upi].id + ', \'computed_upcoming\');">';
       html += '<div class="notif-item-title">' + sanitize(upcoming[upi].Title) + '</div>';
       html += '<div class="notif-item-date">📅 ' + formatDate(upcoming[upi].Due_Date) + '</div>';
       html += '</div>';
@@ -10988,16 +11318,53 @@ function closeNotificationsOnOutsideClick(e) {
   }
 }
 
-async function markNotificationRead(notifId) {
-  try {
-    await grist.docApi.applyUserActions([['UpdateRecord', NOTIFICATIONS_TABLE, notifId, { Is_Read: true }]]);
-    var n = pmNotifications.find(function(x) { return x.id === notifId; });
-    if (n) n.Is_Read = true;
-    updateNotificationBadge();
-    showNotifications();
-  } catch (e) {
-    console.error('[GristPM] Error marking notification read:', e);
-  }
+async function openNotification(notifId, taskId) {
+	closeNotifications();
+	await markNotificationRead(notifId, false);
+	openEditTaskModal(taskId);
+}
+
+async function openComputedNotification(taskId, type) {
+	closeNotifications();
+	var task = tasks.find(function(item) { return Number(item.id) === Number(taskId); });
+	if (!task || !currentUserEmail || isComputedAlertRead(taskId, type)) {
+	  openEditTaskModal(taskId);
+	  return;
+	}
+	var messagePrefix = type === 'computed_overdue'
+	  ? (currentLang === 'fr' ? 'Tâche en retard : ' : 'Overdue task: ')
+	  : (currentLang === 'fr' ? 'Échéance proche : ' : 'Upcoming deadline: ');
+	var record = {
+	  Task_Id: taskId,
+	  User_Email: currentUserEmail,
+	  Type: type,
+	  Message: messagePrefix + (task.Title || ''),
+	  Is_Read: true,
+	  Created_At: Math.floor(Date.now() / 1000),
+	  Rule_Id: getComputedAlertKey(task, type)
+	};
+	try {
+	  var result = await grist.docApi.applyUserActions([['AddRecord', NOTIFICATIONS_TABLE, null, record]]);
+	  record.id = (result && result.retValues && result.retValues[0]) ||
+	    (pmNotifications.length ? Math.max.apply(null, pmNotifications.map(function(n) { return n.id; })) + 1 : 1);
+	  pmNotifications.push(record);
+	  updateNotificationBadge();
+	} catch (e) {
+	  console.error('[GristPM] Error dismissing computed notification:', e);
+	}
+	openEditTaskModal(taskId);
+}
+
+async function markNotificationRead(notifId, reopenDropdown) {
+	try {
+	  await grist.docApi.applyUserActions([['UpdateRecord', NOTIFICATIONS_TABLE, notifId, { Is_Read: true }]]);
+	  var n = pmNotifications.find(function(x) { return x.id === notifId; });
+	  if (n) n.Is_Read = true;
+	  updateNotificationBadge();
+	  if (reopenDropdown !== false) showNotifications();
+	} catch (e) {
+	  console.error('[GristPM] Error marking notification read:', e);
+	}
 }
 
 async function markAllNotificationsRead() {
@@ -11018,10 +11385,12 @@ async function markAllNotificationsRead() {
 // --- Automation Engine ---
 
 async function createNotification(taskId, userEmail, type, message, ruleId) {
-  try {
-    var record = {
-      Task_Id: taskId,
-      User_Email: userEmail,
+	try {
+	  var resolvedEmail = resolveUserEmail(userEmail);
+	  if (!resolvedEmail || resolvedEmail.toLowerCase() === (currentUserEmail || '').toLowerCase().trim()) return;
+	  var record = {
+	    Task_Id: taskId,
+	    User_Email: resolvedEmail,
       Type: type,
       Message: message,
       Is_Read: false,
@@ -11036,23 +11405,55 @@ async function createNotification(taskId, userEmail, type, message, ruleId) {
   }
 }
 
-// Notification intégrée : à la création/modification d'une tâche, prévient chaque
-// utilisateur concerné (R/A/C/I). Une ligne PM_Notifications par destinataire → un webhook
-// Grist posé sur PM_Notifications peut la transformer en e-mail (voir onglet Paramètres).
+function splitRecipientValues(value) {
+	if (Array.isArray(value)) return value;
+	return String(value || '').split(',').map(function(item) { return item.trim(); }).filter(Boolean);
+}
+
+function resolveUserEmail(value) {
+	var raw = String(value || '').trim();
+	if (!raw) return '';
+	var key = raw.toLowerCase();
+	var user = users.find(function(candidate) {
+	  return String(candidate.Email || '').trim().toLowerCase() === key ||
+	    String(candidate.Name || '').trim().toLowerCase() === key;
+	});
+	if (user && user.Email) return String(user.Email).trim();
+	return raw.indexOf('@') > 0 ? raw : '';
+}
+
+function getProjectLead(task) {
+	var projectId = Number(task && task.Project_Id || 0);
+	var project = projects.find(function(item) { return Number(item.id) === projectId; });
+	return project ? resolveUserEmail(project.Lead) : '';
+}
+
+async function notifyTaskCompleted(task) {
+	if (!task) return;
+	var lead = getProjectLead(task);
+	if (!lead) return;
+	await notifyConcernedUsers(task.id, [lead], 'task_completed', task.Title || '');
+}
+
+// Une ligne Notifications par destinataire peut être affichée dans Grist et servir
+// de déclencheur aux workflows e-mail n8n ou Power Automate.
 async function notifyConcernedUsers(taskId, emails, eventType, title) {
-  if (!notifyConcernedEnabled) return;
-  var me = (currentUserEmail || '').toLowerCase().trim();
-  var seen = {}, recipients = [];
-  (emails || []).forEach(function(e) {
-    var v = String(e || '').trim();
-    var k = v.toLowerCase();
-    if (v && k !== me && !seen[k]) { seen[k] = 1; recipients.push(v); }
-  });
-  if (!recipients.length) return;
-  var msg = (eventType === 'task_created')
-    ? (currentLang === 'fr' ? 'Nouvelle tâche vous concernant : ' : 'New task involving you: ') + title
-    : (currentLang === 'fr' ? 'Tâche modifiée : ' : 'Task updated: ') + title;
-  var now = Math.floor(Date.now() / 1000);
+	if (!notifyConcernedEnabled) return;
+	var me = (currentUserEmail || '').toLowerCase().trim();
+	var seen = {}, recipients = [];
+	(emails || []).forEach(function(e) {
+	  var v = resolveUserEmail(e);
+	  var k = v.toLowerCase();
+	  if (v && k !== me && !seen[k]) { seen[k] = 1; recipients.push(v); }
+	});
+	if (!recipients.length) return;
+	var messages = {
+	  task_assigned: currentLang === 'fr' ? 'Une tâche vous a été assignée : ' : 'A task was assigned to you: ',
+	  task_completed: currentLang === 'fr' ? 'Tâche terminée : ' : 'Task completed: ',
+	  task_updated: currentLang === 'fr' ? 'Tâche modifiée : ' : 'Task updated: '
+	};
+	var msg = (messages[eventType] || messages.task_updated) + title;
+	var now = Math.floor(Date.now() / 1000);
   var actions = recipients.map(function(email) {
     return ['AddRecord', NOTIFICATIONS_TABLE, null, { Task_Id: taskId, User_Email: email, Type: eventType, Message: msg, Is_Read: false, Created_At: now, Rule_Id: 'builtin' }];
   });
@@ -11060,11 +11461,12 @@ async function notifyConcernedUsers(taskId, emails, eventType, title) {
 }
 
 function resolveRecipients(action, actionTarget, task) {
-  if (action === 'notify_assignee') {
-    return (task.Assignee || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-  }
-  if (action === 'notify_project_lead') {
-    return users.filter(function(u) { return u.Role === 'admin'; }).map(function(u) { return u.Email; }).filter(Boolean);
+	if (action === 'notify_assignee') {
+	  return splitRecipientValues(task.Assignee).map(resolveUserEmail).filter(Boolean);
+	}
+	if (action === 'notify_project_lead') {
+	  var lead = getProjectLead(task);
+	  return lead ? [lead] : [];
   }
   if (action === 'notify_specific' && actionTarget) {
     return [actionTarget];
