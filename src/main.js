@@ -6,31 +6,16 @@ import { APP_VERSION, currentLang, i18n, t } from './i18n.js';
 import { formatDate, toEpoch, fromEpoch, getISOWeek, getWeekStart } from './utils/dates.js';
 import { priorityLabel, isMilestone, recurrenceSymbol } from './utils/labels.js';
 import { CLIENT_TABLE_NAMES, defaultUiLabels } from './config.js';
+import { state } from './store.js';
 
 // =============================================================================
 // STATE
 // =============================================================================
 
-var tasks = [];
-var users = [];
-var groups = [];
-var templates = [];
-var subtasks = [];
-var dependencies = [];
-var comments = [];
-var timeEntries = [];
-var customFields = [];
-var customFieldValues = [];
-var categories = [];
-var tags = [];
-var projects = [];
-var currentProjectId = null; // null = all projects
-var currentFilterRole = null;
-var currentFilterAssignee = null; // user Name
-var currentFilterCategory = null;
-var currentFilterTag = null;
-var mineOnly = false; // "Mes projets" : projets créés par moi OU où je suis assigné
-var activeTimers = {}; // taskId -> startTime (for running timers)
+ // null = all projects
+ // user Name
+ // "Mes projets" : projets créés par moi OU où je suis assigné
+ // taskId -> startTime (for running timers)
 var kanbanGroupBy = 'status'; // 'status' | 'priority' | 'project'
 var kanbanSort = 'manual'; // 'manual' | 'alpha' | 'alpha-desc' | 'due'
 var expandedKanbanCards = {}; // taskId -> true quand la tuile est dépliée (A2)
@@ -63,9 +48,9 @@ async function syncTaskStatusChoices() {
     choiceOptions.archived = { fillColor: '#EEFFEE', textColor: '#271A79' };
     var statusCol = getColumnName('tasks', 'status');
     await grist.docApi.applyUserActions([
-      ['ModifyColumn', TASKS_TABLE, statusCol, { widgetOptions: JSON.stringify({ choices: choices, choiceOptions: choiceOptions }) }]
+      ['ModifyColumn', state.TASKS_TABLE, statusCol, { widgetOptions: JSON.stringify({ choices: choices, choiceOptions: choiceOptions }) }]
     ]);
-    taskTableColumns = null;
+    state.taskTableColumns = null;
   } catch (e) {
     console.log('syncTaskStatusChoices:', e.message);
   }
@@ -86,7 +71,7 @@ async function syncSubtaskStatusChoices() {
     // Évite les réécritures inutiles (signature en cache navigateur)
     if (typeof localStorage !== 'undefined' && localStorage.getItem('pm_subtask_status_sig') === widgetOptions) return;
     await grist.docApi.applyUserActions([
-      ['ModifyColumn', SUBTASKS_TABLE, 'Status', { widgetOptions: widgetOptions }]
+      ['ModifyColumn', state.SUBTASKS_TABLE, 'Status', { widgetOptions: widgetOptions }]
     ]);
     if (typeof localStorage !== 'undefined') localStorage.setItem('pm_subtask_status_sig', widgetOptions);
   } catch (e) {
@@ -106,44 +91,40 @@ async function saveCardDisplaySettings() {
   await saveSetting('card_display', JSON.stringify(cardDisplaySettings));
 }
 
-var raciEnabled = false;
-var automationRules = [];
-var notifyConcernedEnabled = true; // notifier les utilisateurs concernés à la création/modification
-var pmNotifications = [];
+ // notifier les utilisateurs concernés à la création/modification
 
 // PM_Settings helpers
-var _settingsCache = {};
 
 async function loadSettings() {
   try {
-    var data = await grist.docApi.fetchTable(SETTINGS_TABLE);
-    _settingsCache = {};
+    var data = await grist.docApi.fetchTable(state.SETTINGS_TABLE);
+    state._settingsCache = {};
     if (data && data.id) {
       for (var i = 0; i < data.id.length; i++) {
-        _settingsCache[data.Key[i]] = { id: data.id[i], value: data.Value[i] };
+        state._settingsCache[data.Key[i]] = { id: data.id[i], value: data.Value[i] };
       }
     }
     // Apply loaded settings
-    if (_settingsCache.kanban_statuses) {
-      try { customKanbanStatuses = JSON.parse(_settingsCache.kanban_statuses.value); } catch (e) {}
+    if (state._settingsCache.kanban_statuses) {
+      try { customKanbanStatuses = JSON.parse(state._settingsCache.kanban_statuses.value); } catch (e) {}
     }
-    if (_settingsCache.card_display) {
-      try { cardDisplaySettings = Object.assign({}, defaultCardDisplay, JSON.parse(_settingsCache.card_display.value)); } catch (e) {}
+    if (state._settingsCache.card_display) {
+      try { cardDisplaySettings = Object.assign({}, defaultCardDisplay, JSON.parse(state._settingsCache.card_display.value)); } catch (e) {}
     }
-    if (_settingsCache.raci_enabled) {
-      raciEnabled = _settingsCache.raci_enabled.value === 'true';
+    if (state._settingsCache.raci_enabled) {
+      state.raciEnabled = state._settingsCache.raci_enabled.value === 'true';
     }
-    if (_settingsCache.kanban_sort) {
-      kanbanSort = _settingsCache.kanban_sort.value || 'manual';
+    if (state._settingsCache.kanban_sort) {
+      kanbanSort = state._settingsCache.kanban_sort.value || 'manual';
     }
-    if (_settingsCache.automation_rules) {
-      try { automationRules = JSON.parse(_settingsCache.automation_rules.value); } catch (e2) { automationRules = []; }
+    if (state._settingsCache.automation_rules) {
+      try { state.automationRules = JSON.parse(state._settingsCache.automation_rules.value); } catch (e2) { state.automationRules = []; }
     }
-    if (_settingsCache.notify_concerned) {
-      notifyConcernedEnabled = _settingsCache.notify_concerned.value !== 'false';
+    if (state._settingsCache.notify_concerned) {
+      state.notifyConcernedEnabled = state._settingsCache.notify_concerned.value !== 'false';
     }
-    if (_settingsCache.ui_labels) {
-      try { uiLabels = Object.assign({}, defaultUiLabels, JSON.parse(_settingsCache.ui_labels.value)); } catch (e3) {}
+    if (state._settingsCache.ui_labels) {
+      try { state.uiLabels = Object.assign({}, defaultUiLabels, JSON.parse(state._settingsCache.ui_labels.value)); } catch (e3) {}
     }
   } catch (e) {
     console.log('[GristPM] PM_Settings not available yet');
@@ -152,13 +133,13 @@ async function loadSettings() {
 
 async function saveSetting(key, value) {
   try {
-    if (_settingsCache[key]) {
-      await grist.docApi.applyUserActions([['UpdateRecord', SETTINGS_TABLE, _settingsCache[key].id, { Value: value }]]);
-      _settingsCache[key].value = value;
+    if (state._settingsCache[key]) {
+      await grist.docApi.applyUserActions([['UpdateRecord', state.SETTINGS_TABLE, state._settingsCache[key].id, { Value: value }]]);
+      state._settingsCache[key].value = value;
     } else {
-      var result = await grist.docApi.applyUserActions([['AddRecord', SETTINGS_TABLE, null, { Key: key, Value: value }]]);
+      var result = await grist.docApi.applyUserActions([['AddRecord', state.SETTINGS_TABLE, null, { Key: key, Value: value }]]);
       var newId = (result && result.retValues && result.retValues[0]) || result;
-      _settingsCache[key] = { id: newId, value: value };
+      state._settingsCache[key] = { id: newId, value: value };
     }
   } catch (e) {
     console.error('[GristPM] Error saving setting:', e);
@@ -178,54 +159,32 @@ var calendarMode = 'month'; // 'month', 'week' or 'day'
 var calendarWeekOffset = 0; // Offset in weeks from current week
 var calendarDayOffset = 0; // Offset in days from today (day view)
 
-var TASKS_TABLE = 'PM_Tasks';
-var USERS_TABLE = 'PM_Users';
-var GROUPS_TABLE = 'PM_Groups';
-var TEMPLATES_TABLE = 'PM_Templates';
-var SUBTASKS_TABLE = 'PM_Subtasks';
-var DEPENDENCIES_TABLE = 'PM_Dependencies';
-var COMMENTS_TABLE = 'PM_Comments';
-var TIME_ENTRIES_TABLE = 'PM_TimeEntries';
-var CUSTOM_FIELDS_TABLE = 'PM_CustomFields';
-var CUSTOM_FIELD_VALUES_TABLE = 'PM_CustomFieldValues';
-var CATEGORIES_TABLE = 'PM_Categories';
-var TAGS_TABLE = 'PM_Tags';
-var PROJECTS_TABLE = 'PM_Projects';
-var CONFIG_TABLE = 'PM_Config';
-var SETTINGS_TABLE = 'PM_Settings';
-var NOTIFICATIONS_TABLE = 'PM_Notifications';
-var ACTIVITY_LOG_TABLE = 'PM_ActivityLog';
-var ATTACHMENTS_TABLE = 'PM_Attachments';
-var USER_INFO_TABLE = 'PM_UserInfo';
-var attachments = [];
-var activityLog = [];
-
 function applyFrenchTableNames(updateDefaults) {
-  TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
-  USERS_TABLE = CLIENT_TABLE_NAMES.users;
-  GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
-  TEMPLATES_TABLE = CLIENT_TABLE_NAMES.templates;
-  SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
-  DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
-  COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
-  TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
-  CUSTOM_FIELDS_TABLE = CLIENT_TABLE_NAMES.customFields;
-  CUSTOM_FIELD_VALUES_TABLE = CLIENT_TABLE_NAMES.customFieldValues;
-  CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
-  TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
-  PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
-  CONFIG_TABLE = CLIENT_TABLE_NAMES.config;
-  SETTINGS_TABLE = CLIENT_TABLE_NAMES.settings;
-  NOTIFICATIONS_TABLE = CLIENT_TABLE_NAMES.notifications;
-  ACTIVITY_LOG_TABLE = CLIENT_TABLE_NAMES.activityLog;
-  ATTACHMENTS_TABLE = CLIENT_TABLE_NAMES.attachments;
-  USER_INFO_TABLE = CLIENT_TABLE_NAMES.userInfo;
+  state.TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
+  state.USERS_TABLE = CLIENT_TABLE_NAMES.users;
+  state.GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
+  state.TEMPLATES_TABLE = CLIENT_TABLE_NAMES.templates;
+  state.SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
+  state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
+  state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
+  state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
+  state.CUSTOM_FIELDS_TABLE = CLIENT_TABLE_NAMES.customFields;
+  state.CUSTOM_FIELD_VALUES_TABLE = CLIENT_TABLE_NAMES.customFieldValues;
+  state.CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
+  state.TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
+  state.PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
+  state.CONFIG_TABLE = CLIENT_TABLE_NAMES.config;
+  state.SETTINGS_TABLE = CLIENT_TABLE_NAMES.settings;
+  state.NOTIFICATIONS_TABLE = CLIENT_TABLE_NAMES.notifications;
+  state.ACTIVITY_LOG_TABLE = CLIENT_TABLE_NAMES.activityLog;
+  state.ATTACHMENTS_TABLE = CLIENT_TABLE_NAMES.attachments;
+  state.USER_INFO_TABLE = CLIENT_TABLE_NAMES.userInfo;
   if (updateDefaults) {
-    DEFAULT_TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
-    DEFAULT_USERS_TABLE = CLIENT_TABLE_NAMES.users;
-    DEFAULT_PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
-    DEFAULT_CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
-    DEFAULT_TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
+    state.DEFAULT_TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
+    state.DEFAULT_USERS_TABLE = CLIENT_TABLE_NAMES.users;
+    state.DEFAULT_PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
+    state.DEFAULT_CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
+    state.DEFAULT_TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
   }
 }
 
@@ -233,65 +192,14 @@ function hasFrenchClientTables(tableIds) {
   return tableIds.indexOf(CLIENT_TABLE_NAMES.config) !== -1 || tableIds.indexOf(CLIENT_TABLE_NAMES.tasks) !== -1;
 }
 
-var uiLabels = Object.assign({}, defaultUiLabels);
-function uiLabel(key) { return uiLabels[key] || defaultUiLabels[key] || key; }
-async function saveUiLabels() { await saveSetting('ui_labels', JSON.stringify(uiLabels)); }
+function uiLabel(key) { return state.uiLabels[key] || defaultUiLabels[key] || key; }
+async function saveUiLabels() { await saveSetting('ui_labels', JSON.stringify(state.uiLabels)); }
 
 // Default table names — used to detect remapping: if a table var differs from
 // its default it means the user mapped it to an existing table, so we must NOT
 // auto-create the default PM_* table.
-var DEFAULT_TASKS_TABLE    = 'PM_Tasks';
-var DEFAULT_USERS_TABLE    = 'PM_Users';
-var DEFAULT_PROJECTS_TABLE = 'PM_Projects';
-var DEFAULT_CATEGORIES_TABLE = 'PM_Categories';
-var DEFAULT_TAGS_TABLE     = 'PM_Tags';
-var taskTableColumns = null;
 
 // Configuration mapping object
-var columnMapping = {
-  tasks: {
-    title: 'Title',
-    description: 'Description',
-    status: 'Status',
-    priority: 'Priority',
-    assignee: 'Assignee',
-    group: 'Group_Name',
-    startDate: 'Start_Date',
-    dueDate: 'Due_Date',
-    category: 'Category',
-    tag: 'Tag',
-    recurrence: 'Recurrence',
-    estimatedHours: 'Estimated_Hours',
-    createdAt: 'Created_At',
-    projectId: 'Project_Id'
-  },
-  users: {
-    name: 'Name',
-    email: 'Email',
-    role: 'Role',
-    group: 'Group_Name'
-  },
-  projects: {
-    name: 'Name',
-    description: 'Description',
-    color: 'Color',
-    status: 'Status',
-    lead: 'Lead'
-  },
-  categories: {
-    name: 'Name',
-    color: 'Color',
-    order: 'Order'
-  },
-  tags: {
-    name: 'Name',
-    color: 'Color'
-  }
-};
-
-var isOwner = false;
-var isEditor = false;
-var currentUserEmail = '';
 
 // =============================================================================
 // UTILS
@@ -323,7 +231,7 @@ function sanitize(str) {
 // Load column mapping from PM_Config table
 async function loadColumnMapping() {
   try {
-    var configData = await grist.docApi.fetchTable(CONFIG_TABLE);
+    var configData = await grist.docApi.fetchTable(state.CONFIG_TABLE);
     if (!configData || !configData.Config_Key) return;
     
     // Update columnMapping object from config table
@@ -338,37 +246,37 @@ async function loadColumnMapping() {
       // Parse key to determine which mapping to update
       if (key.startsWith('task_')) {
         var field = toCamel(key.slice(5));
-        if (columnMapping.tasks[field] !== undefined) {
-          columnMapping.tasks[field] = columnName;
+        if (state.columnMapping.tasks[field] !== undefined) {
+          state.columnMapping.tasks[field] = columnName;
         }
       } else if (key.startsWith('user_')) {
         var field = toCamel(key.slice(5));
-        if (columnMapping.users[field] !== undefined) {
-          columnMapping.users[field] = columnName;
+        if (state.columnMapping.users[field] !== undefined) {
+          state.columnMapping.users[field] = columnName;
         }
       } else if (key.startsWith('project_')) {
         var field = toCamel(key.slice(8));
-        if (columnMapping.projects[field] !== undefined) {
-          columnMapping.projects[field] = columnName;
+        if (state.columnMapping.projects[field] !== undefined) {
+          state.columnMapping.projects[field] = columnName;
         }
       } else if (key.startsWith('category_')) {
         var field = toCamel(key.slice(9));
-        if (columnMapping.categories[field] !== undefined) {
-          columnMapping.categories[field] = columnName;
+        if (state.columnMapping.categories[field] !== undefined) {
+          state.columnMapping.categories[field] = columnName;
         }
       } else if (key.startsWith('tag_')) {
         var field = toCamel(key.slice(4));
-        if (columnMapping.tags[field] !== undefined) {
-          columnMapping.tags[field] = columnName;
+        if (state.columnMapping.tags[field] !== undefined) {
+          state.columnMapping.tags[field] = columnName;
         }
       }
       
       // Also update table names if they differ
-      if (key === 'task_title') TASKS_TABLE = tableName;
-      else if (key === 'user_name') USERS_TABLE = tableName;
-      else if (key === 'project_name') PROJECTS_TABLE = tableName;
-      else if (key === 'category_name') CATEGORIES_TABLE = tableName;
-      else if (key === 'tag_name') TAGS_TABLE = tableName;
+      if (key === 'task_title') state.TASKS_TABLE = tableName;
+      else if (key === 'user_name') state.USERS_TABLE = tableName;
+      else if (key === 'project_name') state.PROJECTS_TABLE = tableName;
+      else if (key === 'category_name') state.CATEGORIES_TABLE = tableName;
+      else if (key === 'tag_name') state.TAGS_TABLE = tableName;
     }
   } catch (e) {
     console.log('Column mapping not loaded, using defaults:', e);
@@ -377,8 +285,8 @@ async function loadColumnMapping() {
 
 // Set field value in a record object using mapping
 function setField(record, entity, field, value) {
-  if (!record || !columnMapping[entity]) return;
-  var columnName = columnMapping[entity][field];
+  if (!record || !state.columnMapping[entity]) return;
+  var columnName = state.columnMapping[entity][field];
   if (columnName) {
     record[columnName] = value;
   }
@@ -411,54 +319,54 @@ function requireTaskTitle() {
 
 async function refreshTaskTableColumns() {
   try {
-    var data = await grist.docApi.fetchTable(TASKS_TABLE);
-    taskTableColumns = data ? Object.keys(data) : null;
+    var data = await grist.docApi.fetchTable(state.TASKS_TABLE);
+    state.taskTableColumns = data ? Object.keys(data) : null;
   } catch (e) {
-    taskTableColumns = null;
+    state.taskTableColumns = null;
   }
 }
 
 async function keepExistingTaskColumns(record) {
-  if (!taskTableColumns) await refreshTaskTableColumns();
-  if (!taskTableColumns) return record;
+  if (!state.taskTableColumns) await refreshTaskTableColumns();
+  if (!state.taskTableColumns) return record;
   var filtered = {};
   Object.keys(record).forEach(function(key) {
-    if (taskTableColumns.indexOf(key) !== -1) filtered[key] = record[key];
+    if (state.taskTableColumns.indexOf(key) !== -1) filtered[key] = record[key];
   });
   return filtered;
 }
 
 async function removeCommentsForTask(taskId) {
-  var toRemove = comments.filter(function(c) { return c.Task_Id === taskId; });
+  var toRemove = state.comments.filter(function(c) { return c.Task_Id === taskId; });
   if (!toRemove.length) return;
   await grist.docApi.applyUserActions(toRemove.map(function(c) {
-    return ['RemoveRecord', COMMENTS_TABLE, c.id];
+    return ['RemoveRecord', state.COMMENTS_TABLE, c.id];
   }));
 }
 
 async function removeSubtasksForTask(taskId) {
-  var toRemove = subtasks.filter(function(st) { return st.Parent_Task_Id === taskId; });
+  var toRemove = state.subtasks.filter(function(st) { return st.Parent_Task_Id === taskId; });
   if (!toRemove.length) return;
   await grist.docApi.applyUserActions(toRemove.map(function(st) {
-    return ['RemoveRecord', SUBTASKS_TABLE, st.id];
+    return ['RemoveRecord', state.SUBTASKS_TABLE, st.id];
   }));
 }
 
 async function removeAttachmentsForTask(taskId) {
-  var toRemove = attachments.filter(function(attachment) { return attachment.Task_Id === taskId; });
+  var toRemove = state.attachments.filter(function(attachment) { return attachment.Task_Id === taskId; });
   if (!toRemove.length) return;
   await grist.docApi.applyUserActions(toRemove.map(function(attachment) {
-    return ['RemoveRecord', ATTACHMENTS_TABLE, attachment.id];
+    return ['RemoveRecord', state.ATTACHMENTS_TABLE, attachment.id];
   }));
 }
 
 async function removeTimeEntriesForTask(taskId) {
-  var toRemove = timeEntries.filter(function(entry) { return entry.Task_Id === taskId; });
+  var toRemove = state.timeEntries.filter(function(entry) { return entry.Task_Id === taskId; });
   if (!toRemove.length) return;
   await grist.docApi.applyUserActions(toRemove.map(function(entry) {
-    return ['RemoveRecord', TIME_ENTRIES_TABLE, entry.id];
+    return ['RemoveRecord', state.TIME_ENTRIES_TABLE, entry.id];
   }));
-  delete activeTimers[taskId];
+  delete state.activeTimers[taskId];
 }
 
 async function removeDraftChildren(taskId) {
@@ -492,14 +400,14 @@ async function saveTaskFormSilently(taskId) {
   setField(record, 'tasks', 'estimatedHours', getEstimatedHoursInput());
   var tagEl = document.getElementById('task-tag');
   if (tagEl) setField(record, 'tasks', 'tag', tagEl.value.trim());
-  if (raciEnabled && TASKS_TABLE === DEFAULT_TASKS_TABLE) {
+  if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
     record.Accountable = editAccountable.join(', ');
     record.Consulted = editConsulted.join(', ');
     record.Informed = editInformed.join(', ');
   }
   record = await keepExistingTaskColumns(record);
   await grist.docApi.applyUserActions([
-    ['UpdateRecord', TASKS_TABLE, taskId, record]
+    ['UpdateRecord', state.TASKS_TABLE, taskId, record]
   ]);
   return true;
 }
@@ -550,8 +458,8 @@ function restoreTaskFormState(state) {
 
 // Get column name for a field using mapping
 function getColumnName(entity, field) {
-  if (!columnMapping[entity]) return field;
-  return columnMapping[entity][field] || field;
+  if (!state.columnMapping[entity]) return field;
+  return state.columnMapping[entity][field] || field;
 }
 
 // ChoiceList-safe role helpers
@@ -585,9 +493,9 @@ function userRoleDisplay(u) {
 }
 
 function getCurrentUserRecord() {
-  var em = (currentUserEmail || '').toLowerCase().trim();
+  var em = (state.currentUserEmail || '').toLowerCase().trim();
   if (!em) return null;
-  return users.find(function(u) {
+  return state.users.find(function(u) {
     return (u.Email || '').toLowerCase().trim() === em;
   }) || null;
 }
@@ -604,7 +512,7 @@ function hasCurrentBusinessRole(role) {
 function canSeeAllProjects() {
   var roles = getCurrentBusinessRoles();
   if (roles.length > 0) return roles.indexOf('admin') !== -1;
-  return isOwner;
+  return state.isOwner;
 }
 
 function shouldLimitToMyProjects() {
@@ -614,12 +522,12 @@ function shouldLimitToMyProjects() {
 }
 
 function canEditWorkItems() {
-  return (isOwner || isEditor) && !hasCurrentBusinessRole('viewer');
+  return (state.isOwner || state.isEditor) && !hasCurrentBusinessRole('viewer');
 }
 
 function taskConcernsCurrentUser(task) {
   var mine = myAssigneeValue();
-  var em = (currentUserEmail || '').toLowerCase().trim();
+  var em = (state.currentUserEmail || '').toLowerCase().trim();
   if (!task) return false;
   if (mine) {
     var assignees = (task.Assignee || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
@@ -631,12 +539,12 @@ function taskConcernsCurrentUser(task) {
 
 function applyRoleVisibilityDefaults() {
   if (shouldLimitToMyProjects()) {
-    mineOnly = true;
-    currentFilterRole = null;
-    currentFilterAssignee = null;
-    if (currentProjectId) {
+    state.mineOnly = true;
+    state.currentFilterRole = null;
+    state.currentFilterAssignee = null;
+    if (state.currentProjectId) {
       var myIds = myProjectIdSet();
-      if (!myIds[currentProjectId]) currentProjectId = null;
+      if (!myIds[state.currentProjectId]) state.currentProjectId = null;
     }
   }
 }
@@ -656,7 +564,7 @@ function isOverdue(task) {
 
 function getTaskSubtasks(taskId) {
   // D1 : tri par échéance croissante (sans date en dernier), Order en départage
-  return subtasks.filter(function(st) { return st.Parent_Task_Id === taskId; })
+  return state.subtasks.filter(function(st) { return st.Parent_Task_Id === taskId; })
     .sort(function(a, b) {
       var da = a.Due_Date || null;
       var db = b.Due_Date || null;
@@ -683,17 +591,17 @@ function getTaskProgress(task) {
 
 function getTaskDependencies(taskId) {
   // Returns tasks that this task depends on (blockers)
-  return dependencies.filter(function(d) { return d.Task_Id === taskId; })
+  return state.dependencies.filter(function(d) { return d.Task_Id === taskId; })
     .map(function(d) {
-      return tasks.find(function(t) { return t.id === d.Depends_On_Task_Id; });
+      return state.tasks.find(function(t) { return t.id === d.Depends_On_Task_Id; });
     }).filter(Boolean);
 }
 
 function getTasksDependingOn(taskId) {
   // Returns tasks that depend on this task (blocked by this)
-  return dependencies.filter(function(d) { return d.Depends_On_Task_Id === taskId; })
+  return state.dependencies.filter(function(d) { return d.Depends_On_Task_Id === taskId; })
     .map(function(d) {
-      return tasks.find(function(t) { return t.id === d.Task_Id; });
+      return state.tasks.find(function(t) { return t.id === d.Task_Id; });
     }).filter(Boolean);
 }
 
@@ -920,7 +828,7 @@ function closePromptModal() {
 }
 
 function getTaskComments(taskId) {
-  return comments.filter(function(c) { return c.Task_Id === taskId; })
+  return state.comments.filter(function(c) { return c.Task_Id === taskId; })
     .sort(function(a, b) { return (b.Created_At || 0) - (a.Created_At || 0); });
 }
 
@@ -935,7 +843,7 @@ function formatTimeAgo(timestamp) {
 }
 
 function getTaskTimeEntries(taskId) {
-  return timeEntries.filter(function(te) { return te.Task_Id === taskId; })
+  return state.timeEntries.filter(function(te) { return te.Task_Id === taskId; })
     .sort(function(a, b) { return (b.Start_Time || 0) - (a.Start_Time || 0); });
 }
 
@@ -946,7 +854,7 @@ function getTaskTimeEntries(taskId) {
 var ATTACH_MAX_BYTES = 5 * 1024 * 1024; // limite pratique par fichier (~5 Mo)
 
 function getTaskAttachments(taskId) {
-  return attachments.filter(function(a) { return a.Task_Id === taskId; })
+  return state.attachments.filter(function(a) { return a.Task_Id === taskId; })
     .sort(function(a, b) { return (a.Created_At || 0) - (b.Created_At || 0); });
 }
 
@@ -1015,7 +923,7 @@ async function uploadTaskAttachments(taskId, fileList) {
       var approxBytes = Math.round(dataUrl.length * 0.75);
       if (approxBytes > ATTACH_MAX_BYTES) { skipped.push(file.name + ' (' + formatFileSize(approxBytes) + ')'); continue; }
       await grist.docApi.applyUserActions([
-        ['AddRecord', ATTACHMENTS_TABLE, null, {
+        ['AddRecord', state.ATTACHMENTS_TABLE, null, {
           Task_Id: taskId,
           File_Name: file.name,
           File_Type: file.type || '',
@@ -1040,7 +948,7 @@ async function uploadTaskAttachments(taskId, fileList) {
 }
 
 function _findAtt(recordId) {
-  return attachments.find(function(a) { return a.id === recordId; });
+  return state.attachments.find(function(a) { return a.id === recordId; });
 }
 
 function downloadAttachment(recordId) {
@@ -1061,7 +969,7 @@ async function deleteAttachment(recordId, taskId) {
   );
   if (!confirmed) return;
   try {
-    await grist.docApi.applyUserActions([['RemoveRecord', ATTACHMENTS_TABLE, recordId]]);
+    await grist.docApi.applyUserActions([['RemoveRecord', state.ATTACHMENTS_TABLE, recordId]]);
     await loadAllData();
     renderAttachmentsSection(taskId);
     if (typeof refreshAllViews === 'function') refreshAllViews();
@@ -1116,7 +1024,7 @@ function renderAttachmentsSection(taskId) {
       html += '<span class="attach-name" onclick="viewAttachment(' + att.id + ')" title="' + (currentLang === 'fr' ? 'Voir' : 'View') + '">' + sanitize(att.File_Name) + '</span>';
       html += '<span class="attach-size">' + formatFileSize(att.File_Size) + '</span>';
       html += '<button class="attach-btn" onclick="downloadAttachment(' + att.id + ')" title="' + (currentLang === 'fr' ? 'Télécharger' : 'Download') + '">⬇️</button>';
-      if (isOwner) html += '<button class="attach-btn" onclick="deleteAttachment(' + att.id + ', ' + taskId + ')" title="' + t('delete') + '">🗑️</button>';
+      if (state.isOwner) html += '<button class="attach-btn" onclick="deleteAttachment(' + att.id + ', ' + taskId + ')" title="' + t('delete') + '">🗑️</button>';
       html += '</div>';
     });
   }
@@ -1130,8 +1038,8 @@ function getTaskTotalTime(taskId) {
     total += entries[i].Duration || 0;
   }
   // Add running timer if active
-  if (activeTimers[taskId]) {
-    total += Math.floor(Date.now() / 1000) - activeTimers[taskId];
+  if (state.activeTimers[taskId]) {
+    total += Math.floor(Date.now() / 1000) - state.activeTimers[taskId];
   }
   return total;
 }
@@ -1157,7 +1065,7 @@ function formatDurationShort(seconds) {
 }
 
 function getTaskCustomFieldValue(taskId, fieldId) {
-  var cfv = customFieldValues.find(function(v) {
+  var cfv = state.customFieldValues.find(function(v) {
     return v.Task_Id === taskId && v.Field_Id === fieldId;
   });
   return cfv ? cfv.Value : '';
@@ -1165,7 +1073,7 @@ function getTaskCustomFieldValue(taskId, fieldId) {
 
 // B3 : concatène toutes les valeurs de champs personnalisés d'une tâche (pour la recherche)
 function getTaskCustomFieldsText(taskId) {
-  return customFieldValues
+  return state.customFieldValues
     .filter(function(v) { return v.Task_Id === taskId && v.Value; })
     .map(function(v) { return String(v.Value); })
     .join(' ');
@@ -1173,13 +1081,13 @@ function getTaskCustomFieldsText(taskId) {
 
 function isSubtaskBlocked(subtask) {
   if (!subtask.Blocked_By_Subtask_Id) return false;
-  var blocker = subtasks.find(function(st) { return st.id === subtask.Blocked_By_Subtask_Id; });
+  var blocker = state.subtasks.find(function(st) { return st.id === subtask.Blocked_By_Subtask_Id; });
   return blocker && !blocker.Completed;
 }
 
 function getSubtaskBlocker(subtask) {
   if (!subtask.Blocked_By_Subtask_Id) return null;
-  return subtasks.find(function(st) { return st.id === subtask.Blocked_By_Subtask_Id; });
+  return state.subtasks.find(function(st) { return st.id === subtask.Blocked_By_Subtask_Id; });
 }
 
 function getCustomFieldTypeLabel(type) {
@@ -1196,7 +1104,7 @@ function getCustomFieldTypeLabel(type) {
 function getUserDisplayName(emailOrName) {
   if (!emailOrName) return '';
   // Try to find user by email
-  var user = users.find(function(u) { 
+  var user = state.users.find(function(u) { 
     return u.Email === emailOrName || u.Name === emailOrName; 
   });
   if (user && user.Name) return user.Name;
@@ -1251,7 +1159,7 @@ function restoreActiveTab() {
 
 async function getRawSettingValue(key) {
   try {
-    var data = await grist.docApi.fetchTable(SETTINGS_TABLE);
+    var data = await grist.docApi.fetchTable(state.SETTINGS_TABLE);
     if (!data || !data.Key) return null;
     for (var i = 0; i < data.Key.length; i++) {
       if (data.Key[i] === key) return data.Value[i];
@@ -1262,33 +1170,33 @@ async function getRawSettingValue(key) {
 
 function buildDefaultConfigRecords() {
   var defaultConfig = [
-    ['task_title', TASKS_TABLE, 'Title', 'Titre', true, 'Title'],
-    ['task_description', TASKS_TABLE, 'Description', 'Description', false, 'Description'],
-    ['task_status', TASKS_TABLE, 'Status', 'Statut', true, 'Status'],
-    ['task_priority', TASKS_TABLE, 'Priority', 'Priorité', true, 'Priority'],
-    ['task_assignee', TASKS_TABLE, 'Assignee', 'Assigné à', false, 'Assignee'],
-    ['task_group', TASKS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
-    ['task_start_date', TASKS_TABLE, 'Start_Date', 'Date début', false, 'Start_Date'],
-    ['task_due_date', TASKS_TABLE, 'Due_Date', 'Échéance', false, 'Due_Date'],
-    ['task_category', TASKS_TABLE, 'Category', 'Catégorie', false, 'Category'],
-    ['task_tag', TASKS_TABLE, 'Tag', 'Tag', false, 'Tag'],
-    ['task_recurrence', TASKS_TABLE, 'Recurrence', 'Récurrence', false, 'Recurrence'],
-    ['task_estimated_hours', TASKS_TABLE, 'Estimated_Hours', 'Heures estimées', false, 'Estimated_Hours'],
-    ['task_created_at', TASKS_TABLE, 'Created_At', 'Créé le', false, 'Created_At'],
-    ['task_project_id', PROJECTS_TABLE, 'Project_Id', 'Projet', false, 'Project_Id'],
-    ['user_name', USERS_TABLE, 'Name', 'Nom', true, 'Name'],
-    ['user_email', USERS_TABLE, 'Email', 'Email', true, 'Email'],
-    ['user_role', USERS_TABLE, 'Role', 'Rôle', false, 'Role'],
-    ['user_group', USERS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
-    ['project_name', PROJECTS_TABLE, 'Name', 'Nom', true, 'Name'],
-    ['project_description', PROJECTS_TABLE, 'Description', 'Description', false, 'Description'],
-    ['project_color', PROJECTS_TABLE, 'Color', 'Couleur', false, 'Color'],
-    ['project_status', PROJECTS_TABLE, 'Status', 'Statut', false, 'Status'],
-    ['category_name', CATEGORIES_TABLE, 'Name', 'Nom', true, 'Name'],
-    ['category_color', CATEGORIES_TABLE, 'Color', 'Couleur', false, 'Color'],
-    ['category_order', CATEGORIES_TABLE, 'Order', 'Ordre', false, 'Order'],
-    ['tag_name', TAGS_TABLE, 'Name', 'Nom', true, 'Name'],
-    ['tag_color', TAGS_TABLE, 'Color', 'Couleur', false, 'Color']
+    ['task_title', state.TASKS_TABLE, 'Title', 'Titre', true, 'Title'],
+    ['task_description', state.TASKS_TABLE, 'Description', 'Description', false, 'Description'],
+    ['task_status', state.TASKS_TABLE, 'Status', 'Statut', true, 'Status'],
+    ['task_priority', state.TASKS_TABLE, 'Priority', 'Priorité', true, 'Priority'],
+    ['task_assignee', state.TASKS_TABLE, 'Assignee', 'Assigné à', false, 'Assignee'],
+    ['task_group', state.TASKS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
+    ['task_start_date', state.TASKS_TABLE, 'Start_Date', 'Date début', false, 'Start_Date'],
+    ['task_due_date', state.TASKS_TABLE, 'Due_Date', 'Échéance', false, 'Due_Date'],
+    ['task_category', state.TASKS_TABLE, 'Category', 'Catégorie', false, 'Category'],
+    ['task_tag', state.TASKS_TABLE, 'Tag', 'Tag', false, 'Tag'],
+    ['task_recurrence', state.TASKS_TABLE, 'Recurrence', 'Récurrence', false, 'Recurrence'],
+    ['task_estimated_hours', state.TASKS_TABLE, 'Estimated_Hours', 'Heures estimées', false, 'Estimated_Hours'],
+    ['task_created_at', state.TASKS_TABLE, 'Created_At', 'Créé le', false, 'Created_At'],
+    ['task_project_id', state.PROJECTS_TABLE, 'Project_Id', 'Projet', false, 'Project_Id'],
+    ['user_name', state.USERS_TABLE, 'Name', 'Nom', true, 'Name'],
+    ['user_email', state.USERS_TABLE, 'Email', 'Email', true, 'Email'],
+    ['user_role', state.USERS_TABLE, 'Role', 'Rôle', false, 'Role'],
+    ['user_group', state.USERS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
+    ['project_name', state.PROJECTS_TABLE, 'Name', 'Nom', true, 'Name'],
+    ['project_description', state.PROJECTS_TABLE, 'Description', 'Description', false, 'Description'],
+    ['project_color', state.PROJECTS_TABLE, 'Color', 'Couleur', false, 'Color'],
+    ['project_status', state.PROJECTS_TABLE, 'Status', 'Statut', false, 'Status'],
+    ['category_name', state.CATEGORIES_TABLE, 'Name', 'Nom', true, 'Name'],
+    ['category_color', state.CATEGORIES_TABLE, 'Color', 'Couleur', false, 'Color'],
+    ['category_order', state.CATEGORIES_TABLE, 'Order', 'Ordre', false, 'Order'],
+    ['tag_name', state.TAGS_TABLE, 'Name', 'Nom', true, 'Name'],
+    ['tag_color', state.TAGS_TABLE, 'Color', 'Couleur', false, 'Color']
   ];
   return defaultConfig.map(function(row) {
     return { Config_Key: row[0], Table_Name: row[1], Column_Name: row[2], Display_Label: row[3], Required: row[4], Default_Value: row[5] };
@@ -1297,9 +1205,9 @@ function buildDefaultConfigRecords() {
 
 async function ensureConfigAndSettingsTables(existingTables) {
   existingTables = existingTables || await grist.docApi.listTables();
-  if (existingTables.indexOf(CONFIG_TABLE) === -1) {
+  if (existingTables.indexOf(state.CONFIG_TABLE) === -1) {
     await grist.docApi.applyUserActions([
-      ['AddTable', CONFIG_TABLE, [
+      ['AddTable', state.CONFIG_TABLE, [
         { id: 'Config_Key', type: 'Text' },
         { id: 'Table_Name', type: 'Text' },
         { id: 'Column_Name', type: 'Text' },
@@ -1310,13 +1218,13 @@ async function ensureConfigAndSettingsTables(existingTables) {
     ]);
     var configRecords = buildDefaultConfigRecords();
     await grist.docApi.applyUserActions([
-      ['BulkAddRecord', CONFIG_TABLE, configRecords.map(function() { return null; }), configRecords]
+      ['BulkAddRecord', state.CONFIG_TABLE, configRecords.map(function() { return null; }), configRecords]
     ]);
   }
   existingTables = await grist.docApi.listTables();
-  if (existingTables.indexOf(SETTINGS_TABLE) === -1) {
+  if (existingTables.indexOf(state.SETTINGS_TABLE) === -1) {
     await grist.docApi.applyUserActions([
-      ['AddTable', SETTINGS_TABLE, [
+      ['AddTable', state.SETTINGS_TABLE, [
         { id: 'Key', type: 'Text' },
         { id: 'Value', type: 'Text' }
       ]]
@@ -1335,7 +1243,7 @@ async function tableHasColumns(tableId, requiredColumns) {
 }
 
 async function hasValidMappedTaskTable(existingTables) {
-  var configTables = [CONFIG_TABLE, CLIENT_TABLE_NAMES.config, 'PM_Config'];
+  var configTables = [state.CONFIG_TABLE, CLIENT_TABLE_NAMES.config, 'PM_Config'];
   for (var c = 0; c < configTables.length; c++) {
     var configTable = configTables[c];
     if (existingTables.indexOf(configTable) === -1) continue;
@@ -1362,14 +1270,14 @@ async function hasValidMappedTaskTable(existingTables) {
 }
 
 async function getInstallModeFromExistingSettings(existingTables) {
-  var settingsTables = [SETTINGS_TABLE, CLIENT_TABLE_NAMES.settings, 'PM_Settings'];
+  var settingsTables = [state.SETTINGS_TABLE, CLIENT_TABLE_NAMES.settings, 'PM_Settings'];
   for (var i = 0; i < settingsTables.length; i++) {
     var settingsTable = settingsTables[i];
     if (existingTables.indexOf(settingsTable) === -1) continue;
-    var previousSettingsTable = SETTINGS_TABLE;
-    SETTINGS_TABLE = settingsTable;
+    var previousSettingsTable = state.SETTINGS_TABLE;
+    state.SETTINGS_TABLE = settingsTable;
     var installMode = await getRawSettingValue('install_mode');
-    SETTINGS_TABLE = previousSettingsTable;
+    state.SETTINGS_TABLE = previousSettingsTable;
     if (installMode) return installMode;
   }
   return '';
@@ -1498,15 +1406,15 @@ async function ensureTables() {
     // If PM_Config already exists load the mapping NOW so table vars reflect any
     // remapping the user has configured.  This prevents re-creating PM_Users etc.
     // when they have been remapped to existing user-owned tables.
-    if (existingTables.indexOf(CONFIG_TABLE) !== -1) {
+    if (existingTables.indexOf(state.CONFIG_TABLE) !== -1) {
       await loadColumnMapping();
     }
 
     // Only auto-create a table when it (a) still has its default PM_* name
     // (meaning it has not been remapped) AND (b) does not yet exist.
-    if (!skipAutoCreateWorkTables && (TASKS_TABLE === DEFAULT_TASKS_TABLE && existingTables.indexOf(TASKS_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE && existingTables.indexOf(state.TASKS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', TASKS_TABLE, [
+        ['AddTable', state.TASKS_TABLE, [
           { id: 'Title', type: 'Text' },
           { id: 'Description', type: 'Text' },
           { id: 'Status', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['todo', 'progress', 'done', 'archived'] }) },
@@ -1524,9 +1432,9 @@ async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (USERS_TABLE === DEFAULT_USERS_TABLE && existingTables.indexOf(USERS_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (state.USERS_TABLE === state.DEFAULT_USERS_TABLE && existingTables.indexOf(state.USERS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', USERS_TABLE, [
+        ['AddTable', state.USERS_TABLE, [
           { id: 'Name', type: 'Text' },
           { id: 'Email', type: 'Text' },
           { id: 'Role', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['admin', 'member', 'viewer'] }) },
@@ -1535,18 +1443,18 @@ async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(GROUPS_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.GROUPS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', GROUPS_TABLE, [
+        ['AddTable', state.GROUPS_TABLE, [
           { id: 'Name', type: 'Text' },
           { id: 'Description', type: 'Text' }
         ]]
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(TEMPLATES_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.TEMPLATES_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', TEMPLATES_TABLE, [
+        ['AddTable', state.TEMPLATES_TABLE, [
           { id: 'Title', type: 'Text' },
           { id: 'Description', type: 'Text' },
           { id: 'Priority', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['high', 'medium', 'low'] }) },
@@ -1561,9 +1469,9 @@ async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(SUBTASKS_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.SUBTASKS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', SUBTASKS_TABLE, [
+        ['AddTable', state.SUBTASKS_TABLE, [
           { id: 'Parent_Task_Id', type: 'Int' },
           { id: 'Title', type: 'Text' },
           { id: 'Description', type: 'Text' },
@@ -1579,9 +1487,9 @@ async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(DEPENDENCIES_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.DEPENDENCIES_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', DEPENDENCIES_TABLE, [
+        ['AddTable', state.DEPENDENCIES_TABLE, [
           { id: 'Task_Id', type: 'Int' },
           { id: 'Depends_On_Task_Id', type: 'Int' },
           { id: 'Created_At', type: 'Date' }
@@ -1589,9 +1497,9 @@ async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(COMMENTS_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.COMMENTS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', COMMENTS_TABLE, [
+        ['AddTable', state.COMMENTS_TABLE, [
           { id: 'Task_Id', type: 'Int' },
           { id: 'Author', type: 'Text' },
           { id: 'Content', type: 'Text' },
@@ -1600,9 +1508,9 @@ async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(TIME_ENTRIES_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.TIME_ENTRIES_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', TIME_ENTRIES_TABLE, [
+        ['AddTable', state.TIME_ENTRIES_TABLE, [
           { id: 'Task_Id', type: 'Int' },
           { id: 'User', type: 'Text' },
           { id: 'Start_Time', type: 'Date' },
@@ -1613,9 +1521,9 @@ async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(CUSTOM_FIELDS_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.CUSTOM_FIELDS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', CUSTOM_FIELDS_TABLE, [
+        ['AddTable', state.CUSTOM_FIELDS_TABLE, [
           { id: 'Name', type: 'Text' },
           { id: 'Type', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['text', 'number', 'date', 'checkbox', 'select'] }) },
           { id: 'Options', type: 'Text' },
@@ -1625,9 +1533,9 @@ async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(CUSTOM_FIELD_VALUES_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.CUSTOM_FIELD_VALUES_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', CUSTOM_FIELD_VALUES_TABLE, [
+        ['AddTable', state.CUSTOM_FIELD_VALUES_TABLE, [
           { id: 'Task_Id', type: 'Int' },
           { id: 'Field_Id', type: 'Int' },
           { id: 'Value', type: 'Text' }
@@ -1635,9 +1543,9 @@ async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (CATEGORIES_TABLE === DEFAULT_CATEGORIES_TABLE && existingTables.indexOf(CATEGORIES_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (state.CATEGORIES_TABLE === state.DEFAULT_CATEGORIES_TABLE && existingTables.indexOf(state.CATEGORIES_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', CATEGORIES_TABLE, [
+        ['AddTable', state.CATEGORIES_TABLE, [
           { id: 'Name', type: 'Text' },
           { id: 'Color', type: 'Text' },
           { id: 'Order', type: 'Int' }
@@ -1645,9 +1553,9 @@ async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (TAGS_TABLE === DEFAULT_TAGS_TABLE && existingTables.indexOf(TAGS_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (state.TAGS_TABLE === state.DEFAULT_TAGS_TABLE && existingTables.indexOf(state.TAGS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', TAGS_TABLE, [
+        ['AddTable', state.TAGS_TABLE, [
           { id: 'Name', type: 'Text' },
           { id: 'Color', type: 'Text' }
         ]]
@@ -1655,9 +1563,9 @@ async function ensureTables() {
     }
 
     // D2 : table des pièces jointes (base64 dans une colonne texte File_Data)
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(ATTACHMENTS_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.ATTACHMENTS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', ATTACHMENTS_TABLE, [
+        ['AddTable', state.ATTACHMENTS_TABLE, [
           { id: 'Task_Id', type: 'Int' },
           { id: 'File_Name', type: 'Text' },
           { id: 'File_Type', type: 'Text' },
@@ -1669,18 +1577,18 @@ async function ensureTables() {
     } else {
       // Migration : ajouter File_Data si la table existe déjà (ancienne version avec colonne Attachments)
       try {
-        var attCols = Object.keys(await grist.docApi.fetchTable(ATTACHMENTS_TABLE));
+        var attCols = Object.keys(await grist.docApi.fetchTable(state.ATTACHMENTS_TABLE));
         if (attCols.indexOf('File_Data') === -1) {
-          await grist.docApi.applyUserActions([['AddColumn', ATTACHMENTS_TABLE, 'File_Data', { type: 'Text' }]]);
+          await grist.docApi.applyUserActions([['AddColumn', state.ATTACHMENTS_TABLE, 'File_Data', { type: 'Text' }]]);
         }
       } catch (mig) {
         console.log('[GristPM] Migration File_Data ignorée :', mig.message);
       }
     }
 
-    if (!skipAutoCreateWorkTables && (PROJECTS_TABLE === DEFAULT_PROJECTS_TABLE && existingTables.indexOf(PROJECTS_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (state.PROJECTS_TABLE === state.DEFAULT_PROJECTS_TABLE && existingTables.indexOf(state.PROJECTS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', PROJECTS_TABLE, [
+        ['AddTable', state.PROJECTS_TABLE, [
           { id: 'Name', type: 'Text' },
           { id: 'Description', type: 'Text' },
           { id: 'Color', type: 'Text' },
@@ -1697,16 +1605,16 @@ async function ensureTables() {
     // Migration Project_Id : s'exécute APRÈS la création de la table des projets.
     // Séparé du bloc "existingTables" pour couvrir aussi les installations fraîches.
     try {
-      var taskColsCheck = Object.keys(await grist.docApi.fetchTable(TASKS_TABLE));
+      var taskColsCheck = Object.keys(await grist.docApi.fetchTable(state.TASKS_TABLE));
       if (taskColsCheck.indexOf('Project_Id') === -1) {
         await grist.docApi.applyUserActions([
-          ['AddColumn', TASKS_TABLE, 'Project_Id', { type: 'Ref:' + PROJECTS_TABLE }]
+          ['AddColumn', state.TASKS_TABLE, 'Project_Id', { type: 'Ref:' + state.PROJECTS_TABLE }]
         ]);
-        console.log('[GristPM] Project_Id ajouté à ' + TASKS_TABLE);
+        console.log('[GristPM] Project_Id ajouté à ' + state.TASKS_TABLE);
       } else {
         // Répare notamment les documents français créés avec Ref:PM_Projects.
         await grist.docApi.applyUserActions([
-          ['ModifyColumn', TASKS_TABLE, 'Project_Id', { type: 'Ref:' + PROJECTS_TABLE }]
+          ['ModifyColumn', state.TASKS_TABLE, 'Project_Id', { type: 'Ref:' + state.PROJECTS_TABLE }]
         ]);
       }
     } catch (e) {
@@ -1715,11 +1623,11 @@ async function ensureTables() {
 
     // Migration Group_Name / Tag / Recurrence sur PM_Templates
     try {
-      var tplCols = Object.keys(await grist.docApi.fetchTable(TEMPLATES_TABLE));
+      var tplCols = Object.keys(await grist.docApi.fetchTable(state.TEMPLATES_TABLE));
       var tplMig = [];
-      if (tplCols.indexOf('Group_Name') === -1) tplMig.push(['AddColumn', TEMPLATES_TABLE, 'Group_Name', { type: 'Text' }]);
-      if (tplCols.indexOf('Tag') === -1) tplMig.push(['AddColumn', TEMPLATES_TABLE, 'Tag', { type: 'Text' }]);
-      if (tplCols.indexOf('Recurrence') === -1) tplMig.push(['AddColumn', TEMPLATES_TABLE, 'Recurrence', { type: 'Text' }]);
+      if (tplCols.indexOf('Group_Name') === -1) tplMig.push(['AddColumn', state.TEMPLATES_TABLE, 'Group_Name', { type: 'Text' }]);
+      if (tplCols.indexOf('Tag') === -1) tplMig.push(['AddColumn', state.TEMPLATES_TABLE, 'Tag', { type: 'Text' }]);
+      if (tplCols.indexOf('Recurrence') === -1) tplMig.push(['AddColumn', state.TEMPLATES_TABLE, 'Recurrence', { type: 'Text' }]);
       if (tplMig.length) { await grist.docApi.applyUserActions(tplMig); console.log('[GristPM] Colonnes templates enrichies'); }
     } catch (e) {
       console.log('[GristPM] Migration templates ignorée :', e.message);
@@ -1727,11 +1635,11 @@ async function ensureTables() {
 
     // Migration CreatedBy / CreatedAt sur PM_Projects (créateur du projet)
     try {
-      var projCols = Object.keys(await grist.docApi.fetchTable(PROJECTS_TABLE));
+      var projCols = Object.keys(await grist.docApi.fetchTable(state.PROJECTS_TABLE));
       var projMig = [];
-      if (projCols.indexOf('CreatedBy') === -1) projMig.push(['AddColumn', PROJECTS_TABLE, 'CreatedBy', { type: 'Text' }]);
-      if (projCols.indexOf('CreatedAt') === -1) projMig.push(['AddColumn', PROJECTS_TABLE, 'CreatedAt', { type: 'Text' }]);
-      if (projCols.indexOf('Lead') === -1) projMig.push(['AddColumn', PROJECTS_TABLE, 'Lead', { type: 'Text' }]);
+      if (projCols.indexOf('CreatedBy') === -1) projMig.push(['AddColumn', state.PROJECTS_TABLE, 'CreatedBy', { type: 'Text' }]);
+      if (projCols.indexOf('CreatedAt') === -1) projMig.push(['AddColumn', state.PROJECTS_TABLE, 'CreatedAt', { type: 'Text' }]);
+      if (projCols.indexOf('Lead') === -1) projMig.push(['AddColumn', state.PROJECTS_TABLE, 'Lead', { type: 'Text' }]);
       if (projMig.length) { await grist.docApi.applyUserActions(projMig); console.log('[GristPM] CreatedBy/CreatedAt ajoutés à PM_Projects'); }
     } catch (e) {
       console.log('[GristPM] Migration CreatedBy ignorée :', e.message);
@@ -1740,9 +1648,9 @@ async function ensureTables() {
     // Create configuration/settings tables for column mapping configuration
     await ensureConfigAndSettingsTables(existingTables);
     existingTables = await grist.docApi.listTables();
-    if (false && existingTables.indexOf(CONFIG_TABLE) === -1) {
+    if (false && existingTables.indexOf(state.CONFIG_TABLE) === -1) {
       await grist.docApi.applyUserActions([
-        ['AddTable', CONFIG_TABLE, [
+        ['AddTable', state.CONFIG_TABLE, [
           { id: 'Config_Key', type: 'Text' },
           { id: 'Table_Name', type: 'Text' },
           { id: 'Column_Name', type: 'Text' },
@@ -1755,37 +1663,37 @@ async function ensureTables() {
       // Initialize with default mapping
       var defaultConfig = [
         // Tasks mapping
-        ['task_title', TASKS_TABLE, 'Title', 'Titre', true, 'Title'],
-        ['task_description', TASKS_TABLE, 'Description', 'Description', false, 'Description'],
-        ['task_status', TASKS_TABLE, 'Status', 'Statut', true, 'Status'],
-        ['task_priority', TASKS_TABLE, 'Priority', 'Priorité', true, 'Priority'],
-        ['task_assignee', TASKS_TABLE, 'Assignee', 'Assigné à', false, 'Assignee'],
-        ['task_group', TASKS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
-        ['task_start_date', TASKS_TABLE, 'Start_Date', 'Date début', false, 'Start_Date'],
-        ['task_due_date', TASKS_TABLE, 'Due_Date', 'Échéance', false, 'Due_Date'],
-        ['task_category', TASKS_TABLE, 'Category', 'Catégorie', false, 'Category'],
-        ['task_tag', TASKS_TABLE, 'Tag', 'Tag', false, 'Tag'],
-        ['task_recurrence', TASKS_TABLE, 'Recurrence', 'Récurrence', false, 'Recurrence'],
-        ['task_estimated_hours', TASKS_TABLE, 'Estimated_Hours', 'Heures estimées', false, 'Estimated_Hours'],
-        ['task_created_at', TASKS_TABLE, 'Created_At', 'Créé le', false, 'Created_At'],
-        ['task_project_id', TASKS_TABLE, 'Project_Id', 'Projet', false, 'Project_Id'],
+        ['task_title', state.TASKS_TABLE, 'Title', 'Titre', true, 'Title'],
+        ['task_description', state.TASKS_TABLE, 'Description', 'Description', false, 'Description'],
+        ['task_status', state.TASKS_TABLE, 'Status', 'Statut', true, 'Status'],
+        ['task_priority', state.TASKS_TABLE, 'Priority', 'Priorité', true, 'Priority'],
+        ['task_assignee', state.TASKS_TABLE, 'Assignee', 'Assigné à', false, 'Assignee'],
+        ['task_group', state.TASKS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
+        ['task_start_date', state.TASKS_TABLE, 'Start_Date', 'Date début', false, 'Start_Date'],
+        ['task_due_date', state.TASKS_TABLE, 'Due_Date', 'Échéance', false, 'Due_Date'],
+        ['task_category', state.TASKS_TABLE, 'Category', 'Catégorie', false, 'Category'],
+        ['task_tag', state.TASKS_TABLE, 'Tag', 'Tag', false, 'Tag'],
+        ['task_recurrence', state.TASKS_TABLE, 'Recurrence', 'Récurrence', false, 'Recurrence'],
+        ['task_estimated_hours', state.TASKS_TABLE, 'Estimated_Hours', 'Heures estimées', false, 'Estimated_Hours'],
+        ['task_created_at', state.TASKS_TABLE, 'Created_At', 'Créé le', false, 'Created_At'],
+        ['task_project_id', state.TASKS_TABLE, 'Project_Id', 'Projet', false, 'Project_Id'],
         // Users mapping
-        ['user_name', USERS_TABLE, 'Name', 'Nom', true, 'Name'],
-        ['user_email', USERS_TABLE, 'Email', 'Email', true, 'Email'],
-        ['user_role', USERS_TABLE, 'Role', 'Rôle', false, 'Role'],
-        ['user_group', USERS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
+        ['user_name', state.USERS_TABLE, 'Name', 'Nom', true, 'Name'],
+        ['user_email', state.USERS_TABLE, 'Email', 'Email', true, 'Email'],
+        ['user_role', state.USERS_TABLE, 'Role', 'Rôle', false, 'Role'],
+        ['user_group', state.USERS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
         // Projects mapping
-        ['project_name', PROJECTS_TABLE, 'Name', 'Nom', true, 'Name'],
-        ['project_description', PROJECTS_TABLE, 'Description', 'Description', false, 'Description'],
-        ['project_color', PROJECTS_TABLE, 'Color', 'Couleur', false, 'Color'],
-        ['project_status', PROJECTS_TABLE, 'Status', 'Statut', false, 'Status'],
+        ['project_name', state.PROJECTS_TABLE, 'Name', 'Nom', true, 'Name'],
+        ['project_description', state.PROJECTS_TABLE, 'Description', 'Description', false, 'Description'],
+        ['project_color', state.PROJECTS_TABLE, 'Color', 'Couleur', false, 'Color'],
+        ['project_status', state.PROJECTS_TABLE, 'Status', 'Statut', false, 'Status'],
         // Categories mapping
-        ['category_name', CATEGORIES_TABLE, 'Name', 'Nom', true, 'Name'],
-        ['category_color', CATEGORIES_TABLE, 'Color', 'Couleur', false, 'Color'],
-        ['category_order', CATEGORIES_TABLE, 'Order', 'Ordre', false, 'Order'],
+        ['category_name', state.CATEGORIES_TABLE, 'Name', 'Nom', true, 'Name'],
+        ['category_color', state.CATEGORIES_TABLE, 'Color', 'Couleur', false, 'Color'],
+        ['category_order', state.CATEGORIES_TABLE, 'Order', 'Ordre', false, 'Order'],
         // Tags mapping
-        ['tag_name', TAGS_TABLE, 'Name', 'Nom', true, 'Name'],
-        ['tag_color', TAGS_TABLE, 'Color', 'Couleur', false, 'Color']
+        ['tag_name', state.TAGS_TABLE, 'Name', 'Nom', true, 'Name'],
+        ['tag_color', state.TAGS_TABLE, 'Color', 'Couleur', false, 'Color']
       ];
       
       var configRecords = [];
@@ -1801,23 +1709,23 @@ async function ensureTables() {
       }
       
       await grist.docApi.applyUserActions([
-        ['BulkAddRecord', CONFIG_TABLE, configRecords.map(function() { return null; }), configRecords]
+        ['BulkAddRecord', state.CONFIG_TABLE, configRecords.map(function() { return null; }), configRecords]
       ]);
     }
 
     // Create PM_Settings table for widget preferences (shared across users)
-    if (existingTables.indexOf(SETTINGS_TABLE) === -1) {
+    if (existingTables.indexOf(state.SETTINGS_TABLE) === -1) {
       await grist.docApi.applyUserActions([
-        ['AddTable', SETTINGS_TABLE, [
+        ['AddTable', state.SETTINGS_TABLE, [
           { id: 'Key', type: 'Text' },
           { id: 'Value', type: 'Text' }
         ]]
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(NOTIFICATIONS_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.NOTIFICATIONS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', NOTIFICATIONS_TABLE, [
+        ['AddTable', state.NOTIFICATIONS_TABLE, [
           { id: 'Task_Id', type: 'Int' },
           { id: 'User_Email', type: 'Text' },
           { id: 'Type', type: 'Text' },
@@ -1829,9 +1737,9 @@ async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(ACTIVITY_LOG_TABLE) === -1)) {
+    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.ACTIVITY_LOG_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
-        ['AddTable', ACTIVITY_LOG_TABLE, [
+        ['AddTable', state.ACTIVITY_LOG_TABLE, [
           { id: 'Timestamp', type: 'Date' },
           { id: 'User_Email', type: 'Text' },
           { id: 'Action', type: 'Text' },
@@ -1843,24 +1751,24 @@ async function ensureTables() {
     }
 
     // Migration: Add missing columns to existing PM_Tasks table
-    if (existingTables.indexOf(TASKS_TABLE) !== -1) {
+    if (existingTables.indexOf(state.TASKS_TABLE) !== -1) {
       try {
-        var tableInfo = await grist.docApi.fetchTable(TASKS_TABLE);
+        var tableInfo = await grist.docApi.fetchTable(state.TASKS_TABLE);
         var existingCols = Object.keys(tableInfo);
         
         if (existingCols.indexOf('Recurrence') === -1) {
           await grist.docApi.applyUserActions([
-            ['AddColumn', TASKS_TABLE, 'Recurrence', { type: 'Choice', widgetOptions: JSON.stringify({ choices: ['none', 'daily', 'weekly', 'monthly'] }) }]
+            ['AddColumn', state.TASKS_TABLE, 'Recurrence', { type: 'Choice', widgetOptions: JSON.stringify({ choices: ['none', 'daily', 'weekly', 'monthly'] }) }]
           ]);
         }
         if (existingCols.indexOf('Estimated_Hours') === -1) {
           await grist.docApi.applyUserActions([
-            ['AddColumn', TASKS_TABLE, 'Estimated_Hours', { type: 'Numeric' }]
+            ['AddColumn', state.TASKS_TABLE, 'Estimated_Hours', { type: 'Numeric' }]
           ]);
         }
         if (existingCols.indexOf('Tag') === -1) {
           await grist.docApi.applyUserActions([
-            ['AddColumn', TASKS_TABLE, 'Tag', { type: 'Text' }]
+            ['AddColumn', state.TASKS_TABLE, 'Tag', { type: 'Text' }]
           ]);
         }
         // RACI columns
@@ -1868,7 +1776,7 @@ async function ensureTables() {
         var raciActions = [];
         for (var rc = 0; rc < raciCols.length; rc++) {
           if (existingCols.indexOf(raciCols[rc]) === -1) {
-            raciActions.push(['AddColumn', TASKS_TABLE, raciCols[rc], { type: 'Text' }]);
+            raciActions.push(['AddColumn', state.TASKS_TABLE, raciCols[rc], { type: 'Text' }]);
           }
         }
         if (raciActions.length > 0) {
@@ -1876,10 +1784,10 @@ async function ensureTables() {
         }
         // Extension columns
         if (existingCols.indexOf('Extension_Date') === -1) {
-          await grist.docApi.applyUserActions([['AddColumn', TASKS_TABLE, 'Extension_Date', { type: 'Date' }]]);
+          await grist.docApi.applyUserActions([['AddColumn', state.TASKS_TABLE, 'Extension_Date', { type: 'Date' }]]);
         }
         if (existingCols.indexOf('Auto_Extend') === -1) {
-          await grist.docApi.applyUserActions([['AddColumn', TASKS_TABLE, 'Auto_Extend', { type: 'Bool' }]]);
+          await grist.docApi.applyUserActions([['AddColumn', state.TASKS_TABLE, 'Auto_Extend', { type: 'Bool' }]]);
         }
       } catch (migrationErr) {
         console.log('Migration check completed or columns already exist');
@@ -1887,41 +1795,41 @@ async function ensureTables() {
     }
 
     // Migration: Add Blocked_By_Subtask_Id, Assignee, Due_Date to PM_Subtasks
-    if (existingTables.indexOf(SUBTASKS_TABLE) !== -1) {
+    if (existingTables.indexOf(state.SUBTASKS_TABLE) !== -1) {
       try {
-        var stInfo = await grist.docApi.fetchTable(SUBTASKS_TABLE);
+        var stInfo = await grist.docApi.fetchTable(state.SUBTASKS_TABLE);
         var stCols = Object.keys(stInfo);
         var stActions = [];
         if (stCols.indexOf('Blocked_By_Subtask_Id') === -1) {
-          stActions.push(['AddColumn', SUBTASKS_TABLE, 'Blocked_By_Subtask_Id', { type: 'Int' }]);
+          stActions.push(['AddColumn', state.SUBTASKS_TABLE, 'Blocked_By_Subtask_Id', { type: 'Int' }]);
         }
         if (stCols.indexOf('Assignee') === -1) {
-          stActions.push(['AddColumn', SUBTASKS_TABLE, 'Assignee', { type: 'Text' }]);
+          stActions.push(['AddColumn', state.SUBTASKS_TABLE, 'Assignee', { type: 'Text' }]);
         }
         if (stCols.indexOf('Due_Date') === -1) {
-          stActions.push(['AddColumn', SUBTASKS_TABLE, 'Due_Date', { type: 'Date' }]);
+          stActions.push(['AddColumn', state.SUBTASKS_TABLE, 'Due_Date', { type: 'Date' }]);
         }
         if (stCols.indexOf('Description') === -1) {
-          stActions.push(['AddColumn', SUBTASKS_TABLE, 'Description', { type: 'Text' }]);
+          stActions.push(['AddColumn', state.SUBTASKS_TABLE, 'Description', { type: 'Text' }]);
         }
         if (stCols.indexOf('Status') === -1) {
-          stActions.push(['AddColumn', SUBTASKS_TABLE, 'Status', { type: 'Choice', widgetOptions: JSON.stringify({ choices: ['todo', 'progress', 'done', 'archived'] }) }]);
+          stActions.push(['AddColumn', state.SUBTASKS_TABLE, 'Status', { type: 'Choice', widgetOptions: JSON.stringify({ choices: ['todo', 'progress', 'done', 'archived'] }) }]);
         }
         if (stCols.indexOf('Priority') === -1) {
-          stActions.push(['AddColumn', SUBTASKS_TABLE, 'Priority', { type: 'Choice', widgetOptions: JSON.stringify({ choices: ['high', 'medium', 'low'] }) }]);
+          stActions.push(['AddColumn', state.SUBTASKS_TABLE, 'Priority', { type: 'Choice', widgetOptions: JSON.stringify({ choices: ['high', 'medium', 'low'] }) }]);
         }
         if (stCols.indexOf('Estimated_Hours') === -1) {
-          stActions.push(['AddColumn', SUBTASKS_TABLE, 'Estimated_Hours', { type: 'Numeric' }]);
+          stActions.push(['AddColumn', state.SUBTASKS_TABLE, 'Estimated_Hours', { type: 'Numeric' }]);
         }
         if (stCols.indexOf('Recurrence') === -1) {
-          stActions.push(['AddColumn', SUBTASKS_TABLE, 'Recurrence', { type: 'Choice', widgetOptions: JSON.stringify({ choices: ['none', 'daily', 'weekly', 'monthly'] }) }]);
+          stActions.push(['AddColumn', state.SUBTASKS_TABLE, 'Recurrence', { type: 'Choice', widgetOptions: JSON.stringify({ choices: ['none', 'daily', 'weekly', 'monthly'] }) }]);
         }
         if (stCols.indexOf('Start_Date') === -1) {
-          stActions.push(['AddColumn', SUBTASKS_TABLE, 'Start_Date', { type: 'Date' }]);
+          stActions.push(['AddColumn', state.SUBTASKS_TABLE, 'Start_Date', { type: 'Date' }]);
         }
         // B2 : type de sous-tâche (sous-tâche classique ou jalon)
         if (stCols.indexOf('Type') === -1) {
-          stActions.push(['AddColumn', SUBTASKS_TABLE, 'Type', { type: 'Choice', widgetOptions: JSON.stringify({ choices: ['subtask', 'milestone'] }) }]);
+          stActions.push(['AddColumn', state.SUBTASKS_TABLE, 'Type', { type: 'Choice', widgetOptions: JSON.stringify({ choices: ['subtask', 'milestone'] }) }]);
         }
         if (stActions.length > 0) {
           await grist.docApi.applyUserActions(stActions);
@@ -1945,8 +1853,8 @@ async function loadAllData() {
   await loadColumnMapping();
   
   try {
-    var taskData = await grist.docApi.fetchTable(TASKS_TABLE);
-    tasks = [];
+    var taskData = await grist.docApi.fetchTable(state.TASKS_TABLE);
+    state.tasks = [];
     if (taskData && taskData.id) {
       for (var i = 0; i < taskData.id.length; i++) {
         var task = { id: taskData.id[i] };
@@ -1988,17 +1896,17 @@ async function loadAllData() {
         task.Extension_Date = taskData.Extension_Date ? taskData.Extension_Date[i] : null;
         task.Auto_Extend = taskData.Auto_Extend ? !!taskData.Auto_Extend[i] : false;
 
-        tasks.push(task);
+        state.tasks.push(task);
       }
     }
   } catch (e) {
     console.warn('Could not load tasks:', e);
-    tasks = [];
+    state.tasks = [];
   }
 
   try {
-    var userData = await grist.docApi.fetchTable(USERS_TABLE);
-    users = [];
+    var userData = await grist.docApi.fetchTable(state.USERS_TABLE);
+    state.users = [];
     if (userData && userData.id) {
       var nameCol = getColumnName('users', 'name');
       var emailCol = getColumnName('users', 'email');
@@ -2006,7 +1914,7 @@ async function loadAllData() {
       var groupCol = getColumnName('users', 'group');
       
       for (var i = 0; i < userData.id.length; i++) {
-        users.push({
+        state.users.push({
           id: userData.id[i],
           Name: userData[nameCol] ? userData[nameCol][i] : '',
           Email: userData[emailCol] ? userData[emailCol][i] : '',
@@ -2016,15 +1924,15 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    users = [];
+    state.users = [];
   }
 
   try {
-    var groupData = await grist.docApi.fetchTable(GROUPS_TABLE);
-    groups = [];
+    var groupData = await grist.docApi.fetchTable(state.GROUPS_TABLE);
+    state.groups = [];
     if (groupData && groupData.id) {
       for (var i = 0; i < groupData.id.length; i++) {
-        groups.push({
+        state.groups.push({
           id: groupData.id[i],
           Name: groupData.Name ? groupData.Name[i] : '',
           Description: groupData.Description ? groupData.Description[i] : ''
@@ -2032,15 +1940,15 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    groups = [];
+    state.groups = [];
   }
 
   try {
-    var tplData = await grist.docApi.fetchTable(TEMPLATES_TABLE);
-    templates = [];
+    var tplData = await grist.docApi.fetchTable(state.TEMPLATES_TABLE);
+    state.templates = [];
     if (tplData && tplData.id) {
       for (var i = 0; i < tplData.id.length; i++) {
-        templates.push({
+        state.templates.push({
           id: tplData.id[i],
           Title: tplData.Title ? tplData.Title[i] : '',
           Description: tplData.Description ? tplData.Description[i] : '',
@@ -2056,15 +1964,15 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    templates = [];
+    state.templates = [];
   }
 
   try {
-    var subtaskData = await grist.docApi.fetchTable(SUBTASKS_TABLE);
-    subtasks = [];
+    var subtaskData = await grist.docApi.fetchTable(state.SUBTASKS_TABLE);
+    state.subtasks = [];
     if (subtaskData && subtaskData.id) {
       for (var i = 0; i < subtaskData.id.length; i++) {
-        subtasks.push({
+        state.subtasks.push({
           id: subtaskData.id[i],
           Parent_Task_Id: subtaskData.Parent_Task_Id ? subtaskData.Parent_Task_Id[i] : null,
           Title: subtaskData.Title ? subtaskData.Title[i] : '',
@@ -2085,15 +1993,15 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    subtasks = [];
+    state.subtasks = [];
   }
 
   try {
-    var depData = await grist.docApi.fetchTable(DEPENDENCIES_TABLE);
-    dependencies = [];
+    var depData = await grist.docApi.fetchTable(state.DEPENDENCIES_TABLE);
+    state.dependencies = [];
     if (depData && depData.id) {
       for (var i = 0; i < depData.id.length; i++) {
-        dependencies.push({
+        state.dependencies.push({
           id: depData.id[i],
           Task_Id: depData.Task_Id ? depData.Task_Id[i] : null,
           Depends_On_Task_Id: depData.Depends_On_Task_Id ? depData.Depends_On_Task_Id[i] : null,
@@ -2102,15 +2010,15 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    dependencies = [];
+    state.dependencies = [];
   }
 
   try {
-    var commentData = await grist.docApi.fetchTable(COMMENTS_TABLE);
-    comments = [];
+    var commentData = await grist.docApi.fetchTable(state.COMMENTS_TABLE);
+    state.comments = [];
     if (commentData && commentData.id) {
       for (var i = 0; i < commentData.id.length; i++) {
-        comments.push({
+        state.comments.push({
           id: commentData.id[i],
           Task_Id: commentData.Task_Id ? commentData.Task_Id[i] : null,
           Author: commentData.Author ? commentData.Author[i] : '',
@@ -2120,15 +2028,15 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    comments = [];
+    state.comments = [];
   }
 
   try {
-    var attData = await grist.docApi.fetchTable(ATTACHMENTS_TABLE);
-    attachments = [];
+    var attData = await grist.docApi.fetchTable(state.ATTACHMENTS_TABLE);
+    state.attachments = [];
     if (attData && attData.id) {
       for (var i = 0; i < attData.id.length; i++) {
-        attachments.push({
+        state.attachments.push({
           id: attData.id[i],
           Task_Id: attData.Task_Id ? attData.Task_Id[i] : null,
           File_Name: attData.File_Name ? attData.File_Name[i] : '',
@@ -2140,13 +2048,13 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    attachments = [];
+    state.attachments = [];
   }
 
   try {
-    var timeData = await grist.docApi.fetchTable(TIME_ENTRIES_TABLE);
-    timeEntries = [];
-    activeTimers = {};
+    var timeData = await grist.docApi.fetchTable(state.TIME_ENTRIES_TABLE);
+    state.timeEntries = [];
+    state.activeTimers = {};
     if (timeData && timeData.id) {
       for (var i = 0; i < timeData.id.length; i++) {
         var entry = {
@@ -2158,23 +2066,23 @@ async function loadAllData() {
           Duration: timeData.Duration ? timeData.Duration[i] : 0,
           Description: timeData.Description ? timeData.Description[i] : ''
         };
-        timeEntries.push(entry);
+        state.timeEntries.push(entry);
         if (entry.Task_Id && entry.Start_Time && !entry.End_Time) {
-          activeTimers[entry.Task_Id] = entry.Start_Time;
+          state.activeTimers[entry.Task_Id] = entry.Start_Time;
         }
       }
     }
   } catch (e) {
-    timeEntries = [];
-    activeTimers = {};
+    state.timeEntries = [];
+    state.activeTimers = {};
   }
 
   try {
-    var cfData = await grist.docApi.fetchTable(CUSTOM_FIELDS_TABLE);
-    customFields = [];
+    var cfData = await grist.docApi.fetchTable(state.CUSTOM_FIELDS_TABLE);
+    state.customFields = [];
     if (cfData && cfData.id) {
       for (var i = 0; i < cfData.id.length; i++) {
-        customFields.push({
+        state.customFields.push({
           id: cfData.id[i],
           Name: cfData.Name ? cfData.Name[i] : '',
           Type: cfData.Type ? cfData.Type[i] : 'text',
@@ -2184,17 +2092,17 @@ async function loadAllData() {
         });
       }
     }
-    customFields.sort(function(a, b) { return (a.Order || 0) - (b.Order || 0); });
+    state.customFields.sort(function(a, b) { return (a.Order || 0) - (b.Order || 0); });
   } catch (e) {
-    customFields = [];
+    state.customFields = [];
   }
 
   try {
-    var cfvData = await grist.docApi.fetchTable(CUSTOM_FIELD_VALUES_TABLE);
-    customFieldValues = [];
+    var cfvData = await grist.docApi.fetchTable(state.CUSTOM_FIELD_VALUES_TABLE);
+    state.customFieldValues = [];
     if (cfvData && cfvData.id) {
       for (var i = 0; i < cfvData.id.length; i++) {
-        customFieldValues.push({
+        state.customFieldValues.push({
           id: cfvData.id[i],
           Task_Id: cfvData.Task_Id ? cfvData.Task_Id[i] : null,
           Field_Id: cfvData.Field_Id ? cfvData.Field_Id[i] : null,
@@ -2203,19 +2111,19 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    customFieldValues = [];
+    state.customFieldValues = [];
   }
 
   try {
-    var catData = await grist.docApi.fetchTable(CATEGORIES_TABLE);
-    categories = [];
+    var catData = await grist.docApi.fetchTable(state.CATEGORIES_TABLE);
+    state.categories = [];
     if (catData && catData.id) {
       var nameCol = getColumnName('categories', 'name');
       var colorCol = getColumnName('categories', 'color');
       var orderCol = getColumnName('categories', 'order');
       
       for (var i = 0; i < catData.id.length; i++) {
-        categories.push({
+        state.categories.push({
           id: catData.id[i],
           Name: catData[nameCol] ? catData[nameCol][i] : '',
           Color: catData[colorCol] ? catData[colorCol][i] : '#6366f1',
@@ -2223,20 +2131,20 @@ async function loadAllData() {
         });
       }
     }
-    categories.sort(function(a, b) { return (a.Order || 0) - (b.Order || 0); });
+    state.categories.sort(function(a, b) { return (a.Order || 0) - (b.Order || 0); });
   } catch (e) {
-    categories = [];
+    state.categories = [];
   }
 
   try {
-    var tagData = await grist.docApi.fetchTable(TAGS_TABLE);
-    tags = [];
+    var tagData = await grist.docApi.fetchTable(state.TAGS_TABLE);
+    state.tags = [];
     if (tagData && tagData.id) {
       var nameCol = getColumnName('tags', 'name');
       var colorCol = getColumnName('tags', 'color');
       
       for (var i = 0; i < tagData.id.length; i++) {
-        tags.push({
+        state.tags.push({
           id: tagData.id[i],
           Name: tagData[nameCol] ? tagData[nameCol][i] : '',
           Color: tagData[colorCol] ? tagData[colorCol][i] : '#6366f1'
@@ -2244,12 +2152,12 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    tags = [];
+    state.tags = [];
   }
 
   try {
-    var projData = await grist.docApi.fetchTable(PROJECTS_TABLE);
-    projects = [];
+    var projData = await grist.docApi.fetchTable(state.PROJECTS_TABLE);
+    state.projects = [];
     if (projData && projData.id) {
       var nameCol = getColumnName('projects', 'name');
       var descCol = getColumnName('projects', 'description');
@@ -2257,7 +2165,7 @@ async function loadAllData() {
       var statusCol = getColumnName('projects', 'status');
       
       for (var i = 0; i < projData.id.length; i++) {
-        projects.push({
+        state.projects.push({
           id: projData.id[i],
           Name: projData[nameCol] ? projData[nameCol][i] : '',
           Description: projData[descCol] ? projData[descCol][i] : '',
@@ -2272,15 +2180,15 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    projects = [];
+    state.projects = [];
   }
 
   try {
-    var notifData = await grist.docApi.fetchTable(NOTIFICATIONS_TABLE);
-    pmNotifications = [];
+    var notifData = await grist.docApi.fetchTable(state.NOTIFICATIONS_TABLE);
+    state.pmNotifications = [];
     if (notifData && notifData.id) {
       for (var ni = 0; ni < notifData.id.length; ni++) {
-        pmNotifications.push({
+        state.pmNotifications.push({
           id: notifData.id[ni],
           Task_Id: notifData.Task_Id ? notifData.Task_Id[ni] : null,
           User_Email: notifData.User_Email ? notifData.User_Email[ni] : '',
@@ -2293,15 +2201,15 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    pmNotifications = [];
+    state.pmNotifications = [];
   }
 
   try {
-    var logData = await grist.docApi.fetchTable(ACTIVITY_LOG_TABLE);
-    activityLog = [];
+    var logData = await grist.docApi.fetchTable(state.ACTIVITY_LOG_TABLE);
+    state.activityLog = [];
     if (logData && logData.id) {
       for (var ai = 0; ai < logData.id.length; ai++) {
-        activityLog.push({
+        state.activityLog.push({
           id: logData.id[ai],
           Timestamp: logData.Timestamp ? logData.Timestamp[ai] : null,
           User_Email: logData.User_Email ? logData.User_Email[ai] : '',
@@ -2313,7 +2221,7 @@ async function loadAllData() {
       }
     }
   } catch (e) {
-    activityLog = [];
+    state.activityLog = [];
   }
 
   renderProjectSelector();
@@ -2333,26 +2241,26 @@ function renderProjectSelector() {
 
   // Rôles disponibles (distincts, triés) — supports ChoiceList arrays
   var roleSet = {};
-  users.forEach(function(u) { getUserRoles(u).forEach(function(r) { if (r) roleSet[r] = true; }); });
+  state.users.forEach(function(u) { getUserRoles(u).forEach(function(r) { if (r) roleSet[r] = true; }); });
   var roles = Object.keys(roleSet).sort();
 
   // Personnes visibles selon le rôle sélectionné
-  var visibleUsers = currentFilterRole
-    ? users.filter(function(u) { return userMatchesRole(u, currentFilterRole); })
-    : users;
+  var visibleUsers = state.currentFilterRole
+    ? state.users.filter(function(u) { return userMatchesRole(u, state.currentFilterRole); })
+    : state.users;
 
   // Projets visibles
-  var visibleProjects = projects;
-  if (mineOnly || shouldLimitToMyProjects()) {
+  var visibleProjects = state.projects;
+  if (state.mineOnly || shouldLimitToMyProjects()) {
     var myIds = myProjectIdSet();
-    visibleProjects = projects.filter(function (p) { return myIds[p.id]; });
+    visibleProjects = state.projects.filter(function (p) { return myIds[p.id]; });
   }
-  if (currentFilterAssignee) {
+  if (state.currentFilterAssignee) {
     var projIdSet = {};
-    tasks.forEach(function(t) {
+    state.tasks.forEach(function(t) {
       if (!t.Project_Id) return;
       var list = (t.Assignee || '').split(',').map(function(s) { return s.trim(); });
-      if (list.indexOf(currentFilterAssignee) !== -1) projIdSet[t.Project_Id] = true;
+      if (list.indexOf(state.currentFilterAssignee) !== -1) projIdSet[t.Project_Id] = true;
     });
     // Si aucune tâche associée, on laisse les projets courants (sinon UX bloquée)
     var filtered = visibleProjects.filter(function(p) { return projIdSet[p.id]; });
@@ -2364,7 +2272,7 @@ function renderProjectSelector() {
   if (canSeeAllProjects()) {
     // Filtre Rôle
     var roleOptions = roles.map(function(r) { return { value: r, label: roleLabel(r) }; });
-    html += buildFilterCombo('role', currentLang === 'fr' ? '— Rôle —' : '— Role —', roleOptions, currentFilterRole, filterByRole);
+    html += buildFilterCombo('role', currentLang === 'fr' ? '— Rôle —' : '— Role —', roleOptions, state.currentFilterRole, filterByRole);
 
     // Filtre Personne
     var personOptions = [];
@@ -2373,28 +2281,28 @@ function renderProjectSelector() {
       var label = u.Name || u.Email;
       if (val) personOptions.push({ value: val, label: label });
     });
-    html += buildFilterCombo('person', currentLang === 'fr' ? '— Personne —' : '— Person —', personOptions, currentFilterAssignee, filterByAssignee);
+    html += buildFilterCombo('person', currentLang === 'fr' ? '— Personne —' : '— Person —', personOptions, state.currentFilterAssignee, filterByAssignee);
   }
 
   // Filtre Catégorie
   var allCategories = [];
-  tasks.forEach(function(t) { if (t.Category && allCategories.indexOf(t.Category) === -1) allCategories.push(t.Category); });
+  state.tasks.forEach(function(t) { if (t.Category && allCategories.indexOf(t.Category) === -1) allCategories.push(t.Category); });
   allCategories.sort();
   var catOptions = allCategories.map(function(c) { return { value: c, label: c }; });
-  html += buildFilterCombo('category', currentLang === 'fr' ? '— Catégorie —' : '— Category —', catOptions, currentFilterCategory, filterByCategory);
+  html += buildFilterCombo('category', currentLang === 'fr' ? '— Catégorie —' : '— Category —', catOptions, state.currentFilterCategory, filterByCategory);
 
   // Filtre Tag
-  var tagOptions = tags.map(function(tag) { return { value: tag.Name, label: tag.Name }; });
-  html += buildFilterCombo('tag', '— Tag —', tagOptions, currentFilterTag, filterByTag);
+  var tagOptions = state.tags.map(function(tag) { return { value: tag.Name, label: tag.Name }; });
+  html += buildFilterCombo('tag', '— Tag —', tagOptions, state.currentFilterTag, filterByTag);
 
   // Filtre Projet — combobox moderne avec recherche intégrée
-  var selProj = currentProjectId ? projects.find(function(p) { return p.id === currentProjectId; }) : null;
+  var selProj = state.currentProjectId ? state.projects.find(function(p) { return p.id === state.currentProjectId; }) : null;
   var allProjectsLabel = canSeeAllProjects()
     ? (currentLang === 'fr' ? 'Tous les projets' : 'All projects')
     : (currentLang === 'fr' ? 'Mes projets' : 'My projects');
   var btnLabel = selProj ? sanitize(selProj.Name) : allProjectsLabel;
   var btnDotColor = selProj ? (selProj.Color || '#6366f1') : 'transparent';
-  var btnClass = 'proj-combobox-btn' + (currentProjectId ? ' active' : '');
+  var btnClass = 'proj-combobox-btn' + (state.currentProjectId ? ' active' : '');
   html += '<div class="proj-combobox" id="proj-combobox">';
   html += '<button type="button" class="' + btnClass + '" onclick="toggleProjectDropdown()" id="proj-combobox-btn">';
   html += '<span class="proj-combobox-dot" style="background:' + btnDotColor + ';' + (selProj ? '' : 'opacity:0;') + '"></span>';
@@ -2406,16 +2314,16 @@ function renderProjectSelector() {
   var PROJ_INITIAL_LIMIT = 5;
   html += '<div class="proj-dropdown-list" id="proj-dropdown-list">';
   // "All projects" option (always shown)
-  html += '<div class="proj-option' + (!currentProjectId ? ' selected' : '') + '" data-id="" data-name="" data-always="1" onclick="selectProjectOption(\'\')">';
+  html += '<div class="proj-option' + (!state.currentProjectId ? ' selected' : '') + '" data-id="" data-name="" data-always="1" onclick="selectProjectOption(\'\')">';
   html += '<span class="proj-dot" style="background:#94a3b8;opacity:.4;"></span>';
   html += '<span>' + allProjectsLabel + '</span>';
   html += '</div>';
   // Project options — first 5 visible, rest hidden until search
-  var allTasksForCount = tasks;
+  var allTasksForCount = state.tasks;
   var extraCount = Math.max(0, visibleProjects.length - PROJ_INITIAL_LIMIT);
   visibleProjects.forEach(function(proj, idx) {
     var taskCount = allTasksForCount.filter(function(tt) { return tt.Project_Id === proj.id; }).length;
-    var isSelected = currentProjectId === proj.id;
+    var isSelected = state.currentProjectId === proj.id;
     var safeName = sanitize(proj.Name || '');
     var isExtra = idx >= PROJ_INITIAL_LIMIT && !isSelected;
     html += '<div class="proj-option' + (isSelected ? ' selected' : '') + '"';
@@ -2436,11 +2344,11 @@ function renderProjectSelector() {
   html += '</div></div></div>';
 
   // Bouton "Mes projets" (admin/owner seulement : en member/viewer c'est le mode naturel)
-  if (currentUserEmail && canSeeAllProjects()) {
-    html += '<button class="btn-icon" onclick="toggleMyProjects()" title="' + (currentLang === 'fr' ? 'Mes projets : créés par moi ou qui me sont assignés' : 'My projects: created by or assigned to me') + '" style="width:auto;padding:0 12px;font-size:12px;font-weight:600;' + (mineOnly ? 'background:#6366f1;color:#fff;border-color:#6366f1;' : '') + '">👤 ' + (currentLang === 'fr' ? 'Mes projets' : 'My projects') + '</button>';
+  if (state.currentUserEmail && canSeeAllProjects()) {
+    html += '<button class="btn-icon" onclick="toggleMyProjects()" title="' + (currentLang === 'fr' ? 'Mes projets : créés par moi ou qui me sont assignés' : 'My projects: created by or assigned to me') + '" style="width:auto;padding:0 12px;font-size:12px;font-weight:600;' + (state.mineOnly ? 'background:#6366f1;color:#fff;border-color:#6366f1;' : '') + '">👤 ' + (currentLang === 'fr' ? 'Mes projets' : 'My projects') + '</button>';
   }
 
-  if (currentFilterRole || currentFilterAssignee || currentFilterCategory || currentFilterTag || currentProjectId || (mineOnly && canSeeAllProjects())) {
+  if (state.currentFilterRole || state.currentFilterAssignee || state.currentFilterCategory || state.currentFilterTag || state.currentProjectId || (state.mineOnly && canSeeAllProjects())) {
     html += '<button class="btn-icon" onclick="resetFilters()" title="' + (currentLang === 'fr' ? 'Réinitialiser les filtres' : 'Reset filters') + '" style="color:#ef4444;">✕</button>';
   }
 
@@ -2455,19 +2363,19 @@ function renderProjectSelector() {
     var appEl = document.querySelector('.app-container') || document.body;
     appEl.insertBefore(banner, appEl.firstChild);
   }
-  if (currentFilterRole || currentFilterAssignee || currentFilterCategory || currentFilterTag || currentProjectId || (mineOnly && canSeeAllProjects())) {
-    var proj2 = currentProjectId ? projects.find(function(p) { return p.id === currentProjectId; }) : null;
+  if (state.currentFilterRole || state.currentFilterAssignee || state.currentFilterCategory || state.currentFilterTag || state.currentProjectId || (state.mineOnly && canSeeAllProjects())) {
+    var proj2 = state.currentProjectId ? state.projects.find(function(p) { return p.id === state.currentProjectId; }) : null;
     var c2 = (proj2 && proj2.Color) ? proj2.Color : '#6366f1';
     var bits = [];
-    if (mineOnly && canSeeAllProjects()) bits.push('👤 ' + (currentLang === 'fr' ? 'Mes projets' : 'My projects'));
-    if (currentFilterRole) bits.push('👔 ' + sanitize(roleLabel(currentFilterRole)));
-    if (currentFilterAssignee) {
-      var u = users.find(function(x) { return (x.Email || x.Name) === currentFilterAssignee; });
-      var displayName = u ? (u.Name || u.Email) : currentFilterAssignee;
+    if (state.mineOnly && canSeeAllProjects()) bits.push('👤 ' + (currentLang === 'fr' ? 'Mes projets' : 'My projects'));
+    if (state.currentFilterRole) bits.push('👔 ' + sanitize(roleLabel(state.currentFilterRole)));
+    if (state.currentFilterAssignee) {
+      var u = state.users.find(function(x) { return (x.Email || x.Name) === state.currentFilterAssignee; });
+      var displayName = u ? (u.Name || u.Email) : state.currentFilterAssignee;
       bits.push('👤 ' + sanitize(displayName));
     }
-    if (currentFilterCategory) bits.push('📁 ' + sanitize(currentFilterCategory));
-    if (currentFilterTag) bits.push('🏷️ ' + sanitize(currentFilterTag));
+    if (state.currentFilterCategory) bits.push('📁 ' + sanitize(state.currentFilterCategory));
+    if (state.currentFilterTag) bits.push('🏷️ ' + sanitize(state.currentFilterTag));
     if (proj2) bits.push('🎯 ' + sanitize(proj2.Name));
     banner.innerHTML = (currentLang === 'fr' ? 'Filtres actifs : ' : 'Active filters: ') + '<strong>' + bits.join(' › ') + '</strong> — <a href="#" onclick="resetFilters();return false;" style="color:inherit;text-decoration:underline;">' + (currentLang === 'fr' ? 'Tout effacer' : 'Clear all') + '</a>';
     banner.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 16px;background:' + c2 + '15;border-bottom:2px solid' + c2 + ';color:' + c2 + ';font-size:12px;font-weight:600;';
@@ -2696,30 +2604,30 @@ function selectProjectOption(projectId) {
 }
 
 function filterByProject(projectId) {
-  currentProjectId = projectId ? parseInt(projectId) : null;
-  localStorage.setItem('pm-current-project', currentProjectId || '');
+  state.currentProjectId = projectId ? parseInt(projectId) : null;
+  localStorage.setItem('pm-current-project', state.currentProjectId || '');
   renderProjectSelector();
   refreshAllViews();
 }
 
 // Valeur d'assigné correspondant à l'utilisateur courant (Email en priorité, sinon Nom)
 function myAssigneeValue() {
-  if (!currentUserEmail) return null;
-  var em = currentUserEmail.toLowerCase().trim();
-  var u = users.find(function (x) { return (x.Email || '').toLowerCase().trim() === em; });
+  if (!state.currentUserEmail) return null;
+  var em = state.currentUserEmail.toLowerCase().trim();
+  var u = state.users.find(function (x) { return (x.Email || '').toLowerCase().trim() === em; });
   if (u) return u.Email || u.Name;
-  return currentUserEmail; // repli : on tente l'email brut
+  return state.currentUserEmail; // repli : on tente l'email brut
 }
 // Ensemble des projets "à moi" : créés par moi OU contenant une tâche qui m'est assignée
 function myProjectIdSet() {
-  var em = (currentUserEmail || '').toLowerCase().trim();
+  var em = (state.currentUserEmail || '').toLowerCase().trim();
   var mine = myAssigneeValue();
   var set = {};
-  projects.forEach(function (p) {
+  state.projects.forEach(function (p) {
     if (em && (p.CreatedBy || '').toLowerCase().trim() === em) set[p.id] = true;
     if (mine && (p.Lead || '') === mine) set[p.id] = true; // responsable du projet
   });
-  if (mine) tasks.forEach(function (tk) {
+  if (mine) state.tasks.forEach(function (tk) {
     if (!tk.Project_Id) return;
     var list = (tk.Assignee || '').split(',').map(function (s) { return s.trim(); });
     if (list.indexOf(mine) !== -1) set[tk.Project_Id] = true;
@@ -2728,7 +2636,7 @@ function myProjectIdSet() {
 }
 // Bascule "Afficher seulement mes projets"
 function toggleMyProjects() {
-  mineOnly = !mineOnly;
+  state.mineOnly = !state.mineOnly;
   persistFilters();
   renderProjectSelector();
   refreshAllViews();
@@ -2738,33 +2646,33 @@ function toggleMyProjects() {
 function persistFilters() {
   try {
     localStorage.setItem('pm-filters', JSON.stringify({
-      role: currentFilterRole, assignee: currentFilterAssignee,
-      category: currentFilterCategory, tag: currentFilterTag, mineOnly: mineOnly
+      role: state.currentFilterRole, assignee: state.currentFilterAssignee,
+      category: state.currentFilterCategory, tag: state.currentFilterTag, mineOnly: state.mineOnly
     }));
   } catch (e) {}
 }
 function restoreFilters() {
   try {
     var s = JSON.parse(localStorage.getItem('pm-filters') || '{}');
-    currentFilterRole = s.role || null;
-    currentFilterAssignee = s.assignee || null;
-    currentFilterCategory = s.category || null;
-    currentFilterTag = s.tag || null;
-    mineOnly = !!s.mineOnly;
+    state.currentFilterRole = s.role || null;
+    state.currentFilterAssignee = s.assignee || null;
+    state.currentFilterCategory = s.category || null;
+    state.currentFilterTag = s.tag || null;
+    state.mineOnly = !!s.mineOnly;
   } catch (e) {}
 }
 
 function filterByRole(role) {
-  currentFilterRole = role || null;
+  state.currentFilterRole = role || null;
   // Si la personne sélectionnée n'a plus le rôle, la déselectionner
-  if (currentFilterRole && currentFilterAssignee) {
-    var stillValid = users.some(function(u) {
+  if (state.currentFilterRole && state.currentFilterAssignee) {
+    var stillValid = state.users.some(function(u) {
       var val = u.Email || u.Name;
-      return val === currentFilterAssignee && userMatchesRole(u, currentFilterRole);
+      return val === state.currentFilterAssignee && userMatchesRole(u, state.currentFilterRole);
     });
     if (!stillValid) {
-      currentFilterAssignee = null;
-      currentProjectId = null;
+      state.currentFilterAssignee = null;
+      state.currentProjectId = null;
     }
   }
   persistFilters();
@@ -2773,15 +2681,15 @@ function filterByRole(role) {
 }
 
 function filterByAssignee(name) {
-  currentFilterAssignee = name || null;
+  state.currentFilterAssignee = name || null;
   // Si le projet sélectionné n'a plus de tâches pour cette personne, le déselectionner
-  if (currentFilterAssignee && currentProjectId) {
-    var match = tasks.some(function(t) {
-      if (Number(t.Project_Id) !== Number(currentProjectId)) return false;
+  if (state.currentFilterAssignee && state.currentProjectId) {
+    var match = state.tasks.some(function(t) {
+      if (Number(t.Project_Id) !== Number(state.currentProjectId)) return false;
       var list = (t.Assignee || '').split(',').map(function(s) { return s.trim(); });
-      return list.indexOf(currentFilterAssignee) !== -1;
+      return list.indexOf(state.currentFilterAssignee) !== -1;
     });
-    if (!match) currentProjectId = null;
+    if (!match) state.currentProjectId = null;
   }
   persistFilters();
   renderProjectSelector();
@@ -2789,26 +2697,26 @@ function filterByAssignee(name) {
 }
 
 function filterByCategory(val) {
-  currentFilterCategory = val || null;
+  state.currentFilterCategory = val || null;
   persistFilters();
   renderProjectSelector();
   refreshAllViews();
 }
 
 function filterByTag(val) {
-  currentFilterTag = val || null;
+  state.currentFilterTag = val || null;
   persistFilters();
   renderProjectSelector();
   refreshAllViews();
 }
 
 function resetFilters() {
-  currentFilterRole = null;
-  currentFilterAssignee = null;
-  currentFilterCategory = null;
-  currentFilterTag = null;
-  mineOnly = false;
-  currentProjectId = null;
+  state.currentFilterRole = null;
+  state.currentFilterAssignee = null;
+  state.currentFilterCategory = null;
+  state.currentFilterTag = null;
+  state.mineOnly = false;
+  state.currentProjectId = null;
   localStorage.setItem('pm-current-project', '');
   persistFilters();
   renderProjectSelector();
@@ -2818,14 +2726,14 @@ function resetFilters() {
 var showArchivedTasks = false;
 
 function getFilteredTasks() {
-  var result = tasks.filter(function(t) {
+  var result = state.tasks.filter(function(t) {
     if (showArchivedTasks) return t.Status === 'archived';
     return t.Status !== 'archived';
   });
-  if (currentFilterRole) {
+  if (state.currentFilterRole) {
     // Identifiants attendus dans task.Assignee : Email en priorité, sinon Name
-    var roleIds = users
-      .filter(function(u) { return userMatchesRole(u, currentFilterRole); })
+    var roleIds = state.users
+      .filter(function(u) { return userMatchesRole(u, state.currentFilterRole); })
       .reduce(function(acc, u) {
         if (u.Email) acc.push(u.Email);
         if (u.Name) acc.push(u.Name);
@@ -2836,9 +2744,9 @@ function getFilteredTasks() {
       return list.some(function(a) { return roleIds.indexOf(a) !== -1; });
     });
   }
-  if (currentFilterAssignee) {
-    var assigneeUser = users.find(function(x) { return (x.Email || x.Name) === currentFilterAssignee; });
-    var assigneeIds = [currentFilterAssignee];
+  if (state.currentFilterAssignee) {
+    var assigneeUser = state.users.find(function(x) { return (x.Email || x.Name) === state.currentFilterAssignee; });
+    var assigneeIds = [state.currentFilterAssignee];
     if (assigneeUser && assigneeUser.Name) assigneeIds.push(assigneeUser.Name);
     if (assigneeUser && assigneeUser.Email) assigneeIds.push(assigneeUser.Email);
     result = result.filter(function(t) {
@@ -2846,20 +2754,20 @@ function getFilteredTasks() {
       return list.some(function(a) { return assigneeIds.indexOf(a) !== -1; });
     });
   }
-  if (currentFilterCategory) {
-    result = result.filter(function(t) { return t.Category === currentFilterCategory; });
+  if (state.currentFilterCategory) {
+    result = result.filter(function(t) { return t.Category === state.currentFilterCategory; });
   }
-  if (currentFilterTag) {
-    result = result.filter(function(t) { return t.Tag === currentFilterTag; });
+  if (state.currentFilterTag) {
+    result = result.filter(function(t) { return t.Tag === state.currentFilterTag; });
   }
-  if ((mineOnly || shouldLimitToMyProjects()) && !currentProjectId) {
+  if ((state.mineOnly || shouldLimitToMyProjects()) && !state.currentProjectId) {
     var myIds = myProjectIdSet();
     result = result.filter(function(t) {
       return (t.Project_Id && myIds[t.Project_Id]) || taskConcernsCurrentUser(t);
     });
   }
-  if (currentProjectId) {
-    var cpid = Number(currentProjectId);
+  if (state.currentProjectId) {
+    var cpid = Number(state.currentProjectId);
     result = result.filter(function(t) { return Number(t.Project_Id) === cpid; });
   }
   return result;
@@ -2867,13 +2775,13 @@ function getFilteredTasks() {
 
 function getProjectName(projectId) {
   if (!projectId) return '';
-  var proj = projects.find(function(p) { return p.id === projectId; });
+  var proj = state.projects.find(function(p) { return p.id === projectId; });
   return proj ? proj.Name : '';
 }
 
 function getProjectColor(projectId) {
   if (!projectId) return '#94a3b8';
-  var proj = projects.find(function(p) { return p.id === projectId; });
+  var proj = state.projects.find(function(p) { return p.id === projectId; });
   return proj ? (proj.Color || '#6366f1') : '#94a3b8';
 }
 
@@ -3070,7 +2978,7 @@ async function onCalendarDrop(event, dateStr) {
   
   if (!calendarDraggedTaskId) return;
   
-  var task = tasks.find(function(t) { return t.id === calendarDraggedTaskId; });
+  var task = state.tasks.find(function(t) { return t.id === calendarDraggedTaskId; });
   if (!task) return;
   
   // Parse the new date
@@ -3092,7 +3000,7 @@ async function onCalendarDrop(event, dateStr) {
   
   try {
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', TASKS_TABLE, calendarDraggedTaskId, updates]
+      ['UpdateRecord', state.TASKS_TABLE, calendarDraggedTaskId, updates]
     ]);
     showToast(t('taskMoved'), 'success');
     await loadAllData();
@@ -3468,7 +3376,7 @@ function getTaskDateProgress(task) {
 }
 
 function openCardSubtasksModal(taskId) {
-  var task = tasks.find(function(t) { return t.id === taskId; });
+  var task = state.tasks.find(function(t) { return t.id === taskId; });
   if (!task) return;
   var taskSubtasks = getTaskSubtasks(taskId);
   var html = '<div class="modal-overlay" onclick="closeModal(event)">';
@@ -3493,7 +3401,7 @@ function openCardSubtasksModal(taskId) {
 }
 
 function openCardCommentsModal(taskId) {
-  var task = tasks.find(function(t) { return t.id === taskId; });
+  var task = state.tasks.find(function(t) { return t.id === taskId; });
   var taskComments = getTaskComments(taskId);
   var html = '<div class="modal-overlay" onclick="closeModal(event)">';
   html += '<div class="modal compact-subtasks-modal" onclick="event.stopPropagation()">';
@@ -3529,7 +3437,7 @@ function openAttachmentInNewTab(recordId) {
 }
 
 function openCardAttachmentsModal(taskId) {
-  var task = tasks.find(function(t) { return t.id === taskId; });
+  var task = state.tasks.find(function(t) { return t.id === taskId; });
   var list = getTaskAttachments(taskId);
   var html = '<div class="modal-overlay" onclick="closeModal(event)">';
   html += '<div class="modal compact-subtasks-modal" onclick="event.stopPropagation()">';
@@ -3565,10 +3473,10 @@ async function toggleSubtaskFromPopup(subtaskId, taskId, completed) {
 async function toggleSubtaskFromCard(subtaskId, completed) {
   try {
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', SUBTASKS_TABLE, subtaskId, { Completed: completed }]
+      ['UpdateRecord', state.SUBTASKS_TABLE, subtaskId, { Completed: completed }]
     ]);
-    for (var i = 0; i < subtasks.length; i++) {
-      if (subtasks[i].id === subtaskId) { subtasks[i].Completed = completed; break; }
+    for (var i = 0; i < state.subtasks.length; i++) {
+      if (state.subtasks[i].id === subtaskId) { state.subtasks[i].Completed = completed; break; }
     }
     renderKanbanView();
   } catch (e) {
@@ -3733,7 +3641,7 @@ function renderTaskCard(task) {
     html += '<button class="task-card-attachments card-quick-btn" onclick="event.stopPropagation();openCardAttachmentsModal(' + task.id + ')" title="' + (currentLang === 'fr' ? 'Pièces jointes' : 'Attachments') + '">📎 ' + taskAttachments.length + '</button>';
   }
   var totalTime = getTaskTotalTime(task.id);
-  var isTimerRunning = !!activeTimers[task.id];
+  var isTimerRunning = !!state.activeTimers[task.id];
   if (cd.time && (totalTime > 0 || isTimerRunning)) {
     html += '<span class="task-card-time' + (isTimerRunning ? ' timer-running' : '') + '">⏱️ ' + formatDurationShort(totalTime) + (isTimerRunning ? ' ●' : '') + '</span>';
     if (isTimerRunning) html += '<button class="task-card-pause-btn" onclick="event.stopPropagation();pauseTimer(' + task.id + ')" title="' + (currentLang === 'fr' ? 'Pause' : 'Pause') + '">⏸</button>';
@@ -3747,14 +3655,14 @@ function renderTaskCard(task) {
   if ((cd.category && task.Category) || (cd.tags && task.Tag)) {
     html += '<div class="task-card-row task-card-taxonomy">';
     if (cd.category && task.Category) {
-      var catObj = categories.find(function(c) { return c.Name === task.Category; });
+      var catObj = state.categories.find(function(c) { return c.Name === task.Category; });
       var catColor = catObj ? catObj.Color : '#6366f1';
       html += '<span class="task-card-category" style="color:' + catColor + ';">' + sanitize(task.Category) + '</span>';
     }
     if (cd.tags && task.Tag) {
       var tagList = task.Tag.split(',').map(function(tg) { return tg.trim(); }).filter(Boolean);
       for (var ti = 0; ti < tagList.length; ti++) {
-        var tagObj = tags.find(function(tg) { return tg.Name === tagList[ti]; });
+        var tagObj = state.tags.find(function(tg) { return tg.Name === tagList[ti]; });
         var tagColor = tagObj ? tagObj.Color : '#94a3b8';
         html += '<span class="task-card-tag" style="border-color:' + tagColor + '80;color:' + tagColor + ';">' + sanitize(tagList[ti]) + '</span>';
       }
@@ -3765,7 +3673,7 @@ function renderTaskCard(task) {
   if (cd.assignee && task.Assignee) {
     html += '<div class="task-card-row task-card-assignee-row">';
     var assigneeList = task.Assignee.split(',').map(function(a) { return a.trim(); }).filter(Boolean);
-    if (raciEnabled) {
+    if (state.raciEnabled) {
       for (var ai = 0; ai < assigneeList.length; ai++) {
         html += '<span class="task-card-assignee raci-badge raci-r">R ' + sanitize(getUserDisplayName(assigneeList[ai])) + '</span>';
       }
@@ -3829,7 +3737,7 @@ function renderTaskCard(task) {
     }
     html += '<div class="tcd-actions">';
     html += '<button class="btn btn-sm" onclick="event.stopPropagation();openEditTaskModal(' + task.id + ')">✏️ ' + (_fr ? 'Éditer la tâche' : 'Edit task') + '</button>';
-    if (isOwner) html += '<button class="btn btn-sm tcd-delete-btn" onclick="event.stopPropagation();deleteTask(' + task.id + ')">🗑️ ' + t('delete') + '</button>';
+    if (state.isOwner) html += '<button class="btn btn-sm tcd-delete-btn" onclick="event.stopPropagation();deleteTask(' + task.id + ')">🗑️ ' + t('delete') + '</button>';
     html += '</div>';
     html += '</div>';
   }
@@ -3841,9 +3749,9 @@ function renderTaskCard(task) {
 async function archiveTask(taskId) {
   try {
     var statusCol = getColumnName('tasks', 'status');
-    var task = tasks.find(function(t) { return t.id === taskId; });
+    var task = state.tasks.find(function(t) { return t.id === taskId; });
     var oldStatus = task ? task.Status : '';
-    await grist.docApi.applyUserActions([['UpdateRecord', TASKS_TABLE, taskId, { [statusCol]: 'archived' }]]);
+    await grist.docApi.applyUserActions([['UpdateRecord', state.TASKS_TABLE, taskId, { [statusCol]: 'archived' }]]);
     if (task) task.Status = 'archived';
     showToast(currentLang === 'fr' ? 'Tâche archivée' : 'Task archived', 'success');
     logActivity('task_archived', taskId, task ? task.Title : '', '');
@@ -3859,9 +3767,9 @@ async function archiveTask(taskId) {
 async function restoreTask(taskId) {
   try {
     var statusCol = getColumnName('tasks', 'status');
-    var task = tasks.find(function(t) { return t.id === taskId; });
+    var task = state.tasks.find(function(t) { return t.id === taskId; });
     var oldStatus = task ? task.Status : '';
-    await grist.docApi.applyUserActions([['UpdateRecord', TASKS_TABLE, taskId, { [statusCol]: 'todo' }]]);
+    await grist.docApi.applyUserActions([['UpdateRecord', state.TASKS_TABLE, taskId, { [statusCol]: 'todo' }]]);
     if (task) task.Status = 'todo';
     showToast(currentLang === 'fr' ? 'Tâche restaurée' : 'Task restored', 'success');
     logActivity('task_restored', taskId, task ? task.Title : '', '');
@@ -3883,7 +3791,7 @@ function toggleArchiveView() {
 function updateArchiveButton() {
   var btn = document.getElementById('archive-toggle-btn');
   if (!btn) return;
-  var archivedCount = tasks.filter(function(t) { return t.Status === 'archived'; }).length;
+  var archivedCount = state.tasks.filter(function(t) { return t.Status === 'archived'; }).length;
   btn.classList.toggle('active', showArchivedTasks);
   if (showArchivedTasks) {
     btn.innerHTML = (currentLang === 'fr' ? '← Retour aux tâches' : '← Back to tasks');
@@ -3945,7 +3853,7 @@ async function onDrop(e) {
       return;
     }
     try {
-      var draggedTask = tasks.find(function(t) { return t.id === draggedTaskId; });
+      var draggedTask = state.tasks.find(function(t) { return t.id === draggedTaskId; });
       var oldVal = draggedTask ? draggedTask[field] : '';
       var record = {};
       if (field === 'Project_Id') {
@@ -3953,10 +3861,10 @@ async function onDrop(e) {
       } else {
         record[field] = newValue;
       }
-      await grist.docApi.applyUserActions([['UpdateRecord', TASKS_TABLE, draggedTaskId, record]]);
-      for (var i = 0; i < tasks.length; i++) {
-        if (tasks[i].id === draggedTaskId) {
-          tasks[i][field] = record[field];
+      await grist.docApi.applyUserActions([['UpdateRecord', state.TASKS_TABLE, draggedTaskId, record]]);
+      for (var i = 0; i < state.tasks.length; i++) {
+        if (state.tasks[i].id === draggedTaskId) {
+          state.tasks[i][field] = record[field];
           break;
         }
       }
@@ -4085,7 +3993,7 @@ function renderTableView() {
     html += '<td>' + (task.Start_Date ? formatDate(task.Start_Date) : t('notDefined')) + '</td>';
     html += '<td style="' + (isOverdue(task) ? 'color:#dc2626;font-weight:700;' : '') + '">' + (task.Due_Date ? formatDate(task.Due_Date) + overdueHtml : t('noDate')) + '</td>';
     html += '<td onclick="event.stopPropagation();">';
-    if (isOwner) html += '<button class="btn-icon" onclick="deleteTask(' + task.id + ')">🗑️</button>';
+    if (state.isOwner) html += '<button class="btn-icon" onclick="deleteTask(' + task.id + ')">🗑️</button>';
     html += '</td>';
     html += '</tr>';
 
@@ -4168,7 +4076,7 @@ function collapseAllSubtasks() {
 
 async function toggleSubtaskFromTable(subtaskId, completed) {
   // Find parent task ID before updating
-  var subtask = subtasks.find(function(st) { return st.id === subtaskId; });
+  var subtask = state.subtasks.find(function(st) { return st.id === subtaskId; });
   var parentTaskId = subtask ? subtask.Parent_Task_Id : null;
   
   // Remember which toggles are expanded
@@ -4180,12 +4088,12 @@ async function toggleSubtaskFromTable(subtaskId, completed) {
   
   try {
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', SUBTASKS_TABLE, subtaskId, { Completed: completed }]
+      ['UpdateRecord', state.SUBTASKS_TABLE, subtaskId, { Completed: completed }]
     ]);
     // Update local state
-    for (var i = 0; i < subtasks.length; i++) {
-      if (subtasks[i].id === subtaskId) {
-        subtasks[i].Completed = completed;
+    for (var i = 0; i < state.subtasks.length; i++) {
+      if (state.subtasks[i].id === subtaskId) {
+        state.subtasks[i].Completed = completed;
         break;
       }
     }
@@ -4250,10 +4158,10 @@ function renderGanttSubtaskLabelCell(st, parentTaskId) {
 async function toggleGanttSubtask(subtaskId, completed) {
   try {
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', SUBTASKS_TABLE, subtaskId, { Completed: completed }]
+      ['UpdateRecord', state.SUBTASKS_TABLE, subtaskId, { Completed: completed }]
     ]);
-    for (var i = 0; i < subtasks.length; i++) {
-      if (subtasks[i].id === subtaskId) { subtasks[i].Completed = completed; break; }
+    for (var i = 0; i < state.subtasks.length; i++) {
+      if (state.subtasks[i].id === subtaskId) { state.subtasks[i].Completed = completed; break; }
     }
     renderGanttView();
   } catch (e) {
@@ -5117,7 +5025,7 @@ function ganttToday() {
 }
 
 function ganttExpandAll() {
-  var tasksWithSubs = tasks.filter(function(t) { return getGanttSubtasks(t.id).length > 0; });
+  var tasksWithSubs = state.tasks.filter(function(t) { return getGanttSubtasks(t.id).length > 0; });
   tasksWithSubs.forEach(function(t) { expandedGanttTasks[t.id] = true; });
   renderGanttView();
 }
@@ -5225,7 +5133,7 @@ function renderTemplatesView() {
   var search = (document.getElementById('template-search').value || '').toLowerCase();
   var filterPriority = document.getElementById('filter-template-priority').value;
 
-  var filtered = templates.filter(function(tpl) {
+  var filtered = state.templates.filter(function(tpl) {
     if (filterPriority && tpl.Priority !== filterPriority) return false;
     if (search) {
       var text = (tpl.Title + ' ' + tpl.Description + ' ' + tpl.Category).toLowerCase();
@@ -5251,8 +5159,8 @@ function renderTemplatesView() {
     html += '</div></div>';
     html += '<div style="display:flex;gap:4px;">';
     html += '<button class="btn btn-primary btn-sm" onclick="useTemplate(' + tpl.id + ')">' + t('useTemplate') + '</button>';
-    if (isOwner) html += '<button class="btn-icon" onclick="openNewTemplateModal(' + tpl.id + ')" title="' + t('editTemplate') + '">✏️</button>';
-    if (isOwner) html += '<button class="btn-icon" onclick="deleteTemplate(' + tpl.id + ')">🗑️</button>';
+    if (state.isOwner) html += '<button class="btn-icon" onclick="openNewTemplateModal(' + tpl.id + ')" title="' + t('editTemplate') + '">✏️</button>';
+    if (state.isOwner) html += '<button class="btn-icon" onclick="deleteTemplate(' + tpl.id + ')">🗑️</button>';
     html += '</div>';
     html += '</div>';
   }
@@ -5279,9 +5187,9 @@ function renderUsersList() {
   if (!container) return;
 
   // Apply role filter so the Équipe tab respects the active role selection
-  var displayedUsers = currentFilterRole
-    ? users.filter(function(u) { return userMatchesRole(u, currentFilterRole); })
-    : users;
+  var displayedUsers = state.currentFilterRole
+    ? state.users.filter(function(u) { return userMatchesRole(u, state.currentFilterRole); })
+    : state.users;
 
   if (displayedUsers.length === 0) {
     container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t('noUsers') + '</div>';
@@ -5320,16 +5228,16 @@ function renderGroupsList() {
   var container = document.getElementById('groups-list');
   if (!container) return;
 
-  if (groups.length === 0) {
+  if (state.groups.length === 0) {
     container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t('noGroups') + '</div>';
     return;
   }
 
   var html = '';
-  for (var i = 0; i < groups.length; i++) {
-    var g = groups[i];
-    var memberCount = users.filter(function(u) { return u.Group_Name === g.Name; }).length;
-    var memberNames = users.filter(function(u) { return u.Group_Name === g.Name; }).map(function(u) { return u.Name || u.Email; });
+  for (var i = 0; i < state.groups.length; i++) {
+    var g = state.groups[i];
+    var memberCount = state.users.filter(function(u) { return u.Group_Name === g.Name; }).length;
+    var memberNames = state.users.filter(function(u) { return u.Group_Name === g.Name; }).map(function(u) { return u.Name || u.Email; });
 
     html += '<div class="template-card">';
     html += '<div class="template-card-info">';
@@ -5358,14 +5266,14 @@ function renderCategoriesList() {
   var container = document.getElementById('categories-list');
   if (!container) return;
 
-  if (categories.length === 0) {
+  if (state.categories.length === 0) {
     container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">' + t('noCategories') + '</div>';
     return;
   }
 
   var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
-  for (var i = 0; i < categories.length; i++) {
-    var cat = categories[i];
+  for (var i = 0; i < state.categories.length; i++) {
+    var cat = state.categories[i];
     html += '<span class="category-chip" style="background:' + (cat.Color || '#6366f1') + '20;color:' + (cat.Color || '#6366f1') + ';border:1px solid ' + (cat.Color || '#6366f1') + '40;">';
     html += sanitize(cat.Name);
     html += '</span>';
@@ -5382,11 +5290,11 @@ function openCategoriesModal() {
   
   // Existing categories
   html += '<div class="cf-list">';
-  if (categories.length === 0) {
+  if (state.categories.length === 0) {
     html += '<div class="cf-empty-modal">' + t('noCategories') + '</div>';
   } else {
-    for (var i = 0; i < categories.length; i++) {
-      var cat = categories[i];
+    for (var i = 0; i < state.categories.length; i++) {
+      var cat = state.categories[i];
       html += '<div class="cf-list-item">';
       html += '<span class="category-color-dot" style="background:' + (cat.Color || '#6366f1') + ';"></span>';
       html += '<span class="cf-list-name">' + sanitize(cat.Name) + '</span>';
@@ -5432,15 +5340,15 @@ async function saveCategory() {
       var updateRec = {};
       setField(updateRec, 'categories', 'name', name);
       setField(updateRec, 'categories', 'color', color);
-      await grist.docApi.applyUserActions([['UpdateRecord', CATEGORIES_TABLE, parseInt(editId), updateRec]]);
+      await grist.docApi.applyUserActions([['UpdateRecord', state.CATEGORIES_TABLE, parseInt(editId), updateRec]]);
       showToast(t('saved'), 'success');
     } else {
-      var maxOrder = categories.length > 0 ? Math.max.apply(null, categories.map(function(c) { return c.Order || 0; })) : 0;
+      var maxOrder = state.categories.length > 0 ? Math.max.apply(null, state.categories.map(function(c) { return c.Order || 0; })) : 0;
       var record = {};
       setField(record, 'categories', 'name', name);
       setField(record, 'categories', 'color', color);
       setField(record, 'categories', 'order', maxOrder + 1);
-      await grist.docApi.applyUserActions([['AddRecord', CATEGORIES_TABLE, null, record]]);
+      await grist.docApi.applyUserActions([['AddRecord', state.CATEGORIES_TABLE, null, record]]);
       showToast(t('categoryCreated'), 'success');
     }
     closeModalForce();
@@ -5454,13 +5362,13 @@ async function saveCategory() {
 }
 
 async function deleteCategory(categoryId) {
-  if (!isOwner) return;
+  if (!state.isOwner) return;
   var confirmed = await showConfirmModal(currentLang === 'fr' ? 'Supprimer cette catégorie ?' : 'Delete this category?', currentLang === 'fr' ? 'Supprimer' : 'Delete');
   if (!confirmed) return;
 
   try {
     await grist.docApi.applyUserActions([
-      ['RemoveRecord', CATEGORIES_TABLE, categoryId]
+      ['RemoveRecord', state.CATEGORIES_TABLE, categoryId]
     ]);
     showToast(t('categoryDeleted'), 'info');
     closeModalForce();
@@ -5485,7 +5393,7 @@ async function getRoleChoicesFromGrist() {
     var tableRowId = null;
     if (tablesData && tablesData.id && tablesData.tableId) {
       for (var i = 0; i < tablesData.id.length; i++) {
-        if (tablesData.tableId[i] === USERS_TABLE) { tableRowId = tablesData.id[i]; break; }
+        if (tablesData.tableId[i] === state.USERS_TABLE) { tableRowId = tablesData.id[i]; break; }
       }
     }
 
@@ -5516,7 +5424,7 @@ async function getRoleChoicesFromGrist() {
   }
 
   // Always include roles currently assigned to users (so no user is orphaned)
-  users.forEach(function(u) { getUserRoles(u).forEach(function(r) { if (r) roleSet[r] = true; }); });
+  state.users.forEach(function(u) { getUserRoles(u).forEach(function(r) { if (r) roleSet[r] = true; }); });
 
   return Object.keys(roleSet).sort();
 }
@@ -5534,7 +5442,7 @@ function renderManageRolesModal() {
   var choices = _manageRolesState.choices;
   // Build usage map: role -> count of users (ChoiceList-safe)
   var usage = {};
-  users.forEach(function(u) { getUserRoles(u).forEach(function(r) { if (r) usage[r] = (usage[r] || 0) + 1; }); });
+  state.users.forEach(function(u) { getUserRoles(u).forEach(function(r) { if (r) usage[r] = (usage[r] || 0) + 1; }); });
 
   var html = '<div class="modal-overlay" onclick="closeModal(event)">';
   html += '<div class="modal" onclick="event.stopPropagation()">';
@@ -5593,7 +5501,7 @@ function addRoleChoice() {
 function removeRoleChoice(index) {
   var role = _manageRolesState.choices[index];
   // Check if used
-  var inUse = users.some(function(u) { return userMatchesRole(u, role); });
+  var inUse = state.users.some(function(u) { return userMatchesRole(u, role); });
   if (inUse) {
     if (!confirm(t('cannotDeleteUsedRole') + '. ' + (currentLang === 'fr' ? 'Continuer ?' : 'Continue?'))) {
       return;
@@ -5614,7 +5522,7 @@ async function saveRoleChoices() {
     // Find table row id
     var tableRowId = null;
     for (var i = 0; i < tablesData.id.length; i++) {
-      if (tablesData.tableId[i] === USERS_TABLE) { tableRowId = tablesData.id[i]; break; }
+      if (tablesData.tableId[i] === state.USERS_TABLE) { tableRowId = tablesData.id[i]; break; }
     }
     if (tableRowId === null) throw new Error('Table not found');
 
@@ -5635,7 +5543,7 @@ async function saveRoleChoices() {
     if (!existingOpts.widget) existingOpts.widget = 'TextBox';
 
     await grist.docApi.applyUserActions([
-      ['ModifyColumn', USERS_TABLE, roleColName, { widgetOptions: JSON.stringify(existingOpts) }]
+      ['ModifyColumn', state.USERS_TABLE, roleColName, { widgetOptions: JSON.stringify(existingOpts) }]
     ]);
     showToast(t('rolesUpdated'), 'success');
     closeModalForce();
@@ -5646,13 +5554,13 @@ async function saveRoleChoices() {
 }
 
 async function openEditUserModal(userId) {
-  var user = users.find(function(u) { return u.id === userId; });
+  var user = state.users.find(function(u) { return u.id === userId; });
   if (!user) return;
 
   var groupOptions = '<option value="">--</option>';
-  for (var i = 0; i < groups.length; i++) {
-    var sel = groups[i].Name === user.Group_Name ? ' selected' : '';
-    groupOptions += '<option value="' + sanitize(groups[i].Name) + '"' + sel + '>' + sanitize(groups[i].Name) + '</option>';
+  for (var i = 0; i < state.groups.length; i++) {
+    var sel = state.groups[i].Name === user.Group_Name ? ' selected' : '';
+    groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + '>' + sanitize(state.groups[i].Name) + '</option>';
   }
 
   var roleChoices = await getRoleChoicesFromGrist();
@@ -5687,7 +5595,7 @@ async function openEditUserModal(userId) {
 }
 
 function openEditGroupModal(groupId) {
-  var group = groups.find(function(g) { return g.id === groupId; });
+  var group = state.groups.find(function(g) { return g.id === groupId; });
   if (!group) return;
 
   var html = '<div class="modal-overlay" onclick="closeModal(event)">';
@@ -5717,7 +5625,7 @@ async function updateUser(userId) {
 
   try {
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', USERS_TABLE, userId, record]
+      ['UpdateRecord', state.USERS_TABLE, userId, record]
     ]);
     showToast(t('taskUpdated'), 'success');
     closeModalForce();
@@ -5734,7 +5642,7 @@ async function updateGroup(groupId) {
 
   try {
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', GROUPS_TABLE, groupId, {
+      ['UpdateRecord', state.GROUPS_TABLE, groupId, {
         Name: name,
         Description: document.getElementById('group-desc').value.trim()
       }]
@@ -5750,8 +5658,8 @@ async function updateGroup(groupId) {
 
 async function openNewUserModal() {
   var groupOptions = '<option value="">--</option>';
-  for (var i = 0; i < groups.length; i++) {
-    groupOptions += '<option value="' + sanitize(groups[i].Name) + '">' + sanitize(groups[i].Name) + '</option>';
+  for (var i = 0; i < state.groups.length; i++) {
+    groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + '</option>';
   }
 
   var roleChoices = await getRoleChoicesFromGrist();
@@ -5809,7 +5717,7 @@ async function createUser() {
 
   try {
     await grist.docApi.applyUserActions([
-      ['AddRecord', USERS_TABLE, null, record]
+      ['AddRecord', state.USERS_TABLE, null, record]
     ]);
     showToast(t('userCreated'), 'success');
     closeModalForce();
@@ -5831,7 +5739,7 @@ async function createGroup() {
 
   try {
     await grist.docApi.applyUserActions([
-      ['AddRecord', GROUPS_TABLE, null, record]
+      ['AddRecord', state.GROUPS_TABLE, null, record]
     ]);
     showToast(t('groupCreated'), 'success');
     closeModalForce();
@@ -5843,12 +5751,12 @@ async function createGroup() {
 }
 
 async function deleteUser(userId) {
-  if (!isOwner) return;
+  if (!state.isOwner) return;
   var confirmed = await showConfirmModal(t('confirmDeleteUser'), currentLang === 'fr' ? 'Supprimer l\'utilisateur' : 'Delete user');
   if (!confirmed) return;
   try {
     await grist.docApi.applyUserActions([
-      ['RemoveRecord', USERS_TABLE, userId]
+      ['RemoveRecord', state.USERS_TABLE, userId]
     ]);
     showToast(t('userDeleted'), 'info');
     await loadAllData();
@@ -5858,12 +5766,12 @@ async function deleteUser(userId) {
 }
 
 async function deleteGroup(groupId) {
-  if (!isOwner) return;
+  if (!state.isOwner) return;
   var confirmed = await showConfirmModal(t('confirmDeleteGroup'), currentLang === 'fr' ? 'Supprimer le groupe' : 'Delete group');
   if (!confirmed) return;
   try {
     await grist.docApi.applyUserActions([
-      ['RemoveRecord', GROUPS_TABLE, groupId]
+      ['RemoveRecord', state.GROUPS_TABLE, groupId]
     ]);
     showToast(t('groupDeleted'), 'info');
     await loadAllData();
@@ -5889,8 +5797,8 @@ function openNewTaskModal(defaultStatus) {
   editInformed = [];
 
   var groupOptions = '<option value="">--</option>';
-  for (var i = 0; i < groups.length; i++) {
-    groupOptions += '<option value="' + sanitize(groups[i].Name) + '">' + sanitize(groups[i].Name) + '</option>';
+  for (var i = 0; i < state.groups.length; i++) {
+    groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + '</option>';
   }
 
   var dotColor = '#f59e0b'; // default medium
@@ -5919,7 +5827,7 @@ function openNewTaskModal(defaultStatus) {
   html += '</div>';
 
   // Assignees (multi) — or RACI roles
-  if (raciEnabled) {
+  if (state.raciEnabled) {
     html += renderRaciField('R', t('raciResponsible'), 'assignee', 'editAssignees');
     html += renderRaciField('A', t('raciAccountable'), 'accountable', 'editAccountable');
     html += renderRaciField('C', t('raciConsulted'), 'consulted', 'editConsulted');
@@ -5933,8 +5841,8 @@ function openNewTaskModal(defaultStatus) {
     html += '<div class="assignee-add-row">';
     html += '<select id="assignee-select">';
     html += '<option value="">-- ' + t('searchAssignee') + ' --</option>';
-    for (var i = 0; i < users.length; i++) {
-      html += '<option value="' + sanitize(users[i].Email || users[i].Name) + '">' + sanitize(users[i].Name || users[i].Email) + '</option>';
+    for (var i = 0; i < state.users.length; i++) {
+      html += '<option value="' + sanitize(state.users[i].Email || state.users[i].Name) + '">' + sanitize(state.users[i].Name || state.users[i].Email) + '</option>';
     }
     html += '</select>';
     html += '<button class="assignee-add-btn" onclick="addRaciChip(\'editAssignees\',\'assignee\')">' + t('addAssignee') + '</button>';
@@ -5990,9 +5898,9 @@ function openNewTaskModal(defaultStatus) {
 
   // Project
   var projectOptions = '<option value="">' + t('noProject') + '</option>';
-  for (var pi = 0; pi < projects.length; pi++) {
-    var projSelected = currentProjectId === projects[pi].id ? ' selected' : '';
-    projectOptions += '<option value="' + projects[pi].id + '"' + projSelected + '>' + sanitize(projects[pi].Name) + '</option>';
+  for (var pi = 0; pi < state.projects.length; pi++) {
+    var projSelected = state.currentProjectId === state.projects[pi].id ? ' selected' : '';
+    projectOptions += '<option value="' + state.projects[pi].id + '"' + projSelected + '>' + sanitize(state.projects[pi].Name) + '</option>';
   }
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📂</span>';
@@ -6002,8 +5910,8 @@ function openNewTaskModal(defaultStatus) {
 
   // Category
   var newCategoryOptions = '<option value="">--</option>';
-  for (var nci = 0; nci < categories.length; nci++) {
-    newCategoryOptions += '<option value="' + sanitize(categories[nci].Name) + '">' + sanitize(categories[nci].Name) + '</option>';
+  for (var nci = 0; nci < state.categories.length; nci++) {
+    newCategoryOptions += '<option value="' + sanitize(state.categories[nci].Name) + '">' + sanitize(state.categories[nci].Name) + '</option>';
   }
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📁</span>';
@@ -6013,8 +5921,8 @@ function openNewTaskModal(defaultStatus) {
 
   // Tag
   var newTagOptions = '<option value="">--</option>';
-  for (var nti = 0; nti < tags.length; nti++) {
-    newTagOptions += '<option value="' + sanitize(tags[nti].Name) + '">' + sanitize(tags[nti].Name) + '</option>';
+  for (var nti = 0; nti < state.tags.length; nti++) {
+    newTagOptions += '<option value="' + sanitize(state.tags[nti].Name) + '">' + sanitize(state.tags[nti].Name) + '</option>';
   }
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">🏷️</span>';
@@ -6064,13 +5972,13 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
   if (prefill.recurrence && prefill.recurrence !== 'none') setField(record, 'tasks', 'recurrence', prefill.recurrence);
   if (prefill.estimatedHours) setField(record, 'tasks', 'estimatedHours', prefill.estimatedHours);
   if (editAssignees.length > 0) setField(record, 'tasks', 'assignee', editAssignees.join(', '));
-  if (currentProjectId) setField(record, 'tasks', 'projectId', currentProjectId);
+  if (state.currentProjectId) setField(record, 'tasks', 'projectId', state.currentProjectId);
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
-  if (TASKS_TABLE === DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
+  if (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
   if (dateStr) { setField(record, 'tasks', 'startDate', toEpoch(dateStr)); setField(record, 'tasks', 'dueDate', toEpoch(dateStr)); }
   try {
     record = await keepExistingTaskColumns(record);
-    var res = await grist.docApi.applyUserActions([['AddRecord', TASKS_TABLE, null, record]]);
+    var res = await grist.docApi.applyUserActions([['AddRecord', state.TASKS_TABLE, null, record]]);
     var newId = (res && res.retValues && res.retValues[0]) || null;
     if (!newId) { showToast('Error', 'error'); return; }
     draftTaskId = newId;
@@ -6082,7 +5990,7 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
 }
 
 function openEditTaskModal(taskId, preserveAssignees) {
-  var task = tasks.find(function(t) { return t.id === taskId; });
+  var task = state.tasks.find(function(t) { return t.id === taskId; });
   if (!task) return;
 
   if (!preserveAssignees) {
@@ -6093,9 +6001,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
   }
 
   var groupOptions = '<option value="">--</option>';
-  for (var i = 0; i < groups.length; i++) {
-    var sel = groups[i].Name === task.Group_Name ? ' selected' : '';
-    groupOptions += '<option value="' + sanitize(groups[i].Name) + '"' + sel + '>' + sanitize(groups[i].Name) + '</option>';
+  for (var i = 0; i < state.groups.length; i++) {
+    var sel = state.groups[i].Name === task.Group_Name ? ' selected' : '';
+    groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + '>' + sanitize(state.groups[i].Name) + '</option>';
   }
 
   var startVal = task.Start_Date ? new Date(task.Start_Date * 1000).toISOString().split('T')[0] : '';
@@ -6134,7 +6042,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '</div>';
 
   // Assignees (multi) — or RACI roles
-  if (raciEnabled) {
+  if (state.raciEnabled) {
     html += renderRaciField('R', t('raciResponsible'), 'assignee', 'editAssignees');
     html += renderRaciField('A', t('raciAccountable'), 'accountable', 'editAccountable');
     html += renderRaciField('C', t('raciConsulted'), 'consulted', 'editConsulted');
@@ -6150,8 +6058,8 @@ function openEditTaskModal(taskId, preserveAssignees) {
     html += '<div class="assignee-add-row">';
     html += '<select id="assignee-select">';
     html += '<option value="">-- ' + t('searchAssignee') + ' --</option>';
-    for (var i = 0; i < users.length; i++) {
-      html += '<option value="' + sanitize(users[i].Email || users[i].Name) + '">' + sanitize(users[i].Name || users[i].Email) + '</option>';
+    for (var i = 0; i < state.users.length; i++) {
+      html += '<option value="' + sanitize(state.users[i].Email || state.users[i].Name) + '">' + sanitize(state.users[i].Name || state.users[i].Email) + '</option>';
     }
     html += '</select>';
     html += '<button class="assignee-add-btn" onclick="addRaciChip(\'editAssignees\',\'assignee\')">' + t('addAssignee') + '</button>';
@@ -6204,9 +6112,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
 
   // Project
   var projectOptions = '<option value="">' + t('noProject') + '</option>';
-  for (var pi = 0; pi < projects.length; pi++) {
-    var projSel = projects[pi].id === task.Project_Id ? ' selected' : '';
-    projectOptions += '<option value="' + projects[pi].id + '"' + projSel + '>' + sanitize(projects[pi].Name) + '</option>';
+  for (var pi = 0; pi < state.projects.length; pi++) {
+    var projSel = state.projects[pi].id === task.Project_Id ? ' selected' : '';
+    projectOptions += '<option value="' + state.projects[pi].id + '"' + projSel + '>' + sanitize(state.projects[pi].Name) + '</option>';
   }
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📂</span>';
@@ -6216,9 +6124,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
 
   // Category
   var categoryOptions = '<option value="">--</option>';
-  for (var ci = 0; ci < categories.length; ci++) {
-    var catSel = categories[ci].Name === task.Category ? ' selected' : '';
-    categoryOptions += '<option value="' + sanitize(categories[ci].Name) + '"' + catSel + '>' + sanitize(categories[ci].Name) + '</option>';
+  for (var ci = 0; ci < state.categories.length; ci++) {
+    var catSel = state.categories[ci].Name === task.Category ? ' selected' : '';
+    categoryOptions += '<option value="' + sanitize(state.categories[ci].Name) + '"' + catSel + '>' + sanitize(state.categories[ci].Name) + '</option>';
   }
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📁</span>';
@@ -6228,9 +6136,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
 
   // Tag
   var tagOptions = '<option value="">--</option>';
-  for (var ti = 0; ti < tags.length; ti++) {
-    var tagSel = tags[ti].Name === task.Tag ? ' selected' : '';
-    tagOptions += '<option value="' + sanitize(tags[ti].Name) + '"' + tagSel + '>' + sanitize(tags[ti].Name) + '</option>';
+  for (var ti = 0; ti < state.tags.length; ti++) {
+    var tagSel = state.tags[ti].Name === task.Tag ? ' selected' : '';
+    tagOptions += '<option value="' + sanitize(state.tags[ti].Name) + '"' + tagSel + '>' + sanitize(state.tags[ti].Name) + '</option>';
   }
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">🏷️</span>';
@@ -6298,11 +6206,11 @@ function openEditTaskModal(taskId, preserveAssignees) {
       // Assignés multiples : liste de cases à cocher (comme les tâches, séparés par virgule)
       var stAssignees = (st.Assignee || '').split(',').map(function(a) { return a.trim(); }).filter(Boolean);
       var assigneeListHtml = '<div class="st-assignee-list" id="st-assignee-' + st.id + '" style="display:flex;flex-wrap:wrap;gap:4px 10px;max-height:84px;overflow-y:auto;padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;">';
-      if (users.length === 0) {
+      if (state.users.length === 0) {
         assigneeListHtml += '<span style="font-size:11px;color:#94a3b8;">' + (currentLang === 'fr' ? 'Aucun membre' : 'No members') + '</span>';
       }
-      for (var ui = 0; ui < users.length; ui++) {
-        var uName = users[ui].Name;
+      for (var ui = 0; ui < state.users.length; ui++) {
+        var uName = state.users[ui].Name;
         var uChk = stAssignees.indexOf(uName) !== -1 ? ' checked' : '';
         assigneeListHtml += '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;white-space:nowrap;"><input type="checkbox" value="' + sanitize(uName) + '"' + uChk + '> ' + sanitize(uName) + '</label>';
       }
@@ -6351,7 +6259,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
       // Assignés (multiples)
       html += '<div>';
       html += '<div class="st-pill-label">' + t('subtaskAssignee') + (currentLang === 'fr' ? ' (plusieurs possibles)' : ' (multiple)') + '</div>';
-      if (users.length > 1) {
+      if (state.users.length > 1) {
         html += '<input type="text" id="st-assignee-search-' + st.id + '" oninput="filterStAssignees(' + st.id + ', this.value)" placeholder="' + (currentLang === 'fr' ? '🔍 Rechercher un membre...' : '🔍 Search a member...') + '" style="width:100%;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;margin-bottom:4px;" autocomplete="off">';
       }
       html += assigneeListHtml;
@@ -6452,16 +6360,16 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '</div>';
 
   // === CUSTOM FIELDS SECTION ===
-  if (customFields.length > 0) {
+  if (state.customFields.length > 0) {
     html += '<div class="custom-fields-section">';
     html += '<div class="custom-fields-header">';
     html += '<span class="detail-field-icon">📋</span>';
     html += '<span class="detail-field-label">' + t('customFields') + '</span>';
-    if (isOwner) html += '<button class="cf-manage-btn" onclick="openCustomFieldsModal()">⚙️</button>';
+    if (state.isOwner) html += '<button class="cf-manage-btn" onclick="openCustomFieldsModal()">⚙️</button>';
     html += '</div>';
     html += '<div class="custom-fields-list">';
-    for (var cfi = 0; cfi < customFields.length; cfi++) {
-      var cf = customFields[cfi];
+    for (var cfi = 0; cfi < state.customFields.length; cfi++) {
+      var cf = state.customFields[cfi];
       var cfValue = getTaskCustomFieldValue(task.id, cf.id);
       html += '<div class="custom-field-item">';
       html += '<label class="cf-label">' + sanitize(cf.Name) + '</label>';
@@ -6470,7 +6378,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
     }
     html += '</div>';
     html += '</div>';
-  } else if (isOwner) {
+  } else if (state.isOwner) {
     html += '<div class="custom-fields-section">';
     html += '<div class="custom-fields-header">';
     html += '<span class="detail-field-icon">📋</span>';
@@ -6515,7 +6423,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
       html += '<div class="comment-header">';
       html += '<span class="comment-author">👤 ' + sanitize(cmt.Author || 'Anonyme') + '</span>';
       html += '<span class="comment-time">' + formatTimeAgo(cmt.Created_At) + '</span>';
-      if (isOwner) html += '<button class="comment-delete" onclick="deleteComment(' + cmt.id + ', ' + task.id + ')">✕</button>';
+      if (state.isOwner) html += '<button class="comment-delete" onclick="deleteComment(' + cmt.id + ', ' + task.id + ')">✕</button>';
       html += '</div>';
       html += '<div class="comment-content">' + sanitize(cmt.Content) + '</div>';
       html += '</div>';
@@ -6568,7 +6476,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
 
   // Time Tracking card
   var totalTime = getTaskTotalTime(task.id);
-  var isTimerRunning = !!activeTimers[task.id];
+  var isTimerRunning = !!state.activeTimers[task.id];
   var taskTimeEntries = getTaskTimeEntries(task.id);
 	  html += '<div class="detail-card time-card">';
 	  html += '<h4>⏱️ ' + t('timeTracking') + '</h4>';
@@ -6657,7 +6565,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
 
   // Footer
   html += '<div class="modal-detail-footer">';
-  if (isOwner) html += '<button class="btn-danger" onclick="deleteTask(' + task.id + ')">' + t('delete') + '</button>';
+  if (state.isOwner) html += '<button class="btn-danger" onclick="deleteTask(' + task.id + ')">' + t('delete') + '</button>';
   else html += '<div></div>';
   html += '<div style="display:flex;gap:8px;">';
   html += '<button type="button" class="btn btn-secondary" onclick="event.preventDefault();closeModalForce()">' + t('cancel') + '</button>';
@@ -6699,9 +6607,9 @@ function renderRaciChips(varName) {
   for (var i = 0; i < arr.length; i++) {
     var name = arr[i];
     var displayName = name;
-    for (var j = 0; j < users.length; j++) {
-      if (users[j].Email === name || users[j].Name === name) {
-        displayName = users[j].Name || users[j].Email;
+    for (var j = 0; j < state.users.length; j++) {
+      if (state.users[j].Email === name || state.users[j].Name === name) {
+        displayName = state.users[j].Name || state.users[j].Email;
         break;
       }
     }
@@ -6723,8 +6631,8 @@ function renderRaciField(letter, label, selectSuffix, varName) {
   html += '<div class="assignee-add-row">';
   html += '<select id="' + selectSuffix + '-select">';
   html += '<option value="">-- ' + t('searchAssignee') + ' --</option>';
-  for (var i = 0; i < users.length; i++) {
-    html += '<option value="' + sanitize(users[i].Email || users[i].Name) + '">' + sanitize(users[i].Name || users[i].Email) + '</option>';
+  for (var i = 0; i < state.users.length; i++) {
+    html += '<option value="' + sanitize(state.users[i].Email || state.users[i].Name) + '">' + sanitize(state.users[i].Name || state.users[i].Email) + '</option>';
   }
   html += '</select>';
   html += '<button class="assignee-add-btn" onclick="addRaciChip(\'' + varName + '\',\'' + selectSuffix + '\')">' + t('addAssignee') + '</button>';
@@ -6752,7 +6660,7 @@ function removeRaciChip(varName, index, selectSuffix) {
 }
 
 function openSubtaskDepModal(subtaskId, taskId) {
-  var subtask = subtasks.find(function(st) { return st.id === subtaskId; });
+  var subtask = state.subtasks.find(function(st) { return st.id === subtaskId; });
   if (!subtask) return;
   
   var taskSubtasks = getTaskSubtasks(taskId);
@@ -6789,7 +6697,7 @@ async function updateSubtaskDep(subtaskId, taskId) {
   
   try {
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', SUBTASKS_TABLE, subtaskId, { Blocked_By_Subtask_Id: blockerId }]
+      ['UpdateRecord', state.SUBTASKS_TABLE, subtaskId, { Blocked_By_Subtask_Id: blockerId }]
     ]);
     showToast(t('dependencyAdded'), 'success');
     closeModalForce();
@@ -6802,15 +6710,15 @@ async function updateSubtaskDep(subtaskId, taskId) {
 }
 
 async function quickAction(taskId, newStatus) {
-  var task = tasks.find(function(t) { return t.id === taskId; });
+  var task = state.tasks.find(function(t) { return t.id === taskId; });
   var wasNotDone = task && task.Status !== 'done';
   
   try {
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', TASKS_TABLE, taskId, { Status: newStatus }]
+      ['UpdateRecord', state.TASKS_TABLE, taskId, { Status: newStatus }]
     ]);
-    for (var i = 0; i < tasks.length; i++) {
-      if (tasks[i].id === taskId) { tasks[i].Status = newStatus; break; }
+    for (var i = 0; i < state.tasks.length; i++) {
+      if (state.tasks[i].id === taskId) { state.tasks[i].Status = newStatus; break; }
     }
 	    showToast(t('taskMoved'), 'success');
 	    if (newStatus === 'done' && wasNotDone && task) {
@@ -6850,7 +6758,7 @@ async function addSubtask(parentTaskId) {
 
   try {
     await grist.docApi.applyUserActions([
-      ['AddRecord', SUBTASKS_TABLE, null, {
+      ['AddRecord', state.SUBTASKS_TABLE, null, {
         Parent_Task_Id: parentTaskId,
         Title: title,
         Status: 'todo',
@@ -6896,17 +6804,17 @@ async function toggleSubtask(subtaskId, completed) {
   try {
     var newStatus = completed ? 'done' : 'todo';
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', SUBTASKS_TABLE, subtaskId, { Completed: completed, Status: newStatus }]
+      ['UpdateRecord', state.SUBTASKS_TABLE, subtaskId, { Completed: completed, Status: newStatus }]
     ]);
-    for (var i = 0; i < subtasks.length; i++) {
-      if (subtasks[i].id === subtaskId) {
-        subtasks[i].Completed = completed;
-        subtasks[i].Status = newStatus;
+    for (var i = 0; i < state.subtasks.length; i++) {
+      if (state.subtasks[i].id === subtaskId) {
+        state.subtasks[i].Completed = completed;
+        state.subtasks[i].Status = newStatus;
         break;
       }
     }
     showToast(t('subtaskCompleted'), 'success');
-    var subtask = subtasks.find(function(st) { return st.id === subtaskId; });
+    var subtask = state.subtasks.find(function(st) { return st.id === subtaskId; });
     if (subtask) {
       editAssignees = savedAssignees;
       editAccountable = savedAccountable;
@@ -6933,10 +6841,10 @@ async function deleteSubtask(subtaskId, parentTaskId) {
   var savedInformed = editInformed.slice();
   var scrollPos = getModalScrollTop();
   try {
-    var actions = subtasks
+    var actions = state.subtasks
       .filter(function(st) { return st.Blocked_By_Subtask_Id === subtaskId; })
-      .map(function(st) { return ['UpdateRecord', SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }]; });
-    actions.push(['RemoveRecord', SUBTASKS_TABLE, subtaskId]);
+      .map(function(st) { return ['UpdateRecord', state.SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }]; });
+    actions.push(['RemoveRecord', state.SUBTASKS_TABLE, subtaskId]);
     await grist.docApi.applyUserActions(actions);
     showToast(t('subtaskDeleted'), 'info');
     await loadAllData();
@@ -7053,7 +6961,7 @@ async function saveEditSubtask(subtaskId, parentTaskId) {
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
   try {
-    await grist.docApi.applyUserActions([['UpdateRecord', SUBTASKS_TABLE, subtaskId, fields]]);
+    await grist.docApi.applyUserActions([['UpdateRecord', state.SUBTASKS_TABLE, subtaskId, fields]]);
     showToast(t('subtaskSaved'), 'success');
     await loadAllData();
     editAssignees = savedAssignees;
@@ -7068,7 +6976,7 @@ async function saveEditSubtask(subtaskId, parentTaskId) {
 }
 
 async function generateSubtaskOccurrences(subtaskId, parentTaskId) {
-  var st = subtasks.find(function(s) { return s.id === subtaskId; });
+  var st = state.subtasks.find(function(s) { return s.id === subtaskId; });
   if (!st || !st.Recurrence || st.Recurrence === 'none') return;
   var baseDate = st.Due_Date ? new Date(st.Due_Date * 1000) : new Date();
   var actions = [];
@@ -7084,7 +6992,7 @@ async function generateSubtaskOccurrences(subtaskId, parentTaskId) {
     else if (st.Recurrence === 'quarterly') d.setMonth(d.getMonth() + i * 3);
     else if (st.Recurrence === 'yearly') d.setFullYear(d.getFullYear() + i);
     else d.setMonth(d.getMonth() + i);
-    actions.push(['AddRecord', SUBTASKS_TABLE, null, {
+    actions.push(['AddRecord', state.SUBTASKS_TABLE, null, {
       Parent_Task_Id: parentTaskId,
       Title: st.Title,
       Description: st.Description || '',
@@ -7134,7 +7042,7 @@ function getDependencyCandidates(taskId, projectId, query) {
     existingDependencyIds[dependency.id] = true;
   });
 
-  return tasks.filter(function(candidate) {
+  return state.tasks.filter(function(candidate) {
     if (candidate.id === taskId || candidate.Status === 'archived' || existingDependencyIds[candidate.id]) return false;
     if (normalizeDependencyProjectId(candidate.Project_Id) !== normalizedProjectId) return false;
     if (normalizedQuery && String(candidate.Title || '').toLowerCase().indexOf(normalizedQuery) === -1) return false;
@@ -7214,7 +7122,7 @@ function toggleDependencyTaskOptions(taskId) {
 }
 
 function selectDependencyTask(taskId) {
-  var selectedTask = tasks.find(function(candidate) { return candidate.id === taskId; });
+  var selectedTask = state.tasks.find(function(candidate) { return candidate.id === taskId; });
   var selectedInput = document.getElementById('dep-select');
   var searchEl = document.getElementById('dep-search');
   if (!selectedTask || !selectedInput || !searchEl) return;
@@ -7229,7 +7137,7 @@ async function addDependency(taskId) {
   if (!dependsOnId) return;
   var projectEl = document.getElementById('task-project');
   var selectedProjectId = normalizeDependencyProjectId(projectEl ? projectEl.value : 0);
-  var dependsOnTask = tasks.find(function(candidate) { return candidate.id === dependsOnId; });
+  var dependsOnTask = state.tasks.find(function(candidate) { return candidate.id === dependsOnId; });
   if (!dependsOnTask || normalizeDependencyProjectId(dependsOnTask.Project_Id) !== selectedProjectId) {
     showToast(currentLang === 'fr' ? 'La dépendance doit appartenir au même projet.' : 'The dependency must belong to the same project.', 'error');
     refreshDependencyTaskOptions(taskId);
@@ -7243,7 +7151,7 @@ async function addDependency(taskId) {
 
   try {
     await grist.docApi.applyUserActions([
-      ['AddRecord', DEPENDENCIES_TABLE, null, {
+      ['AddRecord', state.DEPENDENCIES_TABLE, null, {
         Task_Id: taskId,
         Depends_On_Task_Id: dependsOnId,
         Created_At: Math.floor(Date.now() / 1000)
@@ -7265,7 +7173,7 @@ async function addDependency(taskId) {
 }
 
 async function removeDependency(taskId, dependsOnTaskId) {
-  var dep = dependencies.find(function(d) {
+  var dep = state.dependencies.find(function(d) {
     return d.Task_Id === taskId && d.Depends_On_Task_Id === dependsOnTaskId;
   });
   if (!dep) return;
@@ -7282,7 +7190,7 @@ async function removeDependency(taskId, dependsOnTaskId) {
 
   try {
     await grist.docApi.applyUserActions([
-      ['RemoveRecord', DEPENDENCIES_TABLE, dep.id]
+      ['RemoveRecord', state.DEPENDENCIES_TABLE, dep.id]
     ]);
     showToast(t('dependencyRemoved'), 'info');
     await loadAllData();
@@ -7314,16 +7222,16 @@ async function addComment(taskId) {
 
   try {
     await grist.docApi.applyUserActions([
-      ['AddRecord', COMMENTS_TABLE, null, {
+      ['AddRecord', state.COMMENTS_TABLE, null, {
         Task_Id: taskId,
-        Author: currentUserEmail || 'Utilisateur',
+        Author: state.currentUserEmail || 'Utilisateur',
         Content: content,
         Created_At: Math.floor(Date.now() / 1000)
       }]
     ]);
     textarea.value = '';
     showToast(t('commentAdded'), 'success');
-    var commentTask = tasks.find(function(t2) { return t2.id === taskId; });
+    var commentTask = state.tasks.find(function(t2) { return t2.id === taskId; });
     logActivity('comment_added', taskId, commentTask ? commentTask.Title : '', content.substring(0, 80));
     await loadAllData();
     editAssignees = savedAssignees;
@@ -7340,7 +7248,7 @@ async function addComment(taskId) {
 }
 
 async function deleteComment(commentId, taskId) {
-  if (!isOwner) return;
+  if (!state.isOwner) return;
   var confirmed = await showConfirmModal(
     currentLang === 'fr' ? 'Supprimer ce commentaire ?' : 'Delete this comment?',
     currentLang === 'fr' ? 'Supprimer le commentaire' : 'Delete comment'
@@ -7353,7 +7261,7 @@ async function deleteComment(commentId, taskId) {
   var savedInformed = editInformed.slice();
   try {
     await grist.docApi.applyUserActions([
-      ['RemoveRecord', COMMENTS_TABLE, commentId]
+      ['RemoveRecord', state.COMMENTS_TABLE, commentId]
     ]);
     showToast(t('commentDeleted'), 'info');
     await loadAllData();
@@ -7373,20 +7281,20 @@ async function deleteComment(commentId, taskId) {
 // =============================================================================
 
 async function startTimer(taskId) {
-  if (activeTimers[taskId]) return;
+  if (state.activeTimers[taskId]) return;
   var now = Math.floor(Date.now() / 1000);
   try {
     await grist.docApi.applyUserActions([
-      ['AddRecord', TIME_ENTRIES_TABLE, null, {
+      ['AddRecord', state.TIME_ENTRIES_TABLE, null, {
         Task_Id: taskId,
-        User: currentUserEmail || 'Utilisateur',
+        User: state.currentUserEmail || 'Utilisateur',
         Start_Time: now,
         End_Time: null,
         Duration: 0,
         Description: currentLang === 'fr' ? 'Timer en cours' : 'Running timer'
       }]
     ]);
-    activeTimers[taskId] = now;
+    state.activeTimers[taskId] = now;
     await loadAllData();
     openEditTaskModal(taskId);
   } catch (e) {
@@ -7396,19 +7304,19 @@ async function startTimer(taskId) {
 }
 
 async function stopTimer(taskId) {
-  if (!activeTimers[taskId]) return;
+  if (!state.activeTimers[taskId]) return;
   
-  var startTime = activeTimers[taskId];
+  var startTime = state.activeTimers[taskId];
   var endTime = Math.floor(Date.now() / 1000);
   var duration = endTime - startTime;
-  var openEntry = timeEntries.find(function(te) {
+  var openEntry = state.timeEntries.find(function(te) {
     return te.Task_Id === taskId && te.Start_Time === startTime && !te.End_Time;
   });
   
   try {
     if (openEntry) {
       await grist.docApi.applyUserActions([
-        ['UpdateRecord', TIME_ENTRIES_TABLE, openEntry.id, {
+        ['UpdateRecord', state.TIME_ENTRIES_TABLE, openEntry.id, {
           End_Time: endTime,
           Duration: duration,
           Description: ''
@@ -7416,9 +7324,9 @@ async function stopTimer(taskId) {
       ]);
     } else {
       await grist.docApi.applyUserActions([
-        ['AddRecord', TIME_ENTRIES_TABLE, null, {
+        ['AddRecord', state.TIME_ENTRIES_TABLE, null, {
           Task_Id: taskId,
-          User: currentUserEmail || 'Utilisateur',
+          User: state.currentUserEmail || 'Utilisateur',
           Start_Time: startTime,
           End_Time: endTime,
           Duration: duration,
@@ -7426,7 +7334,7 @@ async function stopTimer(taskId) {
         }]
       ]);
     }
-    delete activeTimers[taskId];
+    delete state.activeTimers[taskId];
     showToast(t('timeEntryAdded'), 'success');
     await loadAllData();
     openEditTaskModal(taskId);
@@ -7451,9 +7359,9 @@ async function addManualTimeEntry(taskId) {
   var now = Math.floor(Date.now() / 1000);
   try {
     await grist.docApi.applyUserActions([
-      ['AddRecord', TIME_ENTRIES_TABLE, null, {
+      ['AddRecord', state.TIME_ENTRIES_TABLE, null, {
         Task_Id: taskId,
-        User: currentUserEmail || 'Utilisateur',
+        User: state.currentUserEmail || 'Utilisateur',
         Start_Time: now - duration,
         End_Time: now,
         Duration: duration,
@@ -7508,19 +7416,19 @@ function renderCustomFieldInput(field, taskId, value) {
 }
 
 async function updateCustomFieldValue(taskId, fieldId, value) {
-  var existing = customFieldValues.find(function(v) {
+  var existing = state.customFieldValues.find(function(v) {
     return v.Task_Id === taskId && v.Field_Id === fieldId;
   });
   
   try {
     if (existing) {
       await grist.docApi.applyUserActions([
-        ['UpdateRecord', CUSTOM_FIELD_VALUES_TABLE, existing.id, { Value: String(value) }]
+        ['UpdateRecord', state.CUSTOM_FIELD_VALUES_TABLE, existing.id, { Value: String(value) }]
       ]);
       existing.Value = String(value);
     } else {
       await grist.docApi.applyUserActions([
-        ['AddRecord', CUSTOM_FIELD_VALUES_TABLE, null, {
+        ['AddRecord', state.CUSTOM_FIELD_VALUES_TABLE, null, {
           Task_Id: taskId,
           Field_Id: fieldId,
           Value: String(value)
@@ -7541,11 +7449,11 @@ function openCustomFieldsModal() {
   
   // Existing fields
   html += '<div class="cf-list">';
-  if (customFields.length === 0) {
+  if (state.customFields.length === 0) {
     html += '<div class="cf-empty-modal">' + t('noCustomFields') + '</div>';
   } else {
-    for (var i = 0; i < customFields.length; i++) {
-      var cf = customFields[i];
+    for (var i = 0; i < state.customFields.length; i++) {
+      var cf = state.customFields[i];
       html += '<div class="cf-list-item">';
       html += '<span class="cf-list-name">' + sanitize(cf.Name) + '</span>';
       html += '<span class="cf-list-type">' + getCustomFieldTypeLabel(cf.Type) + '</span>';
@@ -7591,11 +7499,11 @@ async function addCustomField() {
   
   if (!name) return;
   
-  var maxOrder = customFields.length > 0 ? Math.max.apply(null, customFields.map(function(cf) { return cf.Order || 0; })) : 0;
+  var maxOrder = state.customFields.length > 0 ? Math.max.apply(null, state.customFields.map(function(cf) { return cf.Order || 0; })) : 0;
   
   try {
     await grist.docApi.applyUserActions([
-      ['AddRecord', CUSTOM_FIELDS_TABLE, null, {
+      ['AddRecord', state.CUSTOM_FIELDS_TABLE, null, {
         Name: name,
         Type: type,
         Options: type === 'select' ? options : '',
@@ -7613,7 +7521,7 @@ async function addCustomField() {
 }
 
 async function deleteCustomField(fieldId) {
-  if (!isOwner) return;
+  if (!state.isOwner) return;
   var confirmed = await showConfirmModal(
     currentLang === 'fr' ? 'Supprimer ce champ personnalisé et toutes ses valeurs ?' : 'Delete this custom field and all its values?',
     currentLang === 'fr' ? 'Supprimer le champ' : 'Delete field'
@@ -7622,15 +7530,15 @@ async function deleteCustomField(fieldId) {
   
   try {
     // Delete field values first
-    var valuesToDelete = customFieldValues.filter(function(v) { return v.Field_Id === fieldId; });
+    var valuesToDelete = state.customFieldValues.filter(function(v) { return v.Field_Id === fieldId; });
     for (var i = 0; i < valuesToDelete.length; i++) {
       await grist.docApi.applyUserActions([
-        ['RemoveRecord', CUSTOM_FIELD_VALUES_TABLE, valuesToDelete[i].id]
+        ['RemoveRecord', state.CUSTOM_FIELD_VALUES_TABLE, valuesToDelete[i].id]
       ]);
     }
     // Delete field
     await grist.docApi.applyUserActions([
-      ['RemoveRecord', CUSTOM_FIELDS_TABLE, fieldId]
+      ['RemoveRecord', state.CUSTOM_FIELDS_TABLE, fieldId]
     ]);
     showToast(t('customFieldDeleted'), 'info');
     await loadAllData();
@@ -7647,7 +7555,7 @@ async function deleteCustomField(fieldId) {
 // Génère toutes les occurrences d'une tâche récurrente sur le mois ou l'année en cours.
 // N'écrase pas les occurrences déjà existantes (vérifie par titre + date).
 async function generateOccurrences(taskId, period) {
-  var task = tasks.find(function(t) { return t.id === taskId; });
+  var task = state.tasks.find(function(t) { return t.id === taskId; });
   if (!task || !task.Recurrence || task.Recurrence === 'none') return;
 
   var now = Math.floor(Date.now() / 1000);
@@ -7663,7 +7571,7 @@ async function generateOccurrences(taskId, period) {
   var stepSeconds = task.Recurrence === 'daily' ? 86400 : task.Recurrence === 'weekly' ? 604800 : 2592000;
 
   // Trouver la dernière date d'échéance parmi les occurrences existantes du même titre
-  var existingDates = tasks
+  var existingDates = state.tasks
     .filter(function(t) { return t.Title === task.Title && t.Due_Date; })
     .map(function(t) { return t.Due_Date; });
   var cursor = existingDates.length > 0 ? Math.max.apply(null, existingDates) : (task.Due_Date || now);
@@ -7675,7 +7583,7 @@ async function generateOccurrences(taskId, period) {
     cursor += stepSeconds;
     safety++;
     // Ne pas créer en double
-    var alreadyExists = tasks.some(function(t) {
+    var alreadyExists = state.tasks.some(function(t) {
       return t.Title === task.Title && t.Due_Date && Math.abs(t.Due_Date - cursor) < 43200;
     });
     if (alreadyExists) continue;
@@ -7695,7 +7603,7 @@ async function generateOccurrences(taskId, period) {
     setField(record, 'tasks', 'estimatedHours', task.Estimated_Hours);
     setField(record, 'tasks', 'projectId', task.Project_Id);
     setField(record, 'tasks', 'createdAt', now);
-    actions.push(['AddRecord', TASKS_TABLE, null, record]);
+    actions.push(['AddRecord', state.TASKS_TABLE, null, record]);
     count++;
   }
 
@@ -7754,7 +7662,7 @@ async function createNextOccurrence(task) {
     setField(record, 'tasks', 'createdAt', now);
     
     await grist.docApi.applyUserActions([
-      ['AddRecord', TASKS_TABLE, null, record]
+      ['AddRecord', state.TASKS_TABLE, null, record]
     ]);
     showToast(t('nextOccurrence'), 'success');
   } catch (e) {
@@ -7764,7 +7672,7 @@ async function createNextOccurrence(task) {
 
 function openNewTemplateModal(tplId) {
   var editing = tplId != null;
-  var tpl = editing ? templates.find(function(x) { return x.id === tplId; }) : null;
+  var tpl = editing ? state.templates.find(function(x) { return x.id === tplId; }) : null;
   if (editing && !tpl) return;
 
   var title = editing ? sanitize(tpl.Title || '') : '';
@@ -7789,8 +7697,8 @@ function openNewTemplateModal(tplId) {
   html += '<option value="low"' + (priority === 'low' ? ' selected' : '') + '>' + t('priorityLow') + '</option>';
   html += '</select></div>';
   var tplCatOptions = '<option value=""' + (!category ? ' selected' : '') + '>--</option>';
-  for (var tci = 0; tci < categories.length; tci++) {
-    var catName = categories[tci].Name;
+  for (var tci = 0; tci < state.categories.length; tci++) {
+    var catName = state.categories[tci].Name;
     tplCatOptions += '<option value="' + sanitize(catName) + '"' + (catName === category ? ' selected' : '') + '>' + sanitize(catName) + '</option>';
   }
   html += '<div class="form-group"><label>' + t('fieldCategory') + '</label><select id="tpl-category">' + tplCatOptions + '</select></div>';
@@ -7799,10 +7707,10 @@ function openNewTemplateModal(tplId) {
   // Groupe + Tag
   html += '<div class="form-row">';
   var tplGroupOpts = '<option value="">--</option>';
-  for (var tgi = 0; tgi < groups.length; tgi++) tplGroupOpts += '<option value="' + sanitize(groups[tgi].Name) + '"' + (groups[tgi].Name === tplGroup ? ' selected' : '') + '>' + sanitize(groups[tgi].Name) + '</option>';
+  for (var tgi = 0; tgi < state.groups.length; tgi++) tplGroupOpts += '<option value="' + sanitize(state.groups[tgi].Name) + '"' + (state.groups[tgi].Name === tplGroup ? ' selected' : '') + '>' + sanitize(state.groups[tgi].Name) + '</option>';
   html += '<div class="form-group"><label>' + t('fieldGroup') + '</label><select id="tpl-group">' + tplGroupOpts + '</select></div>';
   var tplTagOpts = '<option value="">--</option>';
-  for (var tti = 0; tti < tags.length; tti++) tplTagOpts += '<option value="' + sanitize(tags[tti].Name) + '"' + (tags[tti].Name === tplTag ? ' selected' : '') + '>' + sanitize(tags[tti].Name) + '</option>';
+  for (var tti = 0; tti < state.tags.length; tti++) tplTagOpts += '<option value="' + sanitize(state.tags[tti].Name) + '"' + (state.tags[tti].Name === tplTag ? ' selected' : '') + '>' + sanitize(state.tags[tti].Name) + '</option>';
   html += '<div class="form-group"><label>' + t('tag') + '</label><select id="tpl-tag">' + tplTagOpts + '</select></div>';
   html += '</div>';
   // Récurrence
@@ -7837,7 +7745,7 @@ function closeModalForce() {
     var titleVal = ti ? ti.value.trim() : '';
     if (titleVal) { updateTask(did); return; } // updateTask enregistre, ferme et recharge
     removeDraftChildren(did)
-      .then(function () { return grist.docApi.applyUserActions([['RemoveRecord', TASKS_TABLE, did]]); })
+      .then(function () { return grist.docApi.applyUserActions([['RemoveRecord', state.TASKS_TABLE, did]]); })
       .then(function () { return loadAllData(); })
       .then(function () { refreshAllViews(); })
       .catch(function () {});
@@ -7866,7 +7774,7 @@ async function createTask() {
   setField(record, 'tasks', 'status', getInputValue('task-status'));
   setField(record, 'tasks', 'priority', getInputValue('task-priority'));
   setField(record, 'tasks', 'assignee', editAssignees.join(', '));
-  if (raciEnabled && TASKS_TABLE === DEFAULT_TASKS_TABLE) {
+  if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
     record.Accountable = editAccountable.join(', ');
     record.Consulted = editConsulted.join(', ');
     record.Informed = editInformed.join(', ');
@@ -7879,7 +7787,7 @@ async function createTask() {
   setField(record, 'tasks', 'estimatedHours', getEstimatedHoursInput());
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
   // B4 : prolongation auto activée par défaut sur les nouvelles tâches (modifiable ensuite)
-  if (TASKS_TABLE === DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
+  if (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
 
   // Add Tag only if the element exists
   var tagEl = document.getElementById('task-tag');
@@ -7890,7 +7798,7 @@ async function createTask() {
   try {
     record = await keepExistingTaskColumns(record);
     var createResult = await grist.docApi.applyUserActions([
-      ['AddRecord', TASKS_TABLE, null, record]
+      ['AddRecord', state.TASKS_TABLE, null, record]
     ]);
     var newTaskId = (createResult && createResult.retValues && createResult.retValues[0]) || null;
     showToast(t('taskCreated'), 'success');
@@ -7918,7 +7826,7 @@ async function updateTask(taskId) {
   }
   var wasDraft = draftTaskId === taskId;
 
-  var task = tasks.find(function(t) { return t.id === taskId; });
+  var task = state.tasks.find(function(t) { return t.id === taskId; });
   var wasNotDone = task && task.Status !== 'done';
   var newStatus = getInputValue('task-status');
 
@@ -7941,7 +7849,7 @@ async function updateTask(taskId) {
   setField(record, 'tasks', 'status', newStatus);
   setField(record, 'tasks', 'priority', getInputValue('task-priority'));
   setField(record, 'tasks', 'assignee', editAssignees.join(', '));
-  if (raciEnabled && TASKS_TABLE === DEFAULT_TASKS_TABLE) {
+  if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
     record.Accountable = editAccountable.join(', ');
     record.Consulted = editConsulted.join(', ');
     record.Informed = editInformed.join(', ');
@@ -7975,7 +7883,7 @@ async function updateTask(taskId) {
   try {
     record = await keepExistingTaskColumns(record);
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', TASKS_TABLE, taskId, record]
+      ['UpdateRecord', state.TASKS_TABLE, taskId, record]
     ]);
     if (wasDraft) draftTaskId = null; // ce brouillon devient une vraie tâche seulement après sauvegarde réussie
     showToast(t('taskUpdated'), 'success');
@@ -8025,46 +7933,46 @@ async function updateTask(taskId) {
 }
 
 async function deleteTask(taskId) {
-  if (!isOwner) return;
-  var relatedSubtasks = subtasks.filter(function(st) { return st.Parent_Task_Id === taskId; });
+  if (!state.isOwner) return;
+  var relatedSubtasks = state.subtasks.filter(function(st) { return st.Parent_Task_Id === taskId; });
   var confirmationMessage = currentLang === 'fr'
     ? 'Supprimer cette tâche et ses ' + relatedSubtasks.length + ' sous-tâche(s) ? Cette action est irréversible.'
     : 'Delete this task and its ' + relatedSubtasks.length + ' subtask(s)? This action cannot be undone.';
   var confirmed = await showConfirmModal(confirmationMessage, currentLang === 'fr' ? 'Supprimer la tâche' : 'Delete task');
   if (!confirmed) return;
   try {
-    var deletedTask = tasks.find(function(t2) { return t2.id === taskId; });
+    var deletedTask = state.tasks.find(function(t2) { return t2.id === taskId; });
     var deletedSubtaskIds = {};
     var actions = [];
     relatedSubtasks.forEach(function(st) { deletedSubtaskIds[st.id] = true; });
 
-    subtasks.forEach(function(st) {
+    state.subtasks.forEach(function(st) {
       if (st.Parent_Task_Id !== taskId && deletedSubtaskIds[st.Blocked_By_Subtask_Id]) {
-        actions.push(['UpdateRecord', SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }]);
+        actions.push(['UpdateRecord', state.SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }]);
       }
     });
-    dependencies.forEach(function(dep) {
-      if (dep.Task_Id === taskId || dep.Depends_On_Task_Id === taskId) actions.push(['RemoveRecord', DEPENDENCIES_TABLE, dep.id]);
+    state.dependencies.forEach(function(dep) {
+      if (dep.Task_Id === taskId || dep.Depends_On_Task_Id === taskId) actions.push(['RemoveRecord', state.DEPENDENCIES_TABLE, dep.id]);
     });
-    comments.forEach(function(comment) {
-      if (comment.Task_Id === taskId) actions.push(['RemoveRecord', COMMENTS_TABLE, comment.id]);
+    state.comments.forEach(function(comment) {
+      if (comment.Task_Id === taskId) actions.push(['RemoveRecord', state.COMMENTS_TABLE, comment.id]);
     });
-    timeEntries.forEach(function(entry) {
-      if (entry.Task_Id === taskId) actions.push(['RemoveRecord', TIME_ENTRIES_TABLE, entry.id]);
+    state.timeEntries.forEach(function(entry) {
+      if (entry.Task_Id === taskId) actions.push(['RemoveRecord', state.TIME_ENTRIES_TABLE, entry.id]);
     });
-    customFieldValues.forEach(function(value) {
-      if (value.Task_Id === taskId) actions.push(['RemoveRecord', CUSTOM_FIELD_VALUES_TABLE, value.id]);
+    state.customFieldValues.forEach(function(value) {
+      if (value.Task_Id === taskId) actions.push(['RemoveRecord', state.CUSTOM_FIELD_VALUES_TABLE, value.id]);
     });
-    attachments.forEach(function(attachment) {
-      if (attachment.Task_Id === taskId) actions.push(['RemoveRecord', ATTACHMENTS_TABLE, attachment.id]);
+    state.attachments.forEach(function(attachment) {
+      if (attachment.Task_Id === taskId) actions.push(['RemoveRecord', state.ATTACHMENTS_TABLE, attachment.id]);
     });
-    pmNotifications.forEach(function(notification) {
-      if (notification.Task_Id === taskId) actions.push(['RemoveRecord', NOTIFICATIONS_TABLE, notification.id]);
+    state.pmNotifications.forEach(function(notification) {
+      if (notification.Task_Id === taskId) actions.push(['RemoveRecord', state.NOTIFICATIONS_TABLE, notification.id]);
     });
     relatedSubtasks.forEach(function(st) {
-      actions.push(['RemoveRecord', SUBTASKS_TABLE, st.id]);
+      actions.push(['RemoveRecord', state.SUBTASKS_TABLE, st.id]);
     });
-    actions.push(['RemoveRecord', TASKS_TABLE, taskId]);
+    actions.push(['RemoveRecord', state.TASKS_TABLE, taskId]);
 
     await grist.docApi.applyUserActions(actions);
     if (draftTaskId === taskId) draftTaskId = null;
@@ -8096,7 +8004,7 @@ async function createTemplate() {
 
   try {
     await grist.docApi.applyUserActions([
-      ['AddRecord', TEMPLATES_TABLE, null, record]
+      ['AddRecord', state.TEMPLATES_TABLE, null, record]
     ]);
     showToast(t('templateCreated'), 'success');
     closeModalForce();
@@ -8124,7 +8032,7 @@ async function updateTemplate(tplId) {
 
   try {
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', TEMPLATES_TABLE, tplId, record]
+      ['UpdateRecord', state.TEMPLATES_TABLE, tplId, record]
     ]);
     showToast(t('templateUpdated'), 'success');
     closeModalForce();
@@ -8136,12 +8044,12 @@ async function updateTemplate(tplId) {
 }
 
 async function deleteTemplate(tplId) {
-  if (!isOwner) return;
+  if (!state.isOwner) return;
   var confirmed = await showConfirmModal(t('confirmDeleteTemplate'), currentLang === 'fr' ? 'Supprimer le modèle' : 'Delete template');
   if (!confirmed) return;
   try {
     await grist.docApi.applyUserActions([
-      ['RemoveRecord', TEMPLATES_TABLE, tplId]
+      ['RemoveRecord', state.TEMPLATES_TABLE, tplId]
     ]);
     showToast(t('templateDeleted'), 'info');
     await loadAllData();
@@ -8151,13 +8059,13 @@ async function deleteTemplate(tplId) {
 }
 
 async function useTemplate(tplId) {
-  var tpl = templates.find(function(t) { return t.id === tplId; });
+  var tpl = state.templates.find(function(t) { return t.id === tplId; });
   if (!tpl) return;
 
   // Increment usage count
   try {
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', TEMPLATES_TABLE, tplId, { Usage_Count: (tpl.Usage_Count || 0) + 1 }]
+      ['UpdateRecord', state.TEMPLATES_TABLE, tplId, { Usage_Count: (tpl.Usage_Count || 0) + 1 }]
     ]);
   } catch (e) {}
 
@@ -8218,14 +8126,14 @@ async function registerWidget() {
 
 async function loadWidgetPermissions() {
   userAllowedTabs = [];
-  if (!currentUserEmail) return;
+  if (!state.currentUserEmail) return;
   try {
     var tables = await grist.docApi.listTables();
     if (tables.indexOf('Widget_Permissions') === -1) return;
 
     var data = await grist.docApi.fetchTable('Widget_Permissions');
     if (!data || !data.id) return;
-    var email = currentUserEmail.toLowerCase().trim();
+    var email = state.currentUserEmail.toLowerCase().trim();
     for (var i = 0; i < data.id.length; i++) {
       if (data.WidgetId[i] === WIDGET_ID && (data.Email[i] || '').toLowerCase().trim() === email) {
         userAllowedTabs = (data.AllowedTabs[i] || '').split(',').map(function(x) { return x.trim().toLowerCase(); }).filter(Boolean);
@@ -8371,7 +8279,7 @@ function renderStatsView() {
   
   // Calculate total time from time entries
   var totalMinutes = 0;
-  timeEntries.forEach(function(te) {
+  state.timeEntries.forEach(function(te) {
     if (te.Duration) totalMinutes += te.Duration;
   });
   var totalHours = Math.round(totalMinutes / 60);
@@ -8697,14 +8605,14 @@ async function logActivity(action, taskId, taskTitle, details) {
   try {
     var record = {
       Timestamp: Math.floor(Date.now() / 1000),
-      User_Email: currentUserEmail || 'unknown',
+      User_Email: state.currentUserEmail || 'unknown',
       Action: action,
       Task_Id: taskId || 0,
       Task_Title: taskTitle || '',
       Details: details || ''
     };
-    await grist.docApi.applyUserActions([['AddRecord', ACTIVITY_LOG_TABLE, null, record]]);
-    activityLog.push(record);
+    await grist.docApi.applyUserActions([['AddRecord', state.ACTIVITY_LOG_TABLE, null, record]]);
+    state.activityLog.push(record);
   } catch (e) {
     console.log('[GristPM] Activity log skipped:', e.message);
   }
@@ -8716,7 +8624,7 @@ function renderActivityLog() {
   var container = document.getElementById('activity-log-list');
   if (!container) return;
 
-  var sorted = activityLog.slice().sort(function(a, b) { return (b.Timestamp || 0) - (a.Timestamp || 0); });
+  var sorted = state.activityLog.slice().sort(function(a, b) { return (b.Timestamp || 0) - (a.Timestamp || 0); });
   var shown = sorted.slice(0, _activityLogLimit);
 
   if (shown.length === 0) {
@@ -8789,7 +8697,7 @@ function populateProjectLead(selectedValue) {
   var sel = document.getElementById('project-lead');
   if (!sel) return;
   var html = '<option value="">--</option>';
-  users.forEach(function (u) {
+  state.users.forEach(function (u) {
     var val = u.Email || u.Name;
     if (!val) return;
     html += '<option value="' + sanitize(val) + '"' + (val === selectedValue ? ' selected' : '') + '>' + sanitize(u.Name || u.Email) + '</option>';
@@ -8825,14 +8733,14 @@ function renderProjectList() {
   var q = (searchEl && searchEl.value ? searchEl.value : '').trim().toLowerCase();
 
   var html = '';
-  if (projects.length === 0) {
+  if (state.projects.length === 0) {
     html = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + t('noProject') + '</div>';
     document.getElementById('project-list').innerHTML = html;
     return;
   }
 
   // Tri du plus récent au plus ancien (id décroissant)
-  var sorted = projects.slice().sort(function(a, b) { return (b.id || 0) - (a.id || 0); });
+  var sorted = state.projects.slice().sort(function(a, b) { return (b.id || 0) - (a.id || 0); });
 
   var matching = q
     ? sorted.filter(function(p) { return (p.Name || '').toLowerCase().indexOf(q) !== -1; })
@@ -8880,7 +8788,7 @@ function renderProjectList() {
 }
 
 function editProject(projectId) {
-  var proj = projects.find(function(p) { return p.id === projectId; });
+  var proj = state.projects.find(function(p) { return p.id === projectId; });
   if (!proj) return;
   
   document.getElementById('edit-project-id').value = proj.id;
@@ -8916,17 +8824,17 @@ async function saveProject() {
     
     if (projectId) {
       await grist.docApi.applyUserActions([
-        ['UpdateRecord', PROJECTS_TABLE, parseInt(projectId), record]
+        ['UpdateRecord', state.PROJECTS_TABLE, parseInt(projectId), record]
       ]);
       showToast(t('editProject') + ' ✓', 'success');
     } else {
       // Créateur du projet (auteur) — uniquement sur la table par défaut qui possède ces colonnes
-      if (PROJECTS_TABLE === DEFAULT_PROJECTS_TABLE) {
-        record.CreatedBy = currentUserEmail || '';
+      if (state.PROJECTS_TABLE === state.DEFAULT_PROJECTS_TABLE) {
+        record.CreatedBy = state.currentUserEmail || '';
         record.CreatedAt = new Date().toISOString();
       }
       await grist.docApi.applyUserActions([
-        ['AddRecord', PROJECTS_TABLE, null, record]
+        ['AddRecord', state.PROJECTS_TABLE, null, record]
       ]);
       showToast(t('addProject') + ' ✓', 'success');
     }
@@ -8956,7 +8864,7 @@ async function deleteProject(projectId) {
   
   try {
     await grist.docApi.applyUserActions([
-      ['RemoveRecord', PROJECTS_TABLE, projectId]
+      ['RemoveRecord', state.PROJECTS_TABLE, projectId]
     ]);
     showToast(t('deleteProject') + ' ✓', 'success');
     await loadAllData();
@@ -9132,8 +9040,6 @@ async function removeKanbanStatus(index) {
   showToast((currentLang === 'fr' ? 'Statut supprimé : ' : 'Status removed: ') + (currentLang === 'fr' ? removed.label_fr : removed.label_en), 'success');
 }
 
-
-
 function renderUiLabelSettings() {
   var container = document.getElementById('ui-label-settings');
   if (!container) return;
@@ -9153,7 +9059,7 @@ async function saveUiLabelSettings() {
   var inputs = document.querySelectorAll('#ui-label-settings [data-ui-label-key]');
   inputs.forEach(function(inp) {
     var key = inp.getAttribute('data-ui-label-key');
-    uiLabels[key] = (inp.value || defaultUiLabels[key] || key).trim();
+    state.uiLabels[key] = (inp.value || defaultUiLabels[key] || key).trim();
   });
   await saveUiLabels();
   applyUiLabelsToSettingsHeadings();
@@ -9219,25 +9125,25 @@ async function toggleCardDisplay(key, value) {
 
 function getAclRules() {
   return [
-    { tableId: SETTINGS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: CATEGORIES_TABLE,      ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: TAGS_TABLE,            ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: CONFIG_TABLE,          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: TEMPLATES_TABLE,       ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: TASKS_TABLE,           ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-    { tableId: SUBTASKS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-    { tableId: COMMENTS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-    { tableId: TIME_ENTRIES_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-    { tableId: CUSTOM_FIELD_VALUES_TABLE, ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-    { tableId: CUSTOM_FIELDS_TABLE,   ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: DEPENDENCIES_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-    { tableId: USERS_TABLE,           ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: GROUPS_TABLE,          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: PROJECTS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: USER_INFO_TABLE,       ownerPerms: '+CRUDS', editorPerms: '+RCUD' },
-    { tableId: NOTIFICATIONS_TABLE,   ownerPerms: '+CRUDS', editorPerms: '+RCUD' },
-    { tableId: ACTIVITY_LOG_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RC-UD' },
-    { tableId: ATTACHMENTS_TABLE,     ownerPerms: '+CRUDS', editorPerms: '+RCU-D' }
+    { tableId: state.SETTINGS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: state.CATEGORIES_TABLE,      ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: state.TAGS_TABLE,            ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: state.CONFIG_TABLE,          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: state.TEMPLATES_TABLE,       ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: state.TASKS_TABLE,           ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: state.SUBTASKS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: state.COMMENTS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: state.TIME_ENTRIES_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: state.CUSTOM_FIELD_VALUES_TABLE, ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: state.CUSTOM_FIELDS_TABLE,   ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: state.DEPENDENCIES_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
+    { tableId: state.USERS_TABLE,           ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: state.GROUPS_TABLE,          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: state.PROJECTS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+    { tableId: state.USER_INFO_TABLE,       ownerPerms: '+CRUDS', editorPerms: '+RCUD' },
+    { tableId: state.NOTIFICATIONS_TABLE,   ownerPerms: '+CRUDS', editorPerms: '+RCUD' },
+    { tableId: state.ACTIVITY_LOG_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RC-UD' },
+    { tableId: state.ATTACHMENTS_TABLE,     ownerPerms: '+CRUDS', editorPerms: '+RCU-D' }
   ].filter(function(rule, index, arr) {
     return rule.tableId && arr.findIndex(function(r) { return r.tableId === rule.tableId; }) === index;
   });
@@ -9448,14 +9354,14 @@ function renderRaciToggle() {
   if (!container) return;
   var html = '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">';
   html += '<div>';
-  html += '<span style="font-size:13px;font-weight:600;">' + t(raciEnabled ? 'raciEnabled' : 'raciDisabled') + '</span>';
+  html += '<span style="font-size:13px;font-weight:600;">' + t(state.raciEnabled ? 'raciEnabled' : 'raciDisabled') + '</span>';
   html += '<p style="font-size:12px;color:#94a3b8;margin:2px 0 0;">' +
     (currentLang === 'fr'
       ? 'Responsable · Approbateur · Consulté · Informé'
       : 'Responsible · Accountable · Consulted · Informed') + '</p>';
   html += '</div>';
   html += '<label class="toggle-switch">';
-  html += '<input type="checkbox" ' + (raciEnabled ? 'checked' : '') + ' onchange="toggleRaci(this.checked)">';
+  html += '<input type="checkbox" ' + (state.raciEnabled ? 'checked' : '') + ' onchange="toggleRaci(this.checked)">';
   html += '<span class="toggle-slider"></span>';
   html += '</label>';
   html += '</div>';
@@ -9463,7 +9369,7 @@ function renderRaciToggle() {
 }
 
 async function toggleRaci(enabled) {
-  raciEnabled = enabled;
+  state.raciEnabled = enabled;
   await saveSetting('raci_enabled', enabled ? 'true' : 'false');
   renderRaciToggle();
   showToast(t(enabled ? 'raciEnabled' : 'raciDisabled'), 'success');
@@ -9476,12 +9382,12 @@ function renderNotifyConcernedToggle() {
   var html = '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">';
   html += '<div><span style="font-size:13px;font-weight:600;">' + (L ? 'Notifier les utilisateurs concernés' : 'Notify concerned users') + '</span>';
   html += '<p style="font-size:12px;color:#94a3b8;margin:2px 0 0;">' + (L ? 'À la création et à la modification d\'une tâche (R/A/C/I), une notification est créée pour chaque personne concernée.' : 'On task creation and update, a notification is created for each concerned person (R/A/C/I).') + '</p></div>';
-  html += '<label class="toggle-switch"><input type="checkbox" ' + (notifyConcernedEnabled ? 'checked' : '') + ' onchange="toggleNotifyConcerned(this.checked)"><span class="toggle-slider"></span></label>';
+  html += '<label class="toggle-switch"><input type="checkbox" ' + (state.notifyConcernedEnabled ? 'checked' : '') + ' onchange="toggleNotifyConcerned(this.checked)"><span class="toggle-slider"></span></label>';
   html += '</div>';
   container.innerHTML = html;
 }
 async function toggleNotifyConcerned(enabled) {
-  notifyConcernedEnabled = enabled;
+  state.notifyConcernedEnabled = enabled;
   await saveSetting('notify_concerned', enabled ? 'true' : 'false');
   renderNotifyConcernedToggle();
   showToast(currentLang === 'fr' ? (enabled ? 'Notifications activées' : 'Notifications désactivées') : (enabled ? 'Notifications enabled' : 'Notifications disabled'), 'success');
@@ -9507,13 +9413,13 @@ var ACTION_LABELS = {
 function renderAutomationsSection() {
   var container = document.getElementById('automation-rules-list');
   if (!container) return;
-  if (!isOwner) {
+  if (!state.isOwner) {
     container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:12px;font-size:13px;">' +
       (currentLang === 'fr' ? 'Seuls les owners peuvent gérer les automatisations' : 'Only owners can manage automations') + '</div>';
     return;
   }
 
-  if (!automationRules || automationRules.length === 0) {
+  if (!state.automationRules || state.automationRules.length === 0) {
     container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;font-size:13px;">' +
       '<p>' + t('noRules') + '</p>' +
       '<button class="btn btn-secondary btn-sm" onclick="addDefaultAutomationRules()" style="margin-top:8px;">' + t('defaultRules') + '</button></div>';
@@ -9521,8 +9427,8 @@ function renderAutomationsSection() {
   }
 
   var html = '';
-  for (var i = 0; i < automationRules.length; i++) {
-    var rule = automationRules[i];
+  for (var i = 0; i < state.automationRules.length; i++) {
+    var rule = state.automationRules[i];
     var trigLabel = t(TRIGGER_LABELS[rule.trigger] || rule.trigger);
     var actLabel = t(ACTION_LABELS[rule.action] || rule.action);
     var condText = '';
@@ -9567,7 +9473,7 @@ function openAddAutomationRuleModal() {
 
 function openEditAutomationRuleModal(index) {
   _editingRuleIndex = index;
-  var rule = automationRules[index];
+  var rule = state.automationRules[index];
   document.getElementById('automation-modal-title').textContent = '⚡ ' + t('addRule');
   document.getElementById('auto-trigger').value = rule.trigger;
   document.getElementById('auto-action').value = rule.action;
@@ -9624,8 +9530,8 @@ function onAutoActionChange() {
 
 async function saveAutomationRuleFromModal() {
   var rule = {
-    id: (_editingRuleIndex !== null && automationRules[_editingRuleIndex]) ? automationRules[_editingRuleIndex].id : 'rule_' + Date.now(),
-    enabled: (_editingRuleIndex !== null && automationRules[_editingRuleIndex]) ? automationRules[_editingRuleIndex].enabled : true,
+    id: (_editingRuleIndex !== null && state.automationRules[_editingRuleIndex]) ? state.automationRules[_editingRuleIndex].id : 'rule_' + Date.now(),
+    enabled: (_editingRuleIndex !== null && state.automationRules[_editingRuleIndex]) ? state.automationRules[_editingRuleIndex].enabled : true,
     trigger: document.getElementById('auto-trigger').value,
     condition: {},
     action: document.getElementById('auto-action').value,
@@ -9644,11 +9550,11 @@ async function saveAutomationRuleFromModal() {
   }
 
   if (_editingRuleIndex !== null) {
-    automationRules[_editingRuleIndex] = rule;
+    state.automationRules[_editingRuleIndex] = rule;
   } else {
-    automationRules.push(rule);
+    state.automationRules.push(rule);
   }
-  await saveSetting('automation_rules', JSON.stringify(automationRules));
+  await saveSetting('automation_rules', JSON.stringify(state.automationRules));
   closeAutomationModal();
   renderAutomationsSection();
   showToast(t(_editingRuleIndex !== null ? 'ruleSaved' : 'ruleCreated'), 'success');
@@ -9660,20 +9566,20 @@ async function deleteAutomationRule(index) {
     currentLang === 'fr' ? 'Supprimer la règle' : 'Delete rule'
   );
   if (!confirmed) return;
-  automationRules.splice(index, 1);
-  await saveSetting('automation_rules', JSON.stringify(automationRules));
+  state.automationRules.splice(index, 1);
+  await saveSetting('automation_rules', JSON.stringify(state.automationRules));
   renderAutomationsSection();
   showToast(t('ruleDeleted'), 'info');
 }
 
 async function toggleAutomationRule(index, enabled) {
-  automationRules[index].enabled = enabled;
-  await saveSetting('automation_rules', JSON.stringify(automationRules));
+  state.automationRules[index].enabled = enabled;
+  await saveSetting('automation_rules', JSON.stringify(state.automationRules));
   renderAutomationsSection();
 }
 
 async function addDefaultAutomationRules() {
-  automationRules = [
+  state.automationRules = [
     {
       id: 'rule_default_1', enabled: true, trigger: 'status_change',
       condition: { to: 'done' }, action: 'notify_assignee',
@@ -9690,7 +9596,7 @@ async function addDefaultAutomationRules() {
       message_fr: 'La tâche "{title}" est en retard !', message_en: 'Task "{title}" is overdue!'
     }
   ];
-  await saveSetting('automation_rules', JSON.stringify(automationRules));
+  await saveSetting('automation_rules', JSON.stringify(state.automationRules));
   renderAutomationsSection();
   showToast(t('ruleCreated'), 'success');
 }
@@ -9698,7 +9604,7 @@ async function addDefaultAutomationRules() {
 async function renderSecuritySection() {
   var container = document.getElementById('security-status');
   if (!container) return;
-  if (!isOwner) {
+  if (!state.isOwner) {
     container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:12px;font-size:13px;">' +
       (currentLang === 'fr' ? 'Seuls les owners peuvent gérer la sécurité' : 'Only owners can manage security') + '</div>';
     return;
@@ -9774,8 +9680,8 @@ function renderSettingsProjectsList(searchOverride) {
   if (searchOverride !== undefined) _settingsProjectSearch = searchOverride;
   var q = (_settingsProjectSearch || '').trim().toLowerCase();
   var filtered = q
-    ? projects.filter(function(p) { return (p.Name || '').toLowerCase().indexOf(q) !== -1; })
-    : projects;
+    ? state.projects.filter(function(p) { return (p.Name || '').toLowerCase().indexOf(q) !== -1; })
+    : state.projects;
   var displayed = q ? filtered : filtered.slice(0, SETTINGS_PROJ_LIMIT);
   var extraCount = q ? 0 : Math.max(0, filtered.length - SETTINGS_PROJ_LIMIT);
 
@@ -9790,7 +9696,7 @@ function renderSettingsProjectsList(searchOverride) {
     html += '<div style="text-align:center;color:#94a3b8;padding:20px;">' + t('noProject') + '</div>';
   } else {
     html += '<div class="settings-items">';
-    var allTasks = tasks;
+    var allTasks = state.tasks;
     displayed.forEach(function(proj) {
       var taskCount = allTasks.filter(function(tk) { return tk.Project_Id === proj.id; }).length;
       var dotColor = proj.Color || '#6366f1';
@@ -9802,7 +9708,7 @@ function renderSettingsProjectsList(searchOverride) {
       html += '</div>';
       html += '<div class="settings-item-actions">';
       html += '<button class="btn-icon" onclick="openProjectModalForEdit(' + proj.id + ')" title="' + t('editProject') + '">✏️</button>';
-      if (isOwner) html += '<button class="btn-icon" onclick="deleteProject(' + proj.id + ')" title="' + t('deleteProject') + '">🗑️</button>';
+      if (state.isOwner) html += '<button class="btn-icon" onclick="deleteProject(' + proj.id + ')" title="' + t('deleteProject') + '">🗑️</button>';
       html += '</div>';
       html += '</div>';
     });
@@ -9818,7 +9724,7 @@ function renderSettingsProjectsList(searchOverride) {
 }
 
 function openProjectModalForEdit(projectId) {
-  var proj = projects.find(function(p) { return p.id === projectId; });
+  var proj = state.projects.find(function(p) { return p.id === projectId; });
   if (!proj) return;
 
   var statusOptions = ['active', 'archived', 'completed'];
@@ -9860,7 +9766,7 @@ async function saveInlineProjectEdit(projectId) {
   setField(record, 'projects', 'color', document.getElementById('inline-proj-color').value || '#6366f1');
   setField(record, 'projects', 'status', document.getElementById('inline-proj-status').value || 'active');
   try {
-    await grist.docApi.applyUserActions([['UpdateRecord', PROJECTS_TABLE, projectId, record]]);
+    await grist.docApi.applyUserActions([['UpdateRecord', state.PROJECTS_TABLE, projectId, record]]);
     showToast((currentLang === 'fr' ? 'Projet modifié' : 'Project updated') + ' ✓', 'success');
     closeModalForce();
     await loadAllData();
@@ -9877,11 +9783,11 @@ function renderSettingsCategoriesList() {
   if (!container) return;
   
   var html = '';
-  if (categories.length === 0) {
+  if (state.categories.length === 0) {
     html = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === 'fr' ? 'Aucune catégorie' : 'No categories') + '</div>';
   } else {
     html = '<div class="settings-chips">';
-    categories.forEach(function(cat) {
+    state.categories.forEach(function(cat) {
       html += '<span class="settings-chip" style="background:' + (cat.Color || '#6366f1') + ';color:white;">' + sanitize(cat.Name) + '</span>';
     });
     html += '</div>';
@@ -9894,11 +9800,11 @@ function renderSettingsTagsList() {
   if (!container) return;
   
   var html = '';
-  if (tags.length === 0) {
+  if (state.tags.length === 0) {
     html = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === 'fr' ? 'Aucun tag' : 'No tags') + '</div>';
   } else {
     html = '<div class="settings-chips">';
-    tags.forEach(function(tag) {
+    state.tags.forEach(function(tag) {
       html += '<span class="settings-chip" style="background:' + (tag.Color || '#6366f1') + ';color:white;">' + sanitize(tag.Name) + '</span>';
     });
     html += '</div>';
@@ -9953,7 +9859,7 @@ async function openColumnMappingModal() {
   html += '<label>Nom de la table</label>';
   html += '<select id="mapping-tasks-table" onchange="detectTaskColumns()">';
   for (var i = 0; i < availableTables.length; i++) {
-    var selected = availableTables[i] === TASKS_TABLE ? ' selected' : '';
+    var selected = availableTables[i] === state.TASKS_TABLE ? ' selected' : '';
     html += '<option value="' + sanitize(availableTables[i]) + '"' + selected + '>' + sanitize(availableTables[i]) + '</option>';
   }
   html += '</select>';
@@ -9968,7 +9874,7 @@ async function openColumnMappingModal() {
   html += '<label>Nom de la table</label>';
   html += '<select id="mapping-users-table" onchange="detectUserColumns()">';
   for (var i = 0; i < availableTables.length; i++) {
-    var selected = availableTables[i] === USERS_TABLE ? ' selected' : '';
+    var selected = availableTables[i] === state.USERS_TABLE ? ' selected' : '';
     html += '<option value="' + sanitize(availableTables[i]) + '"' + selected + '>' + sanitize(availableTables[i]) + '</option>';
   }
   html += '</select>';
@@ -9983,7 +9889,7 @@ async function openColumnMappingModal() {
   html += '<label>Nom de la table</label>';
   html += '<select id="mapping-projects-table" onchange="detectProjectColumns()">';
   for (var i = 0; i < availableTables.length; i++) {
-    var selected = availableTables[i] === PROJECTS_TABLE ? ' selected' : '';
+    var selected = availableTables[i] === state.PROJECTS_TABLE ? ' selected' : '';
     html += '<option value="' + sanitize(availableTables[i]) + '"' + selected + '>' + sanitize(availableTables[i]) + '</option>';
   }
   html += '</select>';
@@ -10178,7 +10084,7 @@ async function saveColumnMapping() {
     }
 
     // Update configuration table (update existing, add missing)
-    var configData = await grist.docApi.fetchTable(CONFIG_TABLE);
+    var configData = await grist.docApi.fetchTable(state.CONFIG_TABLE);
     var actions = [];
     for (var i = 0; i < updates.length; i++) {
       var update = updates[i];
@@ -10192,12 +10098,12 @@ async function saveColumnMapping() {
       }
 
       if (recordId) {
-        actions.push(['UpdateRecord', CONFIG_TABLE, recordId, {
+        actions.push(['UpdateRecord', state.CONFIG_TABLE, recordId, {
           Table_Name: update.table,
           Column_Name: update.column
         }]);
       } else {
-        actions.push(['AddRecord', CONFIG_TABLE, null, {
+        actions.push(['AddRecord', state.CONFIG_TABLE, null, {
           Config_Key: update.key,
           Table_Name: update.table,
           Column_Name: update.column
@@ -10229,11 +10135,11 @@ async function saveColumnMapping() {
 
 function renderTagsModalList() {
   var html = '';
-  if (tags.length === 0) {
+  if (state.tags.length === 0) {
     html = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === 'fr' ? 'Aucun tag' : 'No tags') + '</div>';
   } else {
     html = '<div class="project-items">';
-    tags.forEach(function(tag) {
+    state.tags.forEach(function(tag) {
       html += '<div class="project-item" style="border-left: 4px solid ' + (tag.Color || '#6366f1') + ';">';
       html += '<div class="project-item-info">';
       html += '<strong>' + sanitize(tag.Name) + '</strong>';
@@ -10250,7 +10156,7 @@ function renderTagsModalList() {
 }
 
 function editTag(tagId) {
-  var tag = tags.find(function(t) { return t.id === tagId; });
+  var tag = state.tags.find(function(t) { return t.id === tagId; });
   if (!tag) return;
   
   document.getElementById('edit-tag-id').value = tag.id;
@@ -10276,12 +10182,12 @@ async function saveTag() {
     
     if (tagId) {
       await grist.docApi.applyUserActions([
-        ['UpdateRecord', TAGS_TABLE, parseInt(tagId), record]
+        ['UpdateRecord', state.TAGS_TABLE, parseInt(tagId), record]
       ]);
       showToast((currentLang === 'fr' ? 'Tag modifié' : 'Tag updated') + ' ✓', 'success');
     } else {
       await grist.docApi.applyUserActions([
-        ['AddRecord', TAGS_TABLE, null, record]
+        ['AddRecord', state.TAGS_TABLE, null, record]
       ]);
       showToast((currentLang === 'fr' ? 'Tag ajouté' : 'Tag added') + ' ✓', 'success');
     }
@@ -10305,7 +10211,7 @@ async function deleteTag(tagId) {
   
   try {
     await grist.docApi.applyUserActions([
-      ['RemoveRecord', TAGS_TABLE, tagId]
+      ['RemoveRecord', state.TAGS_TABLE, tagId]
     ]);
     showToast((currentLang === 'fr' ? 'Tag supprimé' : 'Tag deleted') + ' ✓', 'success');
     await loadAllData();
@@ -10338,9 +10244,9 @@ function getUpcomingTasks() {
 }
 
 function getMyNotifications() {
-  var email = (currentUserEmail || '').toLowerCase().trim();
+  var email = (state.currentUserEmail || '').toLowerCase().trim();
   if (!email) return [];
-  return pmNotifications
+  return state.pmNotifications
     .filter(function(n) { return (n.User_Email || '').toLowerCase().trim() === email; })
     .sort(function(a, b) { return (b.Created_At || 0) - (a.Created_At || 0); });
 }
@@ -10354,10 +10260,10 @@ function getComputedAlertKey(task, type) {
 }
 
 function isComputedAlertRead(taskId, type) {
-	var email = (currentUserEmail || '').toLowerCase().trim();
-	var task = tasks.find(function(item) { return Number(item.id) === Number(taskId); });
+	var email = (state.currentUserEmail || '').toLowerCase().trim();
+	var task = state.tasks.find(function(item) { return Number(item.id) === Number(taskId); });
 	var alertKey = getComputedAlertKey(task, type);
-	return pmNotifications.some(function(n) {
+	return state.pmNotifications.some(function(n) {
 	  return Number(n.Task_Id) === Number(taskId) && n.Type === type && n.Is_Read &&
 	    (n.User_Email || '').toLowerCase().trim() === email && n.Rule_Id === alertKey;
 	});
@@ -10369,8 +10275,8 @@ function getUnreadComputedTasks(tasksList, type) {
 
 function updateNotificationBadge() {
   var unread = getUnreadCount();
-  var hasOverdueRule = automationRules.some(function(r) { return r.enabled && r.trigger === 'overdue'; });
-  var hasApproachingRule = automationRules.some(function(r) { return r.enabled && r.trigger === 'approaching_deadline'; });
+  var hasOverdueRule = state.automationRules.some(function(r) { return r.enabled && r.trigger === 'overdue'; });
+  var hasApproachingRule = state.automationRules.some(function(r) { return r.enabled && r.trigger === 'approaching_deadline'; });
   var computed = 0;
 	if (!hasOverdueRule) computed += getUnreadComputedTasks(getOverdueTasks(), 'computed_overdue').length;
 	if (!hasApproachingRule) computed += getUnreadComputedTasks(getUpcomingTasks(), 'computed_upcoming').length;
@@ -10386,8 +10292,8 @@ function showNotifications() {
   var myNotifs = getMyNotifications();
   var unread = myNotifs.filter(function(n) { return !n.Is_Read; });
   var readRecent = myNotifs.filter(function(n) { return n.Is_Read; }).slice(0, 10);
-  var hasOverdueRule = automationRules.some(function(r) { return r.enabled && r.trigger === 'overdue'; });
-  var hasApproachingRule = automationRules.some(function(r) { return r.enabled && r.trigger === 'approaching_deadline'; });
+  var hasOverdueRule = state.automationRules.some(function(r) { return r.enabled && r.trigger === 'overdue'; });
+  var hasApproachingRule = state.automationRules.some(function(r) { return r.enabled && r.trigger === 'approaching_deadline'; });
 	var overdue = !hasOverdueRule ? getUnreadComputedTasks(getOverdueTasks(), 'computed_overdue') : [];
 	var upcoming = !hasApproachingRule ? getUnreadComputedTasks(getUpcomingTasks(), 'computed_upcoming') : [];
 
@@ -10475,8 +10381,8 @@ async function openNotification(notifId, taskId) {
 
 async function openComputedNotification(taskId, type) {
 	closeNotifications();
-	var task = tasks.find(function(item) { return Number(item.id) === Number(taskId); });
-	if (!task || !currentUserEmail || isComputedAlertRead(taskId, type)) {
+	var task = state.tasks.find(function(item) { return Number(item.id) === Number(taskId); });
+	if (!task || !state.currentUserEmail || isComputedAlertRead(taskId, type)) {
 	  openEditTaskModal(taskId);
 	  return;
 	}
@@ -10485,7 +10391,7 @@ async function openComputedNotification(taskId, type) {
 	  : (currentLang === 'fr' ? 'Échéance proche : ' : 'Upcoming deadline: ');
 	var record = {
 	  Task_Id: taskId,
-	  User_Email: currentUserEmail,
+	  User_Email: state.currentUserEmail,
 	  Type: type,
 	  Message: messagePrefix + (task.Title || ''),
 	  Is_Read: true,
@@ -10493,10 +10399,10 @@ async function openComputedNotification(taskId, type) {
 	  Rule_Id: getComputedAlertKey(task, type)
 	};
 	try {
-	  var result = await grist.docApi.applyUserActions([['AddRecord', NOTIFICATIONS_TABLE, null, record]]);
+	  var result = await grist.docApi.applyUserActions([['AddRecord', state.NOTIFICATIONS_TABLE, null, record]]);
 	  record.id = (result && result.retValues && result.retValues[0]) ||
-	    (pmNotifications.length ? Math.max.apply(null, pmNotifications.map(function(n) { return n.id; })) + 1 : 1);
-	  pmNotifications.push(record);
+	    (state.pmNotifications.length ? Math.max.apply(null, state.pmNotifications.map(function(n) { return n.id; })) + 1 : 1);
+	  state.pmNotifications.push(record);
 	  updateNotificationBadge();
 	} catch (e) {
 	  console.error('[GristPM] Error dismissing computed notification:', e);
@@ -10506,8 +10412,8 @@ async function openComputedNotification(taskId, type) {
 
 async function markNotificationRead(notifId, reopenDropdown) {
 	try {
-	  await grist.docApi.applyUserActions([['UpdateRecord', NOTIFICATIONS_TABLE, notifId, { Is_Read: true }]]);
-	  var n = pmNotifications.find(function(x) { return x.id === notifId; });
+	  await grist.docApi.applyUserActions([['UpdateRecord', state.NOTIFICATIONS_TABLE, notifId, { Is_Read: true }]]);
+	  var n = state.pmNotifications.find(function(x) { return x.id === notifId; });
 	  if (n) n.Is_Read = true;
 	  updateNotificationBadge();
 	  if (reopenDropdown !== false) showNotifications();
@@ -10522,7 +10428,7 @@ async function markAllNotificationsRead() {
   try {
     var ids = myUnread.map(function(n) { return n.id; });
     var flags = ids.map(function() { return true; });
-    await grist.docApi.applyUserActions([['BulkUpdateRecord', NOTIFICATIONS_TABLE, ids, { Is_Read: flags }]]);
+    await grist.docApi.applyUserActions([['BulkUpdateRecord', state.NOTIFICATIONS_TABLE, ids, { Is_Read: flags }]]);
     myUnread.forEach(function(n) { n.Is_Read = true; });
     updateNotificationBadge();
     showNotifications();
@@ -10536,7 +10442,7 @@ async function markAllNotificationsRead() {
 async function createNotification(taskId, userEmail, type, message, ruleId) {
 	try {
 	  var resolvedEmail = resolveUserEmail(userEmail);
-	  if (!resolvedEmail || resolvedEmail.toLowerCase() === (currentUserEmail || '').toLowerCase().trim()) return;
+	  if (!resolvedEmail || resolvedEmail.toLowerCase() === (state.currentUserEmail || '').toLowerCase().trim()) return;
 	  var record = {
 	    Task_Id: taskId,
 	    User_Email: resolvedEmail,
@@ -10546,9 +10452,9 @@ async function createNotification(taskId, userEmail, type, message, ruleId) {
       Created_At: Math.floor(Date.now() / 1000),
       Rule_Id: ruleId || ''
     };
-    await grist.docApi.applyUserActions([['AddRecord', NOTIFICATIONS_TABLE, null, record]]);
-    record.id = pmNotifications.length > 0 ? Math.max.apply(null, pmNotifications.map(function(n) { return n.id; })) + 1 : 1;
-    pmNotifications.push(record);
+    await grist.docApi.applyUserActions([['AddRecord', state.NOTIFICATIONS_TABLE, null, record]]);
+    record.id = state.pmNotifications.length > 0 ? Math.max.apply(null, state.pmNotifications.map(function(n) { return n.id; })) + 1 : 1;
+    state.pmNotifications.push(record);
   } catch (e) {
     console.error('[GristPM] Error creating notification:', e);
   }
@@ -10563,7 +10469,7 @@ function resolveUserEmail(value) {
 	var raw = String(value || '').trim();
 	if (!raw) return '';
 	var key = raw.toLowerCase();
-	var user = users.find(function(candidate) {
+	var user = state.users.find(function(candidate) {
 	  return String(candidate.Email || '').trim().toLowerCase() === key ||
 	    String(candidate.Name || '').trim().toLowerCase() === key;
 	});
@@ -10573,7 +10479,7 @@ function resolveUserEmail(value) {
 
 function getProjectLead(task) {
 	var projectId = Number(task && task.Project_Id || 0);
-	var project = projects.find(function(item) { return Number(item.id) === projectId; });
+	var project = state.projects.find(function(item) { return Number(item.id) === projectId; });
 	return project ? resolveUserEmail(project.Lead) : '';
 }
 
@@ -10587,8 +10493,8 @@ async function notifyTaskCompleted(task) {
 // Une ligne Notifications par destinataire peut être affichée dans Grist et servir
 // de déclencheur aux workflows e-mail n8n ou Power Automate.
 async function notifyConcernedUsers(taskId, emails, eventType, title) {
-	if (!notifyConcernedEnabled) return;
-	var me = (currentUserEmail || '').toLowerCase().trim();
+	if (!state.notifyConcernedEnabled) return;
+	var me = (state.currentUserEmail || '').toLowerCase().trim();
 	var seen = {}, recipients = [];
 	(emails || []).forEach(function(e) {
 	  var v = resolveUserEmail(e);
@@ -10604,7 +10510,7 @@ async function notifyConcernedUsers(taskId, emails, eventType, title) {
 	var msg = (messages[eventType] || messages.task_updated) + title;
 	var now = Math.floor(Date.now() / 1000);
   var actions = recipients.map(function(email) {
-    return ['AddRecord', NOTIFICATIONS_TABLE, null, { Task_Id: taskId, User_Email: email, Type: eventType, Message: msg, Is_Read: false, Created_At: now, Rule_Id: 'builtin' }];
+    return ['AddRecord', state.NOTIFICATIONS_TABLE, null, { Task_Id: taskId, User_Email: email, Type: eventType, Message: msg, Is_Read: false, Created_At: now, Rule_Id: 'builtin' }];
   });
   try { await grist.docApi.applyUserActions(actions); } catch (e) { console.error('[GristPM] notifyConcernedUsers', e); }
 }
@@ -10621,7 +10527,7 @@ function resolveRecipients(action, actionTarget, task) {
     return [actionTarget];
   }
   if (action === 'notify_all') {
-    return users.map(function(u) { return u.Email; }).filter(Boolean);
+    return state.users.map(function(u) { return u.Email; }).filter(Boolean);
   }
   return [];
 }
@@ -10643,9 +10549,9 @@ function renderAutoMessage(template, task) {
 }
 
 async function evaluateAutomationRules(task, changes) {
-  if (!automationRules || automationRules.length === 0) return;
-  for (var i = 0; i < automationRules.length; i++) {
-    var rule = automationRules[i];
+  if (!state.automationRules || state.automationRules.length === 0) return;
+  for (var i = 0; i < state.automationRules.length; i++) {
+    var rule = state.automationRules[i];
     if (!rule.enabled) continue;
     var triggered = false;
 
@@ -10674,17 +10580,17 @@ async function evaluateAutomationRules(task, changes) {
 }
 
 async function checkTimeBasedAutomations() {
-  if (!automationRules || automationRules.length === 0) return;
+  if (!state.automationRules || state.automationRules.length === 0) return;
   var now = Math.floor(Date.now() / 1000);
   var todayStart = now - (now % 86400);
   var threeDays = now + (3 * 24 * 60 * 60);
 
-  for (var i = 0; i < automationRules.length; i++) {
-    var rule = automationRules[i];
+  for (var i = 0; i < state.automationRules.length; i++) {
+    var rule = state.automationRules[i];
     if (!rule.enabled) continue;
     if (rule.trigger !== 'overdue' && rule.trigger !== 'approaching_deadline') continue;
 
-    var matching = tasks.filter(function(t) {
+    var matching = state.tasks.filter(function(t) {
       if (t.Status === 'done' || t.Status === 'archived' || !t.Due_Date) return false;
       if (rule.trigger === 'overdue') return t.Due_Date < now;
       return t.Due_Date >= now && t.Due_Date <= threeDays;
@@ -10694,7 +10600,7 @@ async function checkTimeBasedAutomations() {
       var task = matching[j];
       var recipients = resolveRecipients(rule.action, rule.action_target, task);
       for (var r = 0; r < recipients.length; r++) {
-        var already = pmNotifications.some(function(n) {
+        var already = state.pmNotifications.some(function(n) {
           return n.Rule_Id === rule.id && n.Task_Id === task.id && n.User_Email === recipients[r] && n.Created_At >= todayStart;
         });
         if (already) continue;
@@ -10711,16 +10617,16 @@ async function cleanupOldNotifications() {
   var now = Math.floor(Date.now() / 1000);
   var thirtyDays = 30 * 86400;
   var ninetyDays = 90 * 86400;
-  var toDelete = pmNotifications.filter(function(n) {
+  var toDelete = state.pmNotifications.filter(function(n) {
     var age = now - (n.Created_At || 0);
     return (n.Is_Read && age > thirtyDays) || age > ninetyDays;
   });
   if (toDelete.length === 0) return;
   try {
     var ids = toDelete.map(function(n) { return n.id; });
-    var actions = ids.map(function(id) { return ['RemoveRecord', NOTIFICATIONS_TABLE, id]; });
+    var actions = ids.map(function(id) { return ['RemoveRecord', state.NOTIFICATIONS_TABLE, id]; });
     await grist.docApi.applyUserActions(actions);
-    pmNotifications = pmNotifications.filter(function(n) { return ids.indexOf(n.id) === -1; });
+    state.pmNotifications = state.pmNotifications.filter(function(n) { return ids.indexOf(n.id) === -1; });
   } catch (e) {
     console.log('[GristPM] Notification cleanup skipped:', e.message);
   }
@@ -10755,14 +10661,14 @@ if (!isInsideGrist()) {
     // Step 1: Ensure helper table with trigger formula user.Email
     try {
       var tables = await grist.docApi.listTables();
-      if (tables.indexOf(USER_INFO_TABLE) === -1) {
+      if (tables.indexOf(state.USER_INFO_TABLE) === -1) {
         await grist.docApi.applyUserActions([
-          ['AddTable', USER_INFO_TABLE, [
+          ['AddTable', state.USER_INFO_TABLE, [
             { id: 'UserEmail', fields: { type: 'Text', label: 'UserEmail' } }
           ]]
         ]);
         await grist.docApi.applyUserActions([
-          ['ModifyColumn', USER_INFO_TABLE, 'UserEmail', {
+          ['ModifyColumn', state.USER_INFO_TABLE, 'UserEmail', {
             isFormula: false,
             formula: 'user.Email',
             recalcWhen: 2,
@@ -10777,13 +10683,13 @@ if (!isInsideGrist()) {
     // Step 2: Read current user email via REST API (respects "View As")
     try {
       try {
-        var existingData = await grist.docApi.fetchTable(USER_INFO_TABLE);
+        var existingData = await grist.docApi.fetchTable(state.USER_INFO_TABLE);
         var rowIds = (existingData && existingData.id) ? existingData.id : [];
         var actions = [];
         for (var r = 0; r < rowIds.length; r++) {
-          actions.push(['RemoveRecord', USER_INFO_TABLE, rowIds[r]]);
+          actions.push(['RemoveRecord', state.USER_INFO_TABLE, rowIds[r]]);
         }
-        actions.push(['AddRecord', USER_INFO_TABLE, null, {}]);
+        actions.push(['AddRecord', state.USER_INFO_TABLE, null, {}]);
         await grist.docApi.applyUserActions(actions);
         helperWriteSucceeded = true;
       } catch (writeErr) {
@@ -10791,16 +10697,16 @@ if (!isInsideGrist()) {
       }
 
       var tokenInfo = await grist.docApi.getAccessToken({ readOnly: true });
-      var tableResp = await fetch(tokenInfo.baseUrl + '/tables/' + USER_INFO_TABLE + '/records?auth=' + tokenInfo.token);
+      var tableResp = await fetch(tokenInfo.baseUrl + '/tables/' + state.USER_INFO_TABLE + '/records?auth=' + tokenInfo.token);
       if (tableResp.ok) {
         var tableData = await tableResp.json();
         if (tableData.records && tableData.records.length > 0) {
-          currentUserEmail = tableData.records[0].fields.UserEmail || '';
+          state.currentUserEmail = tableData.records[0].fields.UserEmail || '';
         }
       } else {
-        var userInfoData = await grist.docApi.fetchTable(USER_INFO_TABLE);
+        var userInfoData = await grist.docApi.fetchTable(state.USER_INFO_TABLE);
         if (userInfoData && userInfoData.UserEmail && userInfoData.UserEmail.length > 0) {
-          currentUserEmail = userInfoData.UserEmail[0] || '';
+          state.currentUserEmail = userInfoData.UserEmail[0] || '';
         }
       }
     } catch (e) {
@@ -10811,32 +10717,32 @@ if (!isInsideGrist()) {
     var roleDetected = false;
     try {
       await grist.docApi.applyUserActions([
-        ['ModifyColumn', USER_INFO_TABLE, 'UserEmail', {
+        ['ModifyColumn', state.USER_INFO_TABLE, 'UserEmail', {
           isFormula: false,
           formula: 'user.Email',
           recalcWhen: 2,
           recalcDeps: null
         }]
       ]);
-      isOwner = true; isEditor = false; roleDetected = true;
+      state.isOwner = true; state.isEditor = false; roleDetected = true;
     } catch (structErr) {
       if (helperWriteSucceeded) {
-        isOwner = false; isEditor = true; roleDetected = true;
+        state.isOwner = false; state.isEditor = true; roleDetected = true;
       } else {
-        isOwner = false; isEditor = false; roleDetected = true;
+        state.isOwner = false; state.isEditor = false; roleDetected = true;
       }
     }
 
     if (!roleDetected) {
       if (helperWriteSucceeded) {
-        isOwner = false; isEditor = true;
+        state.isOwner = false; state.isEditor = true;
       } else {
-        isOwner = false; isEditor = false;
+        state.isOwner = false; state.isEditor = false;
       }
     }
-    console.log('Role detection — isOwner:', isOwner, 'isEditor:', isEditor, 'email:', currentUserEmail);
+    console.log('Role detection — isOwner:', state.isOwner, 'isEditor:', state.isEditor, 'email:', state.currentUserEmail);
 
-    if (isOwner) await registerWidget();
+    if (state.isOwner) await registerWidget();
     await loadWidgetPermissions();
     applyOwnerRestrictions();
     await ensureTables();
@@ -10856,13 +10762,13 @@ if (!isInsideGrist()) {
     await cleanupOldNotifications();
     updateNotificationBadge();
     restoreFilters(); // conserver les filtres en changeant de page / au rechargement
-    try { var _sp = localStorage.getItem('pm-current-project'); if (_sp) currentProjectId = parseInt(_sp) || null; } catch (e) {}
+    try { var _sp = localStorage.getItem('pm-current-project'); if (_sp) state.currentProjectId = parseInt(_sp) || null; } catch (e) {}
     applyRoleVisibilityDefaults();
     renderProjectSelector();
     refreshAllViews();
     restoreActiveTab();
     // Synchronise les choix de la colonne Status des sous-tâches avec les statuts personnalisés
-    if (isOwner) syncSubtaskStatusChoices();
+    if (state.isOwner) syncSubtaskStatusChoices();
 
     // A6 : synchro live — recharge si la table liée change (édition directe dans Grist,
     // autre utilisateur). Debounce + on ne perturbe pas une saisie (modale ouverte).
