@@ -1,5 +1,5 @@
 (() => {
-  // src/main.js
+  // src/i18n.js
   var APP_VERSION = "166";
   var currentLang = "fr";
   var i18n = {
@@ -349,6 +349,97 @@
   function t(key) {
     return i18n[currentLang] && i18n[currentLang][key] || i18n.fr[key] || key;
   }
+
+  // src/utils/dates.js
+  function formatDate(d) {
+    if (!d) return "";
+    var date = new Date(d * 1e3);
+    if (isNaN(date.getTime())) {
+      date = new Date(d);
+      if (isNaN(date.getTime())) return "";
+    }
+    return date.toLocaleDateString(currentLang === "fr" ? "fr-FR" : "en-US", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+  function toEpoch(dateStr) {
+    if (!dateStr) return null;
+    var d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return Math.floor(d.getTime() / 1e3);
+  }
+  function fromEpoch(ts) {
+    if (!ts) return "";
+    var d = new Date(ts * 1e3);
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+  }
+  function getISOWeek(date) {
+    var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    var dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil(((d - yearStart) / 864e5 + 1) / 7);
+  }
+  function getWeekStart(year, weekNum) {
+    var jan4 = new Date(year, 0, 4);
+    var dayOfWeek = jan4.getDay() || 7;
+    var monday = new Date(jan4);
+    monday.setDate(jan4.getDate() - dayOfWeek + 1 + (weekNum - 1) * 7);
+    return monday;
+  }
+
+  // src/utils/labels.js
+  function priorityLabel(p) {
+    if (p === "high") return t("priorityHigh");
+    if (p === "medium") return t("priorityMedium");
+    if (p === "low") return t("priorityLow");
+    return p || "";
+  }
+  function isMilestone(st) {
+    return st && st.Type === "milestone";
+  }
+  function recurrenceSymbol(rec) {
+    var map = { daily: "\u{1F504} J", weekly: "\u{1F504} S", biweekly: "\u{1F504} 2S", monthly: "\u{1F504} M", quarterly: "\u{1F504} T", yearly: "\u{1F504} A" };
+    return map[rec] || "\u{1F504}";
+  }
+
+  // src/config.js
+  var CLIENT_TABLE_NAMES = {
+    tasks: "Taches",
+    users: "Utilisateurs",
+    groups: "Equipes",
+    templates: "Modeles",
+    subtasks: "Sous_taches",
+    dependencies: "Dependances",
+    comments: "Commentaires",
+    timeEntries: "Suivi_temps",
+    customFields: "Champs_personnalises",
+    customFieldValues: "Valeurs_champs_personnalises",
+    categories: "Categories",
+    tags: "Etiquettes",
+    projects: "Projets",
+    config: "Configuration_widget",
+    settings: "Parametres_widget",
+    notifications: "Notifications",
+    activityLog: "Journal_activite",
+    attachments: "Pieces_jointes",
+    userInfo: "Infos_utilisateurs"
+  };
+  var defaultUiLabels = {
+    projects: "Projets",
+    categories: "Cat\xE9gories",
+    tags: "Tags",
+    statuses: "Colonnes Kanban",
+    cardDisplay: "Affichage des cartes",
+    raci: "Mode RACI",
+    automations: "Automatisations",
+    notifications: "Notifications & e-mail",
+    security: "S\xE9curit\xE9 du document",
+    mapping: "Configuration avanc\xE9e"
+  };
+
+  // src/main.js
   var tasks = [];
   var users = [];
   var groups = [];
@@ -542,27 +633,6 @@
   var USER_INFO_TABLE = "PM_UserInfo";
   var attachments = [];
   var activityLog = [];
-  var CLIENT_TABLE_NAMES = {
-    tasks: "Taches",
-    users: "Utilisateurs",
-    groups: "Equipes",
-    templates: "Modeles",
-    subtasks: "Sous_taches",
-    dependencies: "Dependances",
-    comments: "Commentaires",
-    timeEntries: "Suivi_temps",
-    customFields: "Champs_personnalises",
-    customFieldValues: "Valeurs_champs_personnalises",
-    categories: "Categories",
-    tags: "Etiquettes",
-    projects: "Projets",
-    config: "Configuration_widget",
-    settings: "Parametres_widget",
-    notifications: "Notifications",
-    activityLog: "Journal_activite",
-    attachments: "Pieces_jointes",
-    userInfo: "Infos_utilisateurs"
-  };
   function applyFrenchTableNames(updateDefaults) {
     TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
     USERS_TABLE = CLIENT_TABLE_NAMES.users;
@@ -594,18 +664,6 @@
   function hasFrenchClientTables(tableIds) {
     return tableIds.indexOf(CLIENT_TABLE_NAMES.config) !== -1 || tableIds.indexOf(CLIENT_TABLE_NAMES.tasks) !== -1;
   }
-  var defaultUiLabels = {
-    projects: "Projets",
-    categories: "Cat\xE9gories",
-    tags: "Tags",
-    statuses: "Colonnes Kanban",
-    cardDisplay: "Affichage des cartes",
-    raci: "Mode RACI",
-    automations: "Automatisations",
-    notifications: "Notifications & e-mail",
-    security: "S\xE9curit\xE9 du document",
-    mapping: "Configuration avanc\xE9e"
-  };
   var uiLabels = Object.assign({}, defaultUiLabels);
   function uiLabel(key) {
     return uiLabels[key] || defaultUiLabels[key] || key;
@@ -983,29 +1041,6 @@
     document.querySelectorAll(".btn-new-task, .btn-new-project, .kanban-add-btn, .col-add").forEach(function(el) {
       el.style.display = canEdit ? "" : "none";
     });
-  }
-  function formatDate(d) {
-    if (!d) return "";
-    var date = new Date(d * 1e3);
-    if (isNaN(date.getTime())) {
-      date = new Date(d);
-      if (isNaN(date.getTime())) return "";
-    }
-    return date.toLocaleDateString(currentLang === "fr" ? "fr-FR" : "en-US", { day: "2-digit", month: "2-digit", year: "numeric" });
-  }
-  function toEpoch(dateStr) {
-    if (!dateStr) return null;
-    var d = new Date(dateStr);
-    if (isNaN(d.getTime())) return null;
-    return Math.floor(d.getTime() / 1e3);
-  }
-  function fromEpoch(ts) {
-    if (!ts) return "";
-    var d = new Date(ts * 1e3);
-    var y = d.getFullYear();
-    var m = String(d.getMonth() + 1).padStart(2, "0");
-    var day = String(d.getDate()).padStart(2, "0");
-    return y + "-" + m + "-" + day;
   }
   function isOverdue(task) {
     if (!task.Due_Date || task.Status === "done") return false;
@@ -2002,12 +2037,6 @@
       return emailOrName.split("@")[0];
     }
     return emailOrName;
-  }
-  function priorityLabel(p) {
-    if (p === "high") return t("priorityHigh");
-    if (p === "medium") return t("priorityMedium");
-    if (p === "low") return t("priorityLow");
-    return p || "";
   }
   function statusLabel(s) {
     return getStatusLabel(s) || s || "";
@@ -4841,20 +4870,6 @@
       console.error("Error toggling subtask:", e);
     }
   }
-  function getISOWeek(date) {
-    var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    var dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil(((d - yearStart) / 864e5 + 1) / 7);
-  }
-  function getWeekStart(year, weekNum) {
-    var jan4 = new Date(year, 0, 4);
-    var dayOfWeek = jan4.getDay() || 7;
-    var monday = new Date(jan4);
-    monday.setDate(jan4.getDate() - dayOfWeek + 1 + (weekNum - 1) * 7);
-    return monday;
-  }
   function getGanttSubtasks(taskId) {
     return getTaskSubtasks(taskId);
   }
@@ -4895,9 +4910,6 @@
       console.error("toggleGanttSubtask:", e);
       showToast((currentLang === "fr" ? "Impossible de modifier la sous-t\xE2che : " : "Could not update subtask: ") + e.message, "error");
     }
-  }
-  function isMilestone(st) {
-    return st && st.Type === "milestone";
   }
   function ganttSubtaskBarClass(st, parentTask) {
     var base;
@@ -8030,10 +8042,6 @@
       console.error("Error generating occurrences:", e);
       showToast("Erreur : " + e.message, "error");
     }
-  }
-  function recurrenceSymbol(rec) {
-    var map = { daily: "\u{1F504} J", weekly: "\u{1F504} S", biweekly: "\u{1F504} 2S", monthly: "\u{1F504} M", quarterly: "\u{1F504} T", yearly: "\u{1F504} A" };
-    return map[rec] || "\u{1F504}";
   }
   function addRecurrenceToEpoch(epoch, rec) {
     if (!epoch) return null;

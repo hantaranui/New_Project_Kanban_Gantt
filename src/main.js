@@ -2,357 +2,10 @@
 // GRIST PROJECT MANAGER WIDGET
 // =============================================================================
 
-var APP_VERSION = '166';
-var currentLang = 'fr';
-
-var i18n = {
-  fr: {
-    appTitle: 'Gestion de Projet',
-    appSubtitle: 'Organisez vos tâches en Kanban, suivez les échéances en Gantt et coordonnez votre équipe.',
-    notInGrist: 'Ce widget doit être utilisé dans Grist.',
-    tabCalendar: 'Calendrier',
-    tabKanban: 'Kanban',
-    tabTable: 'Tableau',
-    tabGantt: 'Gantt',
-    tabTemplates: 'Templates',
-    newTask: 'Nouvelle tâche',
-    newProject: 'Nouveau projet',
-    statTotal: 'Total',
-    statTodo: 'À faire',
-    statProgress: 'En cours',
-    statDone: 'Terminées',
-    colTodo: 'À faire',
-    colProgress: 'En cours',
-    colDone: 'Terminé',
-    noTasks: 'Aucune tâche',
-    addTask: '+ Ajouter une tâche',
-    tableTitle: 'Tableau de Gestion',
-    tableSubtitle: 'Gérez vos tâches avec édition inline avancée',
-    searchPlaceholder: 'Rechercher une tâche...',
-    allStatuses: 'Tous les statuts',
-    allPriorities: 'Toutes priorités',
-    colTaskName: 'Tâche',
-    colStatus: 'Statut',
-    colPriority: 'Priorité',
-    colAssignee: 'Assigné à',
-    colStartDate: 'Date de début',
-    colDueDate: 'Échéance',
-    colActions: 'Actions',
-    ganttTitle: 'Diagramme de Gantt',
-    ganttYear: 'Année :',
-    ganttToday: "Aujourd'hui",
-    ganttDays: 'Jours',
-    ganttWeeks: 'Semaines',
-    ganttMonths: 'Mois',
-    ganttYear2: 'Année',
-    ganttTwoYears: '2 Ans',
-    ganttSortLabel: 'Trier :',
-    ganttSortDefault: 'Défaut',
-    ganttSortPriority: 'Priorité',
-    ganttSortAlpha: 'A → Z',
-    ganttSortDue: 'Échéance',
-    ganttCustom: 'Personnalisé',
-    ganttRangeFrom: 'Du :',
-    ganttRangeTo: 'au :',
-    extensionDate: 'Date de prolongation',
-    extensionTooltip: 'Prolongation : dépassement de l\'échéance',
-    autoExtend: 'Prolongation auto',
-    autoExtendHint: 'Prolonge automatiquement jusqu\'à la date du jour tant que la tâche n\'est pas terminée',
-    ganttFullYear: 'Année complète',
-    ganttNavInfo: 'Navigation infinie vers autres années',
-    ganttViewRange: 'Vue :',
-    templatesTitle: 'Tâches Préformatées',
-    templatesSubtitle: 'Gérez les modèles de tâches disponibles pour tous les utilisateurs',
-    newTemplate: 'Nouveau modèle',
-    modalNewTask: 'Nouvelle tâche',
-    modalEditTask: 'Modifier la tâche',
-    modalNewTemplate: 'Nouveau modèle de tâche',
-    fieldTitle: 'Titre *',
-    fieldDescription: 'Description',
-    fieldStatus: 'Statut',
-    fieldPriority: 'Priorité',
-    fieldAssignee: 'Assigné à',
-    fieldGroup: 'Groupe',
-    fieldStartDate: 'Date de début',
-    fieldDueDate: 'Échéance',
-    fieldCategory: 'Catégorie',
-    fieldEstimatedTime: 'Temps estimé (h)',
-    priorityHigh: 'Haute',
-    priorityMedium: 'Moyenne',
-    priorityLow: 'Basse',
-    statusTodo: 'À faire',
-    statusProgress: 'En cours',
-    statusDone: 'Terminé',
-    save: 'Enregistrer',
-    cancel: 'Annuler',
-    delete: 'Supprimer',
-    confirmDelete: 'Supprimer cette tâche ?',
-    confirmDeleteTemplate: 'Supprimer ce modèle ?',
-    taskCreated: 'Tâche créée !',
-    taskUpdated: 'Tâche mise à jour !',
-    taskDeleted: 'Tâche supprimée.',
-    taskMoved: 'Tâche déplacée.',
-    templateCreated: 'Modèle créé !',
-    templateDeleted: 'Modèle supprimé.',
-    overdue: 'En retard',
-    noDate: 'Aucune date',
-    notDefined: 'Non définie',
-    tablesCreated: 'Tables créées automatiquement.',
-    notifications: 'Alertes',
-    overdueTasksAlert: 'tâche(s) en retard',
-    upcomingTasksAlert: 'tâche(s) à venir (3j)',
-    noAlerts: 'Aucune alerte',
-    markAllRead: 'Tout lu',
-    markAsRead: 'Marquer comme lu',
-    notifUnread: 'non lu(s)',
-    automationTitle: 'Automatisations',
-    automationSubtitle: 'Actions automatiques quand les tâches changent',
-    addRule: 'Ajouter une règle',
-    ruleEnabled: 'Activée',
-    ruleDisabled: 'Désactivée',
-    triggerLabel: 'Déclencheur',
-    triggerStatusChange: 'Changement de statut',
-    triggerPriorityChange: 'Changement de priorité',
-    triggerAssignmentChange: 'Changement d\'assignation',
-    triggerOverdue: 'Tâche en retard',
-    triggerApproachingDeadline: 'Échéance proche (3j)',
-    conditionFrom: 'De',
-    conditionTo: 'Vers',
-    conditionAny: 'N\'importe quel',
-    actionLabel: 'Action',
-    actionNotifyAssignee: 'Notifier l\'assigné',
-    actionNotifyProjectLead: 'Notifier le responsable',
-    actionNotifySpecific: 'Notifier une personne',
-    actionNotifyAll: 'Notifier tout le monde',
-    noRules: 'Aucune règle configurée',
-    ruleCreated: 'Règle créée',
-    ruleDeleted: 'Règle supprimée',
-    ruleSaved: 'Règle sauvegardée',
-    messageTemplate: 'Message',
-    defaultRules: 'Ajouter les règles par défaut',
-    exportCsv: 'Export CSV',
-    exportPdf: 'Export PDF',
-    searchPlaceholder: 'Rechercher...',
-    tags: 'Tags',
-    addTag: 'Ajouter tag',
-    statistics: 'Statistiques',
-    darkMode: 'Mode sombre',
-    lightMode: 'Mode clair',
-    tabStats: 'Stats',
-    statsTitle: 'Statistiques',
-    statsSubtitle: 'Analysez la productivité de votre équipe',
-    chartStatus: 'Répartition par statut',
-    chartPriority: 'Répartition par priorité',
-    chartAssignee: 'Tâches par assigné',
-    chartWeek: 'Tâches cette semaine',
-    chartWorkload: 'Charge de travail (risque de surcharge)',
-    completionRate: 'Taux de complétion',
-    overdueLabel: 'En retard',
-    avgTimePerTask: 'Temps moyen/tâche',
-    totalTime: 'Temps total',
-    allProjects: 'Tous les projets',
-    manageProjects: 'Gérer les projets',
-    project: 'Projet',
-    projectName: 'Nom du projet',
-    projectLead: 'Responsable',
-    projectDescription: 'Description',
-    projectColor: 'Couleur',
-    projectStatus: 'Statut',
-    addProject: 'Ajouter un projet',
-    editProject: 'Modifier le projet',
-    deleteProject: 'Supprimer le projet',
-    noProject: 'Sans projet',
-    projectSearchPlaceholder: 'Rechercher un projet...',
-    tabSettings: 'Paramètres',
-    settingsSubtitle: 'Configurez vos projets, catégories et autres options',
-    projectsSubtitle: 'Gérez vos projets',
-    categoriesSubtitle: 'Gérez les catégories de tâches',
-    tagsSubtitle: 'Gérez les tags pour vos tâches',
-    addCategory: 'Ajouter',
-    tagName: 'Nom du tag',
-    tagColor: 'Couleur',
-    useTemplate: 'Utiliser',
-    totalTemplates: 'Total modèles',
-    totalUsages: 'Utilisations totales',
-    mostUsed: 'Plus utilisé',
-    categories: 'Catégories',
-    tabTeam: 'Équipe',
-    teamUsersTitle: 'Utilisateurs',
-    teamUsersSubtitle: 'Gérez les membres de votre équipe',
-    manageRoles: 'Rôles',
-    manageRolesTitle: 'Gérer les rôles',
-    manageRolesSubtitle: 'Ajoutez ou supprimez des rôles utilisés dans votre équipe',
-    addRole: 'Ajouter un rôle',
-    newRolePlaceholder: 'Nom du nouveau rôle',
-    rolesUpdated: 'Rôles mis à jour !',
-    confirmDeleteRole: 'Supprimer ce rôle ?',
-    cannotDeleteUsedRole: 'Ce rôle est utilisé par des utilisateurs',
-    teamGroupsTitle: 'Groupes',
-    teamGroupsSubtitle: 'Organisez vos utilisateurs en groupes',
-    addUser: 'Ajouter',
-    addGroup: 'Ajouter',
-    modalNewUser: 'Nouvel utilisateur',
-    modalNewGroup: 'Nouveau groupe',
-    fieldName: 'Nom *',
-    fieldEmail: 'Email',
-    fieldRole: 'Rôle',
-    roleAdmin: 'Administrateur',
-    roleMember: 'Membre',
-    roleViewer: 'Lecteur',
-    userCreated: 'Utilisateur ajouté !',
-    userDeleted: 'Utilisateur supprimé.',
-    groupCreated: 'Groupe créé !',
-    groupDeleted: 'Groupe supprimé.',
-    confirmDeleteUser: 'Supprimer cet utilisateur ?',
-    confirmDeleteGroup: 'Supprimer ce groupe ?',
-    noUsers: 'Aucun utilisateur',
-    noGroups: 'Aucun groupe',
-    members: 'membres',
-    progression: 'Progression',
-    advancement: 'Avancement',
-    startLabel: 'Début :',
-    dueLabel: 'Échéance :',
-    quickActions: 'Actions rapides',
-    reopenTask: 'Rouvrir la tâche',
-    startTask: 'Démarrer la tâche',
-    completeTask: 'Terminer la tâche',
-    changePriority: 'Changer la priorité',
-    taskSummary: 'Résumé de la tâche',
-    addAssignee: 'Ajouter',
-    searchAssignee: 'Rechercher des noms...',
-    subtasks: 'Sous-tâches',
-    addSubtask: 'Ajouter une sous-tâche',
-    subtaskPlaceholder: 'Nouvelle sous-tâche...',
-    noSubtasks: 'Aucune sous-tâche',
-    subtaskCompleted: 'Sous-tâche terminée',
-    subtaskDeleted: 'Sous-tâche supprimée',
-    subtaskSaved: 'Sous-tâche modifiée',
-    editSubtask: 'Modifier la sous-tâche',
-    subtaskAssignee: 'Responsable',
-    subtaskDueDate: 'Échéance',
-    noAssignee: 'Non assigné',
-    dependencies: 'Dépendances',
-    blockedBy: 'Bloqué par',
-    blocks: 'Bloque',
-    addDependency: 'Ajouter une dépendance',
-    noDependencies: 'Aucune dépendance',
-    dependencyAdded: 'Dépendance ajoutée',
-    dependencyRemoved: 'Dépendance supprimée',
-    selectTask: 'Sélectionner une tâche...',
-    blockedWarning: 'Tâche bloquée',
-    comments: 'Commentaires',
-    addComment: 'Ajouter un commentaire',
-    commentPlaceholder: 'Écrire un commentaire...',
-    noComments: 'Aucun commentaire',
-    commentAdded: 'Commentaire ajouté',
-    commentDeleted: 'Commentaire supprimé',
-    justNow: "À l'instant",
-    minutesAgo: 'il y a {n} min',
-    hoursAgo: 'il y a {n}h',
-    daysAgo: 'il y a {n}j',
-    timeTracking: 'Suivi du temps',
-    startTimer: 'Démarrer',
-    stopTimer: 'Arrêter',
-    timerRunning: 'En cours...',
-    totalTime: 'Temps total',
-    estimatedTime: 'Temps estimé',
-    timeEntries: 'Entrées de temps',
-    noTimeEntries: 'Aucune entrée',
-    timeEntryAdded: 'Temps enregistré',
-    timeEntryDeleted: 'Entrée supprimée',
-    hours: 'h',
-    minutes: 'min',
-    recurrence: 'Récurrence',
-    recurrenceNone: 'Aucune',
-    recurrenceDaily: 'Quotidienne',
-    recurrenceWeekly: 'Hebdomadaire',
-    recurrenceBiweekly: 'Toutes les 2 semaines',
-    recurrenceMonthly: 'Mensuelle',
-    recurrenceQuarterly: 'Trimestrielle',
-    recurrenceYearly: 'Annuelle',
-    nextOccurrence: 'Prochaine occurrence créée',
-    recurrenceExplain: 'Quand cette tâche est marquée "Terminée", une nouvelle occurrence est automatiquement créée avec les dates décalées.',
-    generateMonth: 'Générer pour le mois',
-    generateYear: 'Générer pour l\'année',
-    occurrencesGenerated: 'occurrences générées',
-    customFields: 'Champs personnalisés',
-    manageCustomFields: 'Gérer les champs',
-    addCustomField: 'Ajouter un champ',
-    fieldName: 'Nom',
-    customFieldName: 'Nom du champ',
-    fieldType: 'Type',
-    fieldOptions: 'Options (séparées par virgule)',
-    typeText: 'Texte',
-    typeNumber: 'Nombre',
-    typeDate: 'Date',
-    typeCheckbox: 'Case à cocher',
-    typeSelect: 'Liste déroulante',
-    customFieldCreated: 'Champ créé',
-    customFieldDeleted: 'Champ supprimé',
-    noCustomFields: 'Aucun champ personnalisé',
-    categories: 'Catégories',
-    manageCategories: 'Gérer les catégories',
-    addCategory: 'Ajouter',
-    categoryCreated: 'Catégorie créée',
-    categoryDeleted: 'Catégorie supprimée',
-    noCategories: 'Aucune catégorie',
-    chartTimeline: 'Charge dans le temps par agent',
-    chartBurndown: 'Burndown / Burnup',
-    burnRemaining: 'Restantes',
-    burnCompleted: 'Terminées',
-    burnIdeal: 'Idéal',
-    activityLog: 'Journal d\'activité',
-    activityLogSubtitle: 'Historique des actions récentes',
-    actTaskCreated: 'a créé la tâche',
-    actTaskUpdated: 'a modifié la tâche',
-    actTaskDeleted: 'a supprimé la tâche',
-    actStatusChanged: 'a changé le statut de',
-    actTaskArchived: 'a archivé la tâche',
-    actTaskRestored: 'a restauré la tâche',
-    actCommentAdded: 'a commenté sur',
-    actNoActivity: 'Aucune activité récente',
-    actLoadMore: 'Voir plus',
-    edit: 'Modifier',
-    required: 'requis',
-    tag: 'Tag',
-    globalSearchPlaceholder: 'Rechercher...',
-    taskSearchPlaceholder: 'Rechercher une tâche...',
-    templateSearchPlaceholder: 'Rechercher un modèle...',
-    calToday: "Aujourd'hui",
-    calMonth: 'Mois',
-    calWeek: 'Semaine',
-    calDay: 'Jour',
-    manageRolesTitle: 'Gérer les rôles',
-    byWeek8: 'Par semaine (8 sem.)',
-    byMonth6: 'Par mois (6 mois)',
-    allAgents: 'Tous les agents',
-    advancedConfig: 'Configuration avancée',
-    mappingSubtitle: 'Mappez vos propres tables et colonnes Grist',
-    configureMapping: 'Configurer le mapping',
-    mappingDescription: 'Vous pouvez créer les tables en français ou mapper vos propres tables existantes pour réutiliser vos données.',
-    mappingGuide: 'Consulter le guide complet du système de mapping',
-    securityTitle: 'Sécurité du document',
-    securitySubtitle: 'Protégez les tables du widget avec des règles d\'accès Grist (ACL)',
-    raciMode: 'Mode RACI',
-    raciSubtitle: 'Activez la matrice RACI pour définir les rôles sur chaque tâche',
-    raciResponsible: 'Responsable (R)',
-    raciAccountable: 'Approbateur (A)',
-    raciConsulted: 'Consulté (C)',
-    raciInformed: 'Informé (I)',
-    raciEnabled: 'Mode RACI activé',
-    raciDisabled: 'Mode RACI désactivé',
-    projectActive: 'Actif',
-    projectCompleted: 'Terminé',
-    projectArchived: 'Archivé',
-    editTemplate: 'Modifier le modèle',
-    modalEditTemplate: 'Modifier le modèle de tâche',
-    templateUpdated: 'Modèle mis à jour !'
-  }
-};
-
-function t(key) {
-  return (i18n[currentLang] && i18n[currentLang][key]) || (i18n.fr[key]) || key;
-}
+import { APP_VERSION, currentLang, i18n, t } from './i18n.js';
+import { formatDate, toEpoch, fromEpoch, getISOWeek, getWeekStart } from './utils/dates.js';
+import { priorityLabel, isMilestone, recurrenceSymbol } from './utils/labels.js';
+import { CLIENT_TABLE_NAMES, defaultUiLabels } from './config.js';
 
 // =============================================================================
 // STATE
@@ -547,28 +200,6 @@ var USER_INFO_TABLE = 'PM_UserInfo';
 var attachments = [];
 var activityLog = [];
 
-var CLIENT_TABLE_NAMES = {
-  tasks: 'Taches',
-  users: 'Utilisateurs',
-  groups: 'Equipes',
-  templates: 'Modeles',
-  subtasks: 'Sous_taches',
-  dependencies: 'Dependances',
-  comments: 'Commentaires',
-  timeEntries: 'Suivi_temps',
-  customFields: 'Champs_personnalises',
-  customFieldValues: 'Valeurs_champs_personnalises',
-  categories: 'Categories',
-  tags: 'Etiquettes',
-  projects: 'Projets',
-  config: 'Configuration_widget',
-  settings: 'Parametres_widget',
-  notifications: 'Notifications',
-  activityLog: 'Journal_activite',
-  attachments: 'Pieces_jointes',
-  userInfo: 'Infos_utilisateurs'
-};
-
 function applyFrenchTableNames(updateDefaults) {
   TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
   USERS_TABLE = CLIENT_TABLE_NAMES.users;
@@ -602,18 +233,6 @@ function hasFrenchClientTables(tableIds) {
   return tableIds.indexOf(CLIENT_TABLE_NAMES.config) !== -1 || tableIds.indexOf(CLIENT_TABLE_NAMES.tasks) !== -1;
 }
 
-var defaultUiLabels = {
-  projects: 'Projets',
-  categories: 'Catégories',
-  tags: 'Tags',
-  statuses: 'Colonnes Kanban',
-  cardDisplay: 'Affichage des cartes',
-  raci: 'Mode RACI',
-  automations: 'Automatisations',
-  notifications: 'Notifications & e-mail',
-  security: 'Sécurité du document',
-  mapping: 'Configuration avancée'
-};
 var uiLabels = Object.assign({}, defaultUiLabels);
 function uiLabel(key) { return uiLabels[key] || defaultUiLabels[key] || key; }
 async function saveUiLabels() { await saveSetting('ui_labels', JSON.stringify(uiLabels)); }
@@ -1027,32 +646,6 @@ function applyBusinessRoleRestrictions() {
   document.querySelectorAll('.btn-new-task, .btn-new-project, .kanban-add-btn, .col-add').forEach(function(el) {
     el.style.display = canEdit ? '' : 'none';
   });
-}
-
-function formatDate(d) {
-  if (!d) return '';
-  var date = new Date(d * 1000); // Grist stores dates as epoch seconds
-  if (isNaN(date.getTime())) {
-    date = new Date(d);
-    if (isNaN(date.getTime())) return '';
-  }
-  return date.toLocaleDateString(currentLang === 'fr' ? 'fr-FR' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function toEpoch(dateStr) {
-  if (!dateStr) return null;
-  var d = new Date(dateStr);
-  if (isNaN(d.getTime())) return null;
-  return Math.floor(d.getTime() / 1000);
-}
-
-function fromEpoch(ts) {
-  if (!ts) return '';
-  var d = new Date(ts * 1000);
-  var y = d.getFullYear();
-  var m = String(d.getMonth() + 1).padStart(2, '0');
-  var day = String(d.getDate()).padStart(2, '0');
-  return y + '-' + m + '-' + day;
 }
 
 function isOverdue(task) {
@@ -1612,13 +1205,6 @@ function getUserDisplayName(emailOrName) {
     return emailOrName.split('@')[0];
   }
   return emailOrName;
-}
-
-function priorityLabel(p) {
-  if (p === 'high') return t('priorityHigh');
-  if (p === 'medium') return t('priorityMedium');
-  if (p === 'low') return t('priorityLow');
-  return p || '';
 }
 
 function statusLabel(s) {
@@ -4633,22 +4219,6 @@ async function toggleSubtaskFromTable(subtaskId, completed) {
 // GANTT VIEW
 // =============================================================================
 
-function getISOWeek(date) {
-  var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  var dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-}
-
-function getWeekStart(year, weekNum) {
-  var jan4 = new Date(year, 0, 4);
-  var dayOfWeek = jan4.getDay() || 7;
-  var monday = new Date(jan4);
-  monday.setDate(jan4.getDate() - dayOfWeek + 1 + (weekNum - 1) * 7);
-  return monday;
-}
-
 // Sous-tâches du Gantt : on les affiche toutes. Celles sans date restent lisibles côté libellé.
 function getGanttSubtasks(taskId) {
   return getTaskSubtasks(taskId);
@@ -4691,8 +4261,6 @@ async function toggleGanttSubtask(subtaskId, completed) {
     showToast((currentLang === 'fr' ? 'Impossible de modifier la sous-tâche : ' : 'Could not update subtask: ') + e.message, 'error');
   }
 }
-
-function isMilestone(st) { return st && st.Type === 'milestone'; }
 
 // Couleur de barre pour une sous-tâche (verte si complétée, sinon hérite du statut parent)
 // B2 : un jalon reçoit en plus la classe gantt-bar-milestone (rendu losange, tous modes)
@@ -8144,12 +7712,6 @@ async function generateOccurrences(taskId, period) {
     console.error('Error generating occurrences:', e);
     showToast('Erreur : ' + e.message, 'error');
   }
-}
-
-// Symbole court d'une récurrence (badge cartes/sous-tâches)
-function recurrenceSymbol(rec) {
-  var map = { daily: '🔄 J', weekly: '🔄 S', biweekly: '🔄 2S', monthly: '🔄 M', quarterly: '🔄 T', yearly: '🔄 A' };
-  return map[rec] || '🔄';
 }
 
 // B1 : avance une date (epoch s) selon la récurrence (calcul calendaire exact)
