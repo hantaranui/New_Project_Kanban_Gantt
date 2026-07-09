@@ -347,379 +347,11 @@ var i18n = {
     editTemplate: 'Modifier le modèle',
     modalEditTemplate: 'Modifier le modèle de tâche',
     templateUpdated: 'Modèle mis à jour !'
-  },
-  en: {
-    appTitle: 'Project Management',
-    appSubtitle: 'Organize tasks in Kanban, follow deadlines in Gantt, and coordinate your team.',
-    notInGrist: 'This widget must be used inside Grist.',
-    tabCalendar: 'Calendar',
-    tabKanban: 'Kanban',
-    tabTable: 'Table',
-    tabGantt: 'Gantt',
-    tabTemplates: 'Templates',
-    newTask: 'New task',
-    newProject: 'New project',
-    statTotal: 'Total',
-    statTodo: 'To do',
-    statProgress: 'In progress',
-    statDone: 'Completed',
-    colTodo: 'To do',
-    colProgress: 'In progress',
-    colDone: 'Done',
-    noTasks: 'No tasks',
-    addTask: '+ Add a task',
-    tableTitle: 'Management Table',
-    tableSubtitle: 'Manage your tasks with advanced inline editing',
-    searchPlaceholder: 'Search a task...',
-    allStatuses: 'All statuses',
-    allPriorities: 'All priorities',
-    colTaskName: 'Task',
-    colStatus: 'Status',
-    colPriority: 'Priority',
-    colAssignee: 'Assigned to',
-    colStartDate: 'Start date',
-    colDueDate: 'Due date',
-    colActions: 'Actions',
-    ganttTitle: 'Gantt Chart',
-    ganttYear: 'Year:',
-    ganttToday: 'Today',
-    ganttDays: 'Days',
-    ganttWeeks: 'Weeks',
-    ganttMonths: 'Months',
-    ganttYear2: 'Year',
-    ganttTwoYears: '2 Years',
-    ganttSortLabel: 'Sort:',
-    ganttSortDefault: 'Default',
-    ganttSortPriority: 'Priority',
-    ganttSortAlpha: 'A → Z',
-    ganttSortDue: 'Due date',
-    ganttCustom: 'Custom',
-    ganttRangeFrom: 'From:',
-    ganttRangeTo: 'to:',
-    extensionDate: 'Extension date',
-    extensionTooltip: 'Extension: overdue beyond deadline',
-    autoExtend: 'Auto extend',
-    autoExtendHint: 'Automatically extends to today until the task is completed',
-    ganttFullYear: 'Full year',
-    ganttNavInfo: 'Infinite navigation to other years',
-    ganttViewRange: 'View:',
-    templatesTitle: 'Task Templates',
-    templatesSubtitle: 'Manage task templates available to all users',
-    newTemplate: 'New template',
-    modalNewTask: 'New task',
-    modalEditTask: 'Edit task',
-    modalNewTemplate: 'New task template',
-    fieldTitle: 'Title *',
-    fieldDescription: 'Description',
-    fieldStatus: 'Status',
-    fieldPriority: 'Priority',
-    fieldAssignee: 'Assigned to',
-    fieldGroup: 'Group',
-    fieldStartDate: 'Start date',
-    fieldDueDate: 'Due date',
-    fieldCategory: 'Category',
-    fieldEstimatedTime: 'Estimated time (h)',
-    priorityHigh: 'High',
-    priorityMedium: 'Medium',
-    priorityLow: 'Low',
-    statusTodo: 'To do',
-    statusProgress: 'In progress',
-    statusDone: 'Done',
-    save: 'Save',
-    cancel: 'Cancel',
-    delete: 'Delete',
-    confirmDelete: 'Delete this task?',
-    confirmDeleteTemplate: 'Delete this template?',
-    taskCreated: 'Task created!',
-    taskUpdated: 'Task updated!',
-    taskDeleted: 'Task deleted.',
-    taskMoved: 'Task moved.',
-    templateCreated: 'Template created!',
-    templateDeleted: 'Template deleted.',
-    notifications: 'Alerts',
-    overdueTasksAlert: 'overdue task(s)',
-    upcomingTasksAlert: 'upcoming task(s) (3d)',
-    noAlerts: 'No alerts',
-    markAllRead: 'All read',
-    markAsRead: 'Mark as read',
-    notifUnread: 'unread',
-    automationTitle: 'Automations',
-    automationSubtitle: 'Automatic actions when tasks change',
-    addRule: 'Add a rule',
-    ruleEnabled: 'Enabled',
-    ruleDisabled: 'Disabled',
-    triggerLabel: 'Trigger',
-    triggerStatusChange: 'Status change',
-    triggerPriorityChange: 'Priority change',
-    triggerAssignmentChange: 'Assignment change',
-    triggerOverdue: 'Task overdue',
-    triggerApproachingDeadline: 'Approaching deadline (3d)',
-    conditionFrom: 'From',
-    conditionTo: 'To',
-    conditionAny: 'Any',
-    actionLabel: 'Action',
-    actionNotifyAssignee: 'Notify assignee',
-    actionNotifyProjectLead: 'Notify project lead',
-    actionNotifySpecific: 'Notify specific person',
-    actionNotifyAll: 'Notify everyone',
-    noRules: 'No rules configured',
-    ruleCreated: 'Rule created',
-    ruleDeleted: 'Rule deleted',
-    ruleSaved: 'Rule saved',
-    messageTemplate: 'Message',
-    defaultRules: 'Add default rules',
-    exportCsv: 'Export CSV',
-    exportPdf: 'Export PDF',
-    searchPlaceholder: 'Search...',
-    tags: 'Tags',
-    addTag: 'Add tag',
-    statistics: 'Statistics',
-    darkMode: 'Dark mode',
-    lightMode: 'Light mode',
-    tabStats: 'Stats',
-    statsTitle: 'Statistics',
-    statsSubtitle: 'Analyze your team productivity',
-    chartStatus: 'Distribution by status',
-    chartPriority: 'Distribution by priority',
-    chartAssignee: 'Tasks by assignee',
-    chartWeek: 'Tasks this week',
-    chartWorkload: 'Workload (overload risk)',
-    completionRate: 'Completion rate',
-    overdueLabel: 'Overdue',
-    avgTimePerTask: 'Avg time/task',
-    totalTime: 'Total time',
-    allProjects: 'All projects',
-    manageProjects: 'Manage projects',
-    project: 'Project',
-    projectName: 'Project name',
-    projectLead: 'Lead',
-    projectDescription: 'Description',
-    projectColor: 'Color',
-    projectStatus: 'Status',
-    addProject: 'Add project',
-    editProject: 'Edit project',
-    deleteProject: 'Delete project',
-    noProject: 'No project',
-    projectSearchPlaceholder: 'Search a project...',
-    tabSettings: 'Settings',
-    settingsSubtitle: 'Configure your projects, categories and other options',
-    projectsSubtitle: 'Manage your projects',
-    categoriesSubtitle: 'Manage task categories',
-    tagsSubtitle: 'Manage tags for your tasks',
-    addCategory: 'Add',
-    tagName: 'Tag name',
-    tagColor: 'Color',
-    overdue: 'Overdue',
-    noDate: 'No date',
-    notDefined: 'Not defined',
-    tablesCreated: 'Tables created automatically.',
-    useTemplate: 'Use',
-    totalTemplates: 'Total templates',
-    totalUsages: 'Total usages',
-    mostUsed: 'Most used',
-    categories: 'Categories',
-    tabTeam: 'Team',
-    teamUsersTitle: 'Users',
-    teamUsersSubtitle: 'Manage your team members',
-    manageRoles: 'Roles',
-    manageRolesTitle: 'Manage roles',
-    manageRolesSubtitle: 'Add or remove roles used by your team',
-    addRole: 'Add role',
-    newRolePlaceholder: 'New role name',
-    rolesUpdated: 'Roles updated!',
-    confirmDeleteRole: 'Delete this role?',
-    cannotDeleteUsedRole: 'This role is used by users',
-    teamGroupsTitle: 'Groups',
-    teamGroupsSubtitle: 'Organize your users into groups',
-    addUser: 'Add',
-    addGroup: 'Add',
-    modalNewUser: 'New user',
-    modalNewGroup: 'New group',
-    fieldName: 'Name *',
-    fieldEmail: 'Email',
-    fieldRole: 'Role',
-    roleAdmin: 'Administrator',
-    roleMember: 'Member',
-    roleViewer: 'Viewer',
-    userCreated: 'User added!',
-    userDeleted: 'User deleted.',
-    groupCreated: 'Group created!',
-    groupDeleted: 'Group deleted.',
-    confirmDeleteUser: 'Delete this user?',
-    confirmDeleteGroup: 'Delete this group?',
-    noUsers: 'No users',
-    noGroups: 'No groups',
-    members: 'members',
-    progression: 'Progression',
-    advancement: 'Progress',
-    startLabel: 'Start:',
-    dueLabel: 'Due:',
-    quickActions: 'Quick Actions',
-    reopenTask: 'Reopen task',
-    startTask: 'Start task',
-    completeTask: 'Complete task',
-    changePriority: 'Change priority',
-    taskSummary: 'Task Summary',
-    addAssignee: 'Add',
-    searchAssignee: 'Search names...',
-    subtasks: 'Subtasks',
-    addSubtask: 'Add subtask',
-    subtaskPlaceholder: 'New subtask...',
-    noSubtasks: 'No subtasks',
-    subtaskCompleted: 'Subtask completed',
-    subtaskDeleted: 'Subtask deleted',
-    subtaskSaved: 'Subtask updated',
-    editSubtask: 'Edit subtask',
-    subtaskAssignee: 'Assignee',
-    subtaskDueDate: 'Due date',
-    noAssignee: 'Unassigned',
-    dependencies: 'Dependencies',
-    blockedBy: 'Blocked by',
-    blocks: 'Blocks',
-    addDependency: 'Add dependency',
-    noDependencies: 'No dependencies',
-    dependencyAdded: 'Dependency added',
-    dependencyRemoved: 'Dependency removed',
-    selectTask: 'Select a task...',
-    blockedWarning: 'Blocked task',
-    comments: 'Comments',
-    addComment: 'Add comment',
-    commentPlaceholder: 'Write a comment...',
-    noComments: 'No comments',
-    commentAdded: 'Comment added',
-    commentDeleted: 'Comment deleted',
-    justNow: 'Just now',
-    minutesAgo: '{n} min ago',
-    hoursAgo: '{n}h ago',
-    daysAgo: '{n}d ago',
-    timeTracking: 'Time Tracking',
-    startTimer: 'Start',
-    stopTimer: 'Stop',
-    timerRunning: 'Running...',
-    totalTime: 'Total time',
-    estimatedTime: 'Estimated time',
-    timeEntries: 'Time entries',
-    noTimeEntries: 'No entries',
-    timeEntryAdded: 'Time recorded',
-    timeEntryDeleted: 'Entry deleted',
-    hours: 'h',
-    minutes: 'min',
-    recurrence: 'Recurrence',
-    recurrenceNone: 'None',
-    recurrenceDaily: 'Daily',
-    recurrenceWeekly: 'Weekly',
-    recurrenceBiweekly: 'Every 2 weeks',
-    recurrenceMonthly: 'Monthly',
-    recurrenceQuarterly: 'Quarterly',
-    recurrenceYearly: 'Yearly',
-    nextOccurrence: 'Next occurrence created',
-    recurrenceExplain: 'When this task is marked "Done", a new occurrence is automatically created with shifted dates.',
-    generateMonth: 'Generate for the month',
-    generateYear: 'Generate for the year',
-    occurrencesGenerated: 'occurrences generated',
-    customFields: 'Custom Fields',
-    manageCustomFields: 'Manage fields',
-    addCustomField: 'Add field',
-    fieldName: 'Name',
-    customFieldName: 'Field name',
-    fieldType: 'Type',
-    fieldOptions: 'Options (comma separated)',
-    typeText: 'Text',
-    typeNumber: 'Number',
-    typeDate: 'Date',
-    typeCheckbox: 'Checkbox',
-    typeSelect: 'Dropdown',
-    customFieldCreated: 'Field created',
-    customFieldDeleted: 'Field deleted',
-    noCustomFields: 'No custom fields',
-    categories: 'Categories',
-    manageCategories: 'Manage categories',
-    addCategory: 'Add',
-    categoryCreated: 'Category created',
-    categoryDeleted: 'Category deleted',
-    noCategories: 'No categories',
-    chartTimeline: 'Workload over time per assignee',
-    chartBurndown: 'Burndown / Burnup',
-    burnRemaining: 'Remaining',
-    burnCompleted: 'Completed',
-    burnIdeal: 'Ideal',
-    activityLog: 'Activity Log',
-    activityLogSubtitle: 'Recent actions history',
-    actTaskCreated: 'created task',
-    actTaskUpdated: 'updated task',
-    actTaskDeleted: 'deleted task',
-    actStatusChanged: 'changed status of',
-    actTaskArchived: 'archived task',
-    actTaskRestored: 'restored task',
-    actCommentAdded: 'commented on',
-    actNoActivity: 'No recent activity',
-    actLoadMore: 'Load more',
-    edit: 'Edit',
-    required: 'required',
-    tag: 'Tag',
-    globalSearchPlaceholder: 'Search...',
-    taskSearchPlaceholder: 'Search a task...',
-    templateSearchPlaceholder: 'Search a template...',
-    calToday: 'Today',
-    calMonth: 'Month',
-    calWeek: 'Week',
-    calDay: 'Day',
-    manageRolesTitle: 'Manage roles',
-    byWeek8: 'By week (8 wks)',
-    byMonth6: 'By month (6 mos)',
-    allAgents: 'All agents',
-    advancedConfig: 'Advanced configuration',
-    mappingSubtitle: 'Map your own Grist tables and columns',
-    configureMapping: 'Configure mapping',
-    mappingDescription: 'You can create French default tables or map your own existing Grist tables.',
-    mappingGuide: 'Read the complete mapping guide',
-    securityTitle: 'Document security',
-    securitySubtitle: 'Protect widget tables with Grist access rules (ACL)',
-    raciMode: 'RACI Mode',
-    raciSubtitle: 'Enable the RACI matrix to define roles on each task',
-    raciResponsible: 'Responsible (R)',
-    raciAccountable: 'Accountable (A)',
-    raciConsulted: 'Consulted (C)',
-    raciInformed: 'Informed (I)',
-    raciEnabled: 'RACI mode enabled',
-    raciDisabled: 'RACI mode disabled',
-    projectActive: 'Active',
-    projectCompleted: 'Completed',
-    projectArchived: 'Archived',
-    editTemplate: 'Edit template',
-    modalEditTemplate: 'Edit task template',
-    templateUpdated: 'Template updated!'
   }
 };
 
 function t(key) {
   return (i18n[currentLang] && i18n[currentLang][key]) || (i18n.fr[key]) || key;
-}
-
-function setLang(lang) {
-  currentLang = lang;
-  document.querySelectorAll('.lang-btn').forEach(function(btn) {
-    btn.classList.toggle('active', btn.textContent.trim() === lang.toUpperCase());
-  });
-  document.querySelectorAll('[data-i18n]').forEach(function(el) {
-    var key = el.getAttribute('data-i18n');
-    if (i18n[currentLang] && i18n[currentLang][key]) {
-      el.textContent = i18n[currentLang][key];
-    }
-  });
-  document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el) {
-    var key = el.getAttribute('data-i18n-placeholder');
-    if (i18n[currentLang] && i18n[currentLang][key]) {
-      el.setAttribute('placeholder', i18n[currentLang][key]);
-    }
-  });
-  document.querySelectorAll('[data-i18n-title]').forEach(function(el) {
-    var key = el.getAttribute('data-i18n-title');
-    if (i18n[currentLang] && i18n[currentLang][key]) {
-      el.setAttribute('title', i18n[currentLang][key]);
-    }
-  });
-  refreshAllViews();
 }
 
 // =============================================================================
@@ -1122,13 +754,6 @@ async function loadColumnMapping() {
   } catch (e) {
     console.log('Column mapping not loaded, using defaults:', e);
   }
-}
-
-// Get field value from a record using mapping
-function getField(record, entity, field) {
-  if (!record || !columnMapping[entity]) return null;
-  var columnName = columnMapping[entity][field];
-  return columnName ? record[columnName] : null;
 }
 
 // Set field value in a record object using mapping
@@ -3896,19 +3521,6 @@ function openNewTaskModalWithDate(dateStr) {
   return startNewTask(null, dateStr); // brouillon avec date pré-remplie -> éditeur complet
 }
 
-function calendarNav(dir) {
-  calendarMonth += dir;
-  if (calendarMonth > 11) {
-    calendarMonth = 0;
-    calendarYear++;
-  }
-  if (calendarMonth < 0) {
-    calendarMonth = 11;
-    calendarYear--;
-  }
-  renderCalendarView();
-}
-
 function calendarToday() {
   calendarYear = new Date().getFullYear();
   calendarMonth = new Date().getMonth();
@@ -3922,14 +3534,6 @@ function setCalendarMode(mode) {
   if (mode === 'week') calendarWeekOffset = 0;
   if (mode === 'day') calendarDayOffset = 0;
   renderCalendarView();
-}
-
-function getWeekStart(offset) {
-  var today = new Date();
-  var day = today.getDay();
-  var diff = day === 0 ? -6 : 1 - day; // Get to Monday
-  var monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + diff + (offset * 7));
-  return monday;
 }
 
 function getTasksForDate(date) {
@@ -5045,12 +4649,6 @@ function getWeekStart(year, weekNum) {
   return monday;
 }
 
-function toggleGanttSubtasks(taskId) {
-  if (expandedGanttTasks[taskId]) delete expandedGanttTasks[taskId];
-  else expandedGanttTasks[taskId] = true;
-  renderGanttView();
-}
-
 // Sous-tâches du Gantt : on les affiche toutes. Celles sans date restent lisibles côté libellé.
 function getGanttSubtasks(taskId) {
   return getTaskSubtasks(taskId);
@@ -5171,13 +4769,6 @@ function showGanttDependencyTooltip(event) {
 function hideGanttDependencyTooltip() {
   var tooltip = document.getElementById('gantt-dependency-tooltip');
   if (tooltip) tooltip.style.display = 'none';
-}
-
-function ganttChevron(task) {
-  if (getGanttSubtasks(task.id).length === 0) return '';
-  var expanded = !!expandedGanttTasks[task.id];
-  var icon = expanded ? '▼' : '▶';
-  return '<button type="button" class="gantt-toggle" onclick="event.stopPropagation();toggleGanttSubtasks(' + task.id + ')" title="' + (currentLang === 'fr' ? 'Sous-tâches' : 'Subtasks') + '">' + icon + '</button>';
 }
 
 function getTaskExtensionEnd(task) {
@@ -7591,10 +7182,6 @@ function removeRaciChip(varName, index, selectSuffix) {
   var container = document.getElementById(selectSuffix + '-chips') || document.getElementById(varName.replace('edit', '').toLowerCase() + '-chips');
   if (container) container.innerHTML = renderRaciChips(varName);
 }
-
-function renderAssigneeChips() { return renderRaciChips('editAssignees'); }
-function addAssigneeChip() { addRaciChip('editAssignees', 'assignee'); }
-function removeAssigneeChip(index) { removeRaciChip('editAssignees', index, 'assignee'); }
 
 function openSubtaskDepModal(subtaskId, taskId) {
   var subtask = subtasks.find(function(st) { return st.id === subtaskId; });
@@ -11578,100 +11165,6 @@ async function cleanupOldNotifications() {
 }
 
 // =============================================================================
-// GLOBAL SEARCH
-// =============================================================================
-
-function globalSearch(query) {
-  var searchInput = document.getElementById('global-search');
-  var resultsContainer = document.getElementById('search-results');
-  
-  if (!resultsContainer) {
-    searchInput.parentElement.style.position = 'relative';
-    searchInput.insertAdjacentHTML('afterend', '<div class="search-results" id="search-results"></div>');
-    resultsContainer = document.getElementById('search-results');
-  }
-  
-  if (!query || query.length < 2) {
-    resultsContainer.classList.remove('show');
-    return;
-  }
-  
-  var q = query.toLowerCase();
-  var results = getFilteredTasks().filter(function(t) {
-    return (t.Title && t.Title.toLowerCase().indexOf(q) !== -1) ||
-           (t.Description && t.Description.toLowerCase().indexOf(q) !== -1) ||
-           (t.Category && t.Category.toLowerCase().indexOf(q) !== -1);
-  }).slice(0, 10);
-  
-  if (results.length === 0) {
-    resultsContainer.innerHTML = '<div class="notif-empty">Aucun résultat</div>';
-  } else {
-    var html = '';
-    for (var i = 0; i < results.length; i++) {
-      var task = results[i];
-      html += '<div class="search-result-item" onclick="openEditTaskModal(' + task.id + '); closeSearch();">';
-      html += '<div class="search-result-title">' + sanitize(task.Title) + '</div>';
-      html += '<div class="search-result-meta">' + (task.Category || '') + ' • ' + t('status' + task.Status.charAt(0).toUpperCase() + task.Status.slice(1)) + '</div>';
-      html += '</div>';
-    }
-    resultsContainer.innerHTML = html;
-  }
-  resultsContainer.classList.add('show');
-}
-
-function closeSearch() {
-  var resultsContainer = document.getElementById('search-results');
-  if (resultsContainer) resultsContainer.classList.remove('show');
-  document.getElementById('global-search').value = '';
-}
-
-// =============================================================================
-// DARK MODE
-// =============================================================================
-
-var isDarkMode = false;
-
-function toggleDarkMode() {
-  isDarkMode = !isDarkMode;
-  document.body.classList.toggle('dark-mode', isDarkMode);
-  localStorage.setItem('pm-dark-mode', isDarkMode ? '1' : '0');
-}
-
-function loadDarkModePreference() {
-  isDarkMode = false;
-  document.body.classList.remove('dark-mode');
-  localStorage.setItem('pm-dark-mode', '0');
-}
-
-// =============================================================================
-// EXPORT CSV
-// =============================================================================
-
-function exportTasks(format) {
-  if (format === 'csv') {
-    var csv = 'Titre,Description,Statut,Priorité,Catégorie,Assigné,Date début,Échéance\n';
-    for (var i = 0; i < tasks.length; i++) {
-      var t = tasks[i];
-      csv += '"' + (t.Title || '').replace(/"/g, '""') + '",';
-      csv += '"' + (t.Description || '').replace(/"/g, '""') + '",';
-      csv += '"' + (t.Status || '') + '",';
-      csv += '"' + (t.Priority || '') + '",';
-      csv += '"' + (t.Category || '') + '",';
-      csv += '"' + (t.Assignee || '') + '",';
-      csv += '"' + (t.Start_Date ? formatDate(t.Start_Date) : '') + '",';
-      csv += '"' + (t.Due_Date ? formatDate(t.Due_Date) : '') + '"\n';
-    }
-    
-    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    var link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'tasks_export_' + new Date().toISOString().split('T')[0] + '.csv';
-    link.click();
-    showToast(t('exportCsv') + ' ✓', 'success');
-  }
-}
-
-// =============================================================================
 // INIT
 // =============================================================================
 
@@ -11781,7 +11274,6 @@ if (!isInsideGrist()) {
     }
     console.log('Role detection — isOwner:', isOwner, 'isEditor:', isEditor, 'email:', currentUserEmail);
 
-    loadDarkModePreference();
     if (isOwner) await registerWidget();
     await loadWidgetPermissions();
     applyOwnerRestrictions();
