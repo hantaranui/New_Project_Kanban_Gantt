@@ -7,6 +7,52 @@ import { formatDate, toEpoch, fromEpoch, getISOWeek, getWeekStart } from './util
 import { priorityLabel, isMilestone, recurrenceSymbol } from './utils/labels.js';
 import { CLIENT_TABLE_NAMES, defaultUiLabels } from './config.js';
 import { state } from './store.js';
+import { sanitize } from './utils/sanitize.js';
+import {
+  showConfirmModal, closeConfirmModal, showPromptModal, submitPromptModal,
+  toggleEmojiPicker, renderEmojiPicker, selectEmoji, closePromptModal
+} from './ui/confirm-modal.js';
+
+// index.html can't change and calls these ~182 functions via inline
+// onclick="..."/onchange="..." attributes (both in the static HTML and in
+// HTML strings generated here). esbuild's --format=iife wraps everything in
+// a closure, so plain function declarations are no longer implicit globals
+// the way they were in the original unbundled script - without this, every
+// one of these handlers throws "X is not defined" the moment it's clicked.
+// Any new onclick handler added to generated HTML must be added here too.
+Object.assign(window, {
+  addComment, addCustomField, addDefaultAutomationRules, addDependency, addKanbanStatus, addManualTimeEntry,
+  addRaciChip, addRoleChoice, addSubtask, applySecurityRules, archiveTask, calendarNav,
+  calendarToday, cancelEditSubtask, clearDependencyTaskSelection, clearMsFilter, closeAttachmentViewer, closeAutomationModal,
+  closeConfirmModal, closeModal, closeModalForce, closeNotifications, closeProjectModal, closePromptModal,
+  closeTagsModal, collapseAllSubtasks, createGroup, createTask, createTemplate, createUser,
+  deleteAttachment, deleteAutomationRule, deleteCategory, deleteComment, deleteCustomField, deleteGroup,
+  deleteProject, deleteSubtask, deleteTag, deleteTask, deleteTemplate, deleteUser,
+  detectProjectColumns, detectTaskColumns, detectUserColumns, downloadAttachment, editCategory, editKanbanStatus,
+  editProject, editTag, expandAllSubtasks, exportGanttPdf, filterComboSearch, filterProjectDropdown,
+  filterStAssignees, focusGanttTask, ganttCollapseAll, ganttExpandAll, ganttNav, ganttToday,
+  generateOccurrences, generateSubtaskOccurrences, hideGanttDependencyTooltip, markAllNotificationsRead, markNotificationRead, onAutoActionChange,
+  onAutoTriggerChange, onCalendarDayClick, onCalendarDragOver, onCalendarDrop, onCalendarTaskDragStart, onDragLeave,
+  onDragOver, onDragStart, onDrop, openAddAutomationRuleModal, openAttachmentInNewTab, openCardAttachmentsModal,
+  openCardCommentsModal, openCardSubtasksModal, openCategoriesModal, openColumnMappingModal, openComputedNotification, openCustomFieldsModal,
+  openDependencyTaskOptions, openEditAutomationRuleModal, openEditGroupModal, openEditTaskModal, openEditUserModal, openManageRolesModal,
+  openNewGroupModal, openNewTaskForDay, openNewTaskModal, openNewTemplateModal, openNewUserModal, openNotification,
+  openProjectModal, openProjectModalForEdit, openSubtaskDepModal, openTagsModal, pauseTimer, quickAction,
+  refreshDependencyTaskOptions, removeDependency, removeKanbanStatus, removeRaciChip, removeRoleChoice, removeSecurityRules,
+  renderActivityLog, renderBurndownChart, renderEmojiPicker, renderProjectList, renderSettingsProjectsList, renderTableView,
+  renderTemplatesView, renderTimelineChart, resetFilters, restoreTask, runSetupDiagnostic, saveAutomationRuleFromModal,
+  saveCategory, saveColumnMapping, saveEditSubtask, saveInlineProjectEdit, saveProject, saveRoleChoices,
+  saveTag, saveTaskFromFooter, saveUiLabelSettings, selectEmoji, selectFilterCombo, selectProjectOption,
+  setCalendarMode, setGanttCustomRange, setGanttMode, setGanttSort, setGanttYear, setKanbanGroupBy,
+  setKanbanSort, setStPill, setStStatus, setStType, setupCreateFrenchTables, setupUseExistingTables,
+  showGanttDependencyTooltip, showNotifications, sortTable, startEditSubtask, startTimer, submitPromptModal,
+  switchTab, toggleArchiveView, toggleAutomationRule, toggleCardDisplay, toggleCardExpand, toggleCfOptions,
+  toggleDependencyTaskOptions, toggleEmojiPicker, toggleFilterCombo, toggleGanttFullscreen, toggleGanttSubtask, toggleKanbanCol,
+  toggleKanbanFullscreen, toggleMsFilter, toggleMsOption, toggleMyProjects, toggleNotifyConcerned, toggleProjectDropdown,
+  toggleRaci, toggleSubtask, toggleSubtaskFromCard, toggleSubtaskFromPopup, toggleSubtasks, updateCustomFieldValue,
+  updateGroup, updateSubtaskDep, updateTask, updateTemplate, updateUser, uploadTaskAttachments,
+  useTemplate, viewAttachment
+});
 
 // =============================================================================
 // STATE
@@ -217,11 +263,6 @@ function showToast(msg, type) {
   toast.textContent = msg;
   container.appendChild(toast);
   setTimeout(function() { toast.remove(); }, 3000);
-}
-
-function sanitize(str) {
-  if (!str) return '';
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // =============================================================================
@@ -610,221 +651,6 @@ function isTaskBlocked(taskId) {
   return blockers.some(function(blocker) {
     return blocker && blocker.Status !== 'done';
   });
-}
-
-// =============================================================================
-// CONFIRM MODAL
-// =============================================================================
-
-var confirmResolve = null;
-
-function showConfirmModal(message, title, okLabel) {
-  return new Promise(function(resolve) {
-    confirmResolve = resolve;
-    document.getElementById('confirm-modal-title').textContent = title || (currentLang === 'fr' ? 'Confirmation' : 'Confirmation');
-    document.getElementById('confirm-modal-message').textContent = message;
-    var okBtn = document.getElementById('confirm-modal-ok');
-    if (okBtn) okBtn.textContent = okLabel || (currentLang === 'fr' ? 'Supprimer' : 'Delete');
-    document.getElementById('confirm-modal').style.display = 'flex';
-  });
-}
-
-function closeConfirmModal(result) {
-  document.getElementById('confirm-modal').style.display = 'none';
-  if (confirmResolve) {
-    confirmResolve(result);
-    confirmResolve = null;
-  }
-}
-
-var promptResolve = null;
-
-function showPromptModal(title, fields, defaults) {
-  return new Promise(function(resolve) {
-    promptResolve = resolve;
-    document.getElementById('prompt-modal-title').textContent = title;
-    var body = '';
-    for (var i = 0; i < fields.length; i++) {
-      var f = fields[i];
-      var val = defaults && defaults[i] !== undefined ? defaults[i] : '';
-      body += '<label>' + f.label + '</label>';
-      if (f.type === 'color') {
-        body += '<input type="color" id="prompt-field-' + i + '" value="' + (val || '#3b82f6') + '">';
-      } else if (f.type === 'emoji') {
-        body += '<div class="emoji-field-wrap">';
-        body += '<input type="text" id="prompt-field-' + i + '" value="' + sanitize(val) + '" placeholder="' + (f.placeholder || '') + '" class="emoji-field-input">';
-        body += '<button type="button" class="emoji-picker-btn" onclick="toggleEmojiPicker(' + i + ')">😀</button>';
-        body += '</div>';
-        body += '<div class="emoji-picker-grid" id="emoji-picker-' + i + '" style="display:none;"></div>';
-      } else {
-        body += '<input type="text" id="prompt-field-' + i + '" value="' + sanitize(val) + '" placeholder="' + (f.placeholder || '') + '">';
-      }
-    }
-    document.getElementById('prompt-modal-body').innerHTML = body;
-    document.getElementById('prompt-modal').style.display = 'flex';
-    var firstInput = document.getElementById('prompt-field-0');
-    if (firstInput) setTimeout(function() { firstInput.focus(); firstInput.select(); }, 50);
-    document.getElementById('prompt-modal')._fieldCount = fields.length;
-    document.getElementById('prompt-modal').onkeydown = function(e) {
-      if (e.key === 'Enter') submitPromptModal();
-      if (e.key === 'Escape') closePromptModal();
-    };
-  });
-}
-
-function submitPromptModal() {
-  var count = document.getElementById('prompt-modal')._fieldCount || 1;
-  var values = [];
-  for (var i = 0; i < count; i++) {
-    var el = document.getElementById('prompt-field-' + i);
-    values.push(el ? el.value : '');
-  }
-  document.getElementById('prompt-modal').style.display = 'none';
-  if (promptResolve) {
-    promptResolve(values);
-    promptResolve = null;
-  }
-}
-
-var EMOJI_CATEGORIES = [
-  { icon: '😀', label: 'Smileys', emojis: [
-    '😀','😃','😄','😁','😆','😅','🤣','😂','🙂','😊',
-    '😇','🥰','😍','🤩','😘','😗','😋','😛','😜','🤪',
-    '😎','🤓','🧐','😏','😒','😞','😔','😟','😕','🙁',
-    '😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡',
-    '🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻',
-    '👽','🤖','😺','😸','😹','😻','😼','😽','🙀','😿','😾'
-  ]},
-  { icon: '👋', label: 'Gestes', emojis: [
-    '👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞',
-    '🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍',
-    '👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝',
-    '🙏','✍️','💅','🤳','💪','🦾','👀','👁️','👤','👥'
-  ]},
-  { icon: '🐾', label: 'Animaux', emojis: [
-    '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯',
-    '🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐒','🐔',
-    '🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴',
-    '🦄','🐝','🐛','🦋','🐌','🐞','🐜','🪲','🐢','🐍',
-    '🦎','🐙','🦀','🐠','🐟','🐬','🐳','🐋','🦈','🐊'
-  ]},
-  { icon: '🌿', label: 'Nature', emojis: [
-    '🌸','💐','🌷','🌹','🥀','🌺','🌻','🌼','🌱','🌲',
-    '🌳','🌴','🌵','🍀','☘️','🍁','🍂','🍃','🪴','🌍',
-    '🌎','🌏','🌑','🌒','🌓','🌔','🌕','🌙','⭐','🌟',
-    '✨','⚡','☀️','🌤️','⛅','🌧️','🌈','❄️','🔥','💧'
-  ]},
-  { icon: '🍕', label: 'Nourriture', emojis: [
-    '🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍒',
-    '🍑','🥭','🍍','🥥','🥝','🍅','🥑','🍆','🥔','🥕',
-    '🌽','🌶️','🫑','🥒','🥬','🥦','🧄','🧅','🍄','🥜',
-    '🍞','🥐','🥖','🧀','🍖','🍗','🥩','🌭','🍔','🍟',
-    '🍕','🌮','🍣','🍩','🍪','🎂','🍰','☕','🍵','🧃'
-  ]},
-  { icon: '⚽', label: 'Activités', emojis: [
-    '⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱',
-    '🏓','🏸','🏒','🥅','⛳','🏹','🎣','🤿','🥊','🥋',
-    '🏋️','🤸','⛷️','🏂','🏄','🚴','🏇','🧗','🎪','🎭',
-    '🎨','🎬','🎤','🎧','🎼','🎹','🥁','🎷','🎺','🎸',
-    '🎮','🎲','♟️','🧩','🎯','🎳','🎰','🏆','🥇','🎉'
-  ]},
-  { icon: '🚗', label: 'Voyages', emojis: [
-    '🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐',
-    '🛻','🚚','🚛','🚜','🛵','🏍️','🚲','🛴','🚂','🚆',
-    '🚇','🚊','🚁','🛩️','✈️','🚀','🛸','🚢','⛵','🛥️',
-    '🏠','🏡','🏢','🏣','🏥','🏦','🏗️','🏛️','⛪','🕌',
-    '🗼','🗽','⛲','🎡','🎢','🏕️','🌋','🏔️','🗻','🏖️'
-  ]},
-  { icon: '💡', label: 'Objets', emojis: [
-    '⌚','📱','💻','⌨️','🖥️','🖨️','🖱️','💾','💿','📷',
-    '📹','🎥','📺','📻','⏰','🔔','📢','📣','🔊','🔇',
-    '💡','🔦','🕯️','📖','📚','📝','✏️','🖊️','🖋️','📌',
-    '📎','🔗','📐','📏','✂️','🗃️','🗂️','📁','📂','📅',
-    '📊','📈','📉','📋','📑','🔒','🔓','🔑','🔧','🔨',
-    '🛠️','⚙️','🧲','💊','🩺','🧪','🔬','🔭','📡','💉',
-    '🏷️','📦','📮','📧','📩','✉️','💌','💰','💳','💎'
-  ]},
-  { icon: '❤️', label: 'Symboles', emojis: [
-    '❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔',
-    '❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️',
-    '✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐',
-    '♈','♉','♊','♋','♌','♍','♎','♏','♐','♑',
-    '♒','♓','⛎','🔀','▶️','⏸️','⏹️','⏺️','⏭️','⏮️',
-    '✅','❌','❓','❗','‼️','⚠️','🚫','⭕','🔴','🟠',
-    '🟡','🟢','🔵','🟣','🟤','⚫','⚪','🔶','🔷','♠️',
-    '♥️','♦️','♣️','🏁','🚩','🎌','🏴','🏳️','🏳️‍🌈','🇫🇷'
-  ]}
-];
-
-var _emojiPickerFieldIndex = null;
-
-function toggleEmojiPicker(fieldIndex) {
-  var picker = document.getElementById('emoji-picker-' + fieldIndex);
-  if (!picker) return;
-  if (picker.style.display !== 'none') {
-    picker.style.display = 'none';
-    return;
-  }
-  _emojiPickerFieldIndex = fieldIndex;
-  renderEmojiPicker(fieldIndex, 0, '');
-  picker.style.display = 'block';
-}
-
-function renderEmojiPicker(fieldIndex, catIndex, search) {
-  var picker = document.getElementById('emoji-picker-' + fieldIndex);
-  if (!picker) return;
-  var html = '<div class="emoji-picker-search">';
-  html += '<input type="text" class="emoji-search-input" placeholder="' + (currentLang === 'fr' ? 'Rechercher...' : 'Search...') + '" value="' + sanitize(search) + '" oninput="renderEmojiPicker(' + fieldIndex + ',' + catIndex + ',this.value)">';
-  html += '</div>';
-  html += '<div class="emoji-picker-tabs">';
-  for (var c = 0; c < EMOJI_CATEGORIES.length; c++) {
-    html += '<button type="button" class="emoji-tab' + (c === catIndex && !search ? ' emoji-tab-active' : '') + '" onclick="renderEmojiPicker(' + fieldIndex + ',' + c + ',\'\')" title="' + EMOJI_CATEGORIES[c].label + '">' + EMOJI_CATEGORIES[c].icon + '</button>';
-  }
-  html += '</div>';
-  html += '<div class="emoji-picker-items">';
-  if (search) {
-    var q = search.toLowerCase();
-    for (var ci = 0; ci < EMOJI_CATEGORIES.length; ci++) {
-      var cat = EMOJI_CATEGORIES[ci];
-      var matched = cat.emojis.filter(function(e) { return cat.label.toLowerCase().indexOf(q) !== -1 || e.indexOf(q) !== -1; });
-      if (matched.length > 0) {
-        html += '<div class="emoji-cat-label">' + cat.label + '</div>';
-        html += '<div class="emoji-cat-grid">';
-        for (var m = 0; m < matched.length; m++) {
-          html += '<button type="button" class="emoji-pick-item" onclick="selectEmoji(' + fieldIndex + ',this.textContent)">' + matched[m] + '</button>';
-        }
-        html += '</div>';
-      }
-    }
-  } else {
-    var cat = EMOJI_CATEGORIES[catIndex];
-    html += '<div class="emoji-cat-grid">';
-    for (var ei = 0; ei < cat.emojis.length; ei++) {
-      html += '<button type="button" class="emoji-pick-item" onclick="selectEmoji(' + fieldIndex + ',this.textContent)">' + cat.emojis[ei] + '</button>';
-    }
-    html += '</div>';
-  }
-  html += '</div>';
-  picker.innerHTML = html;
-  if (search) {
-    var inp = picker.querySelector('.emoji-search-input');
-    if (inp) { inp.focus(); var l = inp.value.length; inp.setSelectionRange(l, l); }
-  }
-}
-
-function selectEmoji(fieldIndex, emoji) {
-  var input = document.getElementById('prompt-field-' + fieldIndex);
-  if (input) input.value = emoji;
-  var picker = document.getElementById('emoji-picker-' + fieldIndex);
-  if (picker) picker.style.display = 'none';
-}
-
-function closePromptModal() {
-  document.getElementById('prompt-modal').style.display = 'none';
-  if (promptResolve) {
-    promptResolve(null);
-    promptResolve = null;
-  }
 }
 
 function getTaskComments(taskId) {

@@ -539,568 +539,13 @@
     currentUserEmail: ""
   };
 
-  // src/main.js
-  var kanbanGroupBy = "status";
-  var kanbanSort = "manual";
-  var expandedKanbanCards = {};
-  var collapsedKanbanCols = {};
-  var defaultKanbanStatuses = [
-    { key: "todo", label_fr: "\xC0 faire", label_en: "To do", color: "#f59e0b", cssClass: "col-todo" },
-    { key: "progress", label_fr: "En cours", label_en: "In progress", color: "#3b82f6", cssClass: "col-progress" },
-    { key: "done", label_fr: "Termin\xE9", label_en: "Done", color: "#22c55e", cssClass: "col-done" }
-  ];
-  var customKanbanStatuses = null;
-  function getKanbanStatuses() {
-    return customKanbanStatuses || defaultKanbanStatuses;
-  }
-  async function saveKanbanStatuses() {
-    await saveSetting("kanban_statuses", JSON.stringify(customKanbanStatuses));
-    await syncTaskStatusChoices();
-    syncSubtaskStatusChoices();
-  }
-  async function syncTaskStatusChoices() {
-    try {
-      var statuses = getKanbanStatuses();
-      var choices = statuses.map(function(s) {
-        return s.key;
-      });
-      if (choices.indexOf("archived") === -1) choices.push("archived");
-      var choiceOptions = {};
-      statuses.forEach(function(s) {
-        if (s.color) choiceOptions[s.key] = { fillColor: s.color, textColor: "#271A79" };
-      });
-      choiceOptions.archived = { fillColor: "#EEFFEE", textColor: "#271A79" };
-      var statusCol = getColumnName("tasks", "status");
-      await grist.docApi.applyUserActions([
-        ["ModifyColumn", state.TASKS_TABLE, statusCol, { widgetOptions: JSON.stringify({ choices, choiceOptions }) }]
-      ]);
-      state.taskTableColumns = null;
-    } catch (e) {
-      console.log("syncTaskStatusChoices:", e.message);
-    }
-  }
-  async function syncSubtaskStatusChoices() {
-    try {
-      var statuses = getKanbanStatuses();
-      var choices = statuses.map(function(s) {
-        return s.key;
-      });
-      if (choices.indexOf("archived") === -1) choices.push("archived");
-      var choiceOptions = {};
-      statuses.forEach(function(s) {
-        if (s.color) choiceOptions[s.key] = { fillColor: s.color, textColor: "#ffffff" };
-      });
-      var widgetOptions = JSON.stringify({ widget: "TextBox", choices, choiceOptions });
-      if (typeof localStorage !== "undefined" && localStorage.getItem("pm_subtask_status_sig") === widgetOptions) return;
-      await grist.docApi.applyUserActions([
-        ["ModifyColumn", state.SUBTASKS_TABLE, "Status", { widgetOptions }]
-      ]);
-      if (typeof localStorage !== "undefined") localStorage.setItem("pm_subtask_status_sig", widgetOptions);
-    } catch (e) {
-      console.log("syncSubtaskStatusChoices:", e.message);
-    }
-  }
-  function getStatusLabel(key) {
-    var statuses = getKanbanStatuses();
-    var found = statuses.find(function(s) {
-      return s.key === key;
-    });
-    if (found) return currentLang === "fr" ? found.label_fr : found.label_en;
-    return key;
-  }
-  var defaultCardDisplay = { description: true, priority: true, date: true, assignee: true, tags: true, category: true, time: true, subtasks: true, comments: true };
-  var cardDisplaySettings = Object.assign({}, defaultCardDisplay);
-  async function saveCardDisplaySettings() {
-    await saveSetting("card_display", JSON.stringify(cardDisplaySettings));
-  }
-  async function loadSettings() {
-    try {
-      var data = await grist.docApi.fetchTable(state.SETTINGS_TABLE);
-      state._settingsCache = {};
-      if (data && data.id) {
-        for (var i = 0; i < data.id.length; i++) {
-          state._settingsCache[data.Key[i]] = { id: data.id[i], value: data.Value[i] };
-        }
-      }
-      if (state._settingsCache.kanban_statuses) {
-        try {
-          customKanbanStatuses = JSON.parse(state._settingsCache.kanban_statuses.value);
-        } catch (e) {
-        }
-      }
-      if (state._settingsCache.card_display) {
-        try {
-          cardDisplaySettings = Object.assign({}, defaultCardDisplay, JSON.parse(state._settingsCache.card_display.value));
-        } catch (e) {
-        }
-      }
-      if (state._settingsCache.raci_enabled) {
-        state.raciEnabled = state._settingsCache.raci_enabled.value === "true";
-      }
-      if (state._settingsCache.kanban_sort) {
-        kanbanSort = state._settingsCache.kanban_sort.value || "manual";
-      }
-      if (state._settingsCache.automation_rules) {
-        try {
-          state.automationRules = JSON.parse(state._settingsCache.automation_rules.value);
-        } catch (e2) {
-          state.automationRules = [];
-        }
-      }
-      if (state._settingsCache.notify_concerned) {
-        state.notifyConcernedEnabled = state._settingsCache.notify_concerned.value !== "false";
-      }
-      if (state._settingsCache.ui_labels) {
-        try {
-          state.uiLabels = Object.assign({}, defaultUiLabels, JSON.parse(state._settingsCache.ui_labels.value));
-        } catch (e3) {
-        }
-      }
-    } catch (e) {
-      console.log("[GristPM] PM_Settings not available yet");
-    }
-  }
-  async function saveSetting(key, value) {
-    try {
-      if (state._settingsCache[key]) {
-        await grist.docApi.applyUserActions([["UpdateRecord", state.SETTINGS_TABLE, state._settingsCache[key].id, { Value: value }]]);
-        state._settingsCache[key].value = value;
-      } else {
-        var result = await grist.docApi.applyUserActions([["AddRecord", state.SETTINGS_TABLE, null, { Key: key, Value: value }]]);
-        var newId = result && result.retValues && result.retValues[0] || result;
-        state._settingsCache[key] = { id: newId, value };
-      }
-    } catch (e) {
-      console.error("[GristPM] Error saving setting:", e);
-    }
-  }
-  var ganttMode = "days";
-  var ganttSort = "default";
-  var ganttCustomStart = "";
-  var ganttCustomEnd = "";
-  var ganttYear = (/* @__PURE__ */ new Date()).getFullYear();
-  var ganttMonth = (/* @__PURE__ */ new Date()).getMonth();
-  var expandedGanttTasks = {};
-  var selectedGanttTaskId = null;
-  var calendarYear = (/* @__PURE__ */ new Date()).getFullYear();
-  var calendarMonth = (/* @__PURE__ */ new Date()).getMonth();
-  var calendarMode = "month";
-  var calendarWeekOffset = 0;
-  var calendarDayOffset = 0;
-  function applyFrenchTableNames(updateDefaults) {
-    state.TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
-    state.USERS_TABLE = CLIENT_TABLE_NAMES.users;
-    state.GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
-    state.TEMPLATES_TABLE = CLIENT_TABLE_NAMES.templates;
-    state.SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
-    state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
-    state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
-    state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
-    state.CUSTOM_FIELDS_TABLE = CLIENT_TABLE_NAMES.customFields;
-    state.CUSTOM_FIELD_VALUES_TABLE = CLIENT_TABLE_NAMES.customFieldValues;
-    state.CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
-    state.TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
-    state.PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
-    state.CONFIG_TABLE = CLIENT_TABLE_NAMES.config;
-    state.SETTINGS_TABLE = CLIENT_TABLE_NAMES.settings;
-    state.NOTIFICATIONS_TABLE = CLIENT_TABLE_NAMES.notifications;
-    state.ACTIVITY_LOG_TABLE = CLIENT_TABLE_NAMES.activityLog;
-    state.ATTACHMENTS_TABLE = CLIENT_TABLE_NAMES.attachments;
-    state.USER_INFO_TABLE = CLIENT_TABLE_NAMES.userInfo;
-    if (updateDefaults) {
-      state.DEFAULT_TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
-      state.DEFAULT_USERS_TABLE = CLIENT_TABLE_NAMES.users;
-      state.DEFAULT_PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
-      state.DEFAULT_CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
-      state.DEFAULT_TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
-    }
-  }
-  function hasFrenchClientTables(tableIds) {
-    return tableIds.indexOf(CLIENT_TABLE_NAMES.config) !== -1 || tableIds.indexOf(CLIENT_TABLE_NAMES.tasks) !== -1;
-  }
-  function uiLabel(key) {
-    return state.uiLabels[key] || defaultUiLabels[key] || key;
-  }
-  async function saveUiLabels() {
-    await saveSetting("ui_labels", JSON.stringify(state.uiLabels));
-  }
-  function isInsideGrist() {
-    try {
-      return window.frameElement !== null || window !== window.parent;
-    } catch (e) {
-      return true;
-    }
-  }
-  function showToast(msg, type) {
-    var container = document.getElementById("toast-container");
-    var toast = document.createElement("div");
-    toast.className = "toast toast-" + (type || "info");
-    toast.textContent = msg;
-    container.appendChild(toast);
-    setTimeout(function() {
-      toast.remove();
-    }, 3e3);
-  }
+  // src/utils/sanitize.js
   function sanitize(str) {
     if (!str) return "";
     return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-  async function loadColumnMapping() {
-    try {
-      var configData = await grist.docApi.fetchTable(state.CONFIG_TABLE);
-      if (!configData || !configData.Config_Key) return;
-      for (var i = 0; i < configData.Config_Key.length; i++) {
-        var key = configData.Config_Key[i];
-        var tableName = configData.Table_Name[i];
-        var columnName = configData.Column_Name[i];
-        var toCamel = function(s) {
-          return s.replace(/_([a-z])/g, function(_, c) {
-            return c.toUpperCase();
-          });
-        };
-        if (key.startsWith("task_")) {
-          var field = toCamel(key.slice(5));
-          if (state.columnMapping.tasks[field] !== void 0) {
-            state.columnMapping.tasks[field] = columnName;
-          }
-        } else if (key.startsWith("user_")) {
-          var field = toCamel(key.slice(5));
-          if (state.columnMapping.users[field] !== void 0) {
-            state.columnMapping.users[field] = columnName;
-          }
-        } else if (key.startsWith("project_")) {
-          var field = toCamel(key.slice(8));
-          if (state.columnMapping.projects[field] !== void 0) {
-            state.columnMapping.projects[field] = columnName;
-          }
-        } else if (key.startsWith("category_")) {
-          var field = toCamel(key.slice(9));
-          if (state.columnMapping.categories[field] !== void 0) {
-            state.columnMapping.categories[field] = columnName;
-          }
-        } else if (key.startsWith("tag_")) {
-          var field = toCamel(key.slice(4));
-          if (state.columnMapping.tags[field] !== void 0) {
-            state.columnMapping.tags[field] = columnName;
-          }
-        }
-        if (key === "task_title") state.TASKS_TABLE = tableName;
-        else if (key === "user_name") state.USERS_TABLE = tableName;
-        else if (key === "project_name") state.PROJECTS_TABLE = tableName;
-        else if (key === "category_name") state.CATEGORIES_TABLE = tableName;
-        else if (key === "tag_name") state.TAGS_TABLE = tableName;
-      }
-    } catch (e) {
-      console.log("Column mapping not loaded, using defaults:", e);
-    }
-  }
-  function setField(record, entity, field, value) {
-    if (!record || !state.columnMapping[entity]) return;
-    var columnName = state.columnMapping[entity][field];
-    if (columnName) {
-      record[columnName] = value;
-    }
-  }
-  function getInputValue(id, fallback) {
-    var el = document.getElementById(id);
-    if (!el) return fallback || "";
-    return el.value;
-  }
-  function getEstimatedHoursInput() {
-    var raw = String(getInputValue("task-estimated-hours", "")).trim().replace(",", ".");
-    if (!raw) return 0;
-    var value = parseFloat(raw);
-    return isFinite(value) && value >= 0 ? value : 0;
-  }
-  function requireTaskTitle() {
-    var modal = document.getElementById("modal-container");
-    var titleEl = modal ? modal.querySelector("#task-title") : null;
-    var title = titleEl ? titleEl.value.trim() : "";
-    if (!title) {
-      showToast(currentLang === "fr" ? "Ajoutez un titre avant d\u2019enregistrer." : "Add a title before saving.", "error");
-      if (titleEl) titleEl.focus();
-      return "";
-    }
-    return title;
-  }
-  async function refreshTaskTableColumns() {
-    try {
-      var data = await grist.docApi.fetchTable(state.TASKS_TABLE);
-      state.taskTableColumns = data ? Object.keys(data) : null;
-    } catch (e) {
-      state.taskTableColumns = null;
-    }
-  }
-  async function keepExistingTaskColumns(record) {
-    if (!state.taskTableColumns) await refreshTaskTableColumns();
-    if (!state.taskTableColumns) return record;
-    var filtered = {};
-    Object.keys(record).forEach(function(key) {
-      if (state.taskTableColumns.indexOf(key) !== -1) filtered[key] = record[key];
-    });
-    return filtered;
-  }
-  async function removeCommentsForTask(taskId) {
-    var toRemove = state.comments.filter(function(c) {
-      return c.Task_Id === taskId;
-    });
-    if (!toRemove.length) return;
-    await grist.docApi.applyUserActions(toRemove.map(function(c) {
-      return ["RemoveRecord", state.COMMENTS_TABLE, c.id];
-    }));
-  }
-  async function removeSubtasksForTask(taskId) {
-    var toRemove = state.subtasks.filter(function(st) {
-      return st.Parent_Task_Id === taskId;
-    });
-    if (!toRemove.length) return;
-    await grist.docApi.applyUserActions(toRemove.map(function(st) {
-      return ["RemoveRecord", state.SUBTASKS_TABLE, st.id];
-    }));
-  }
-  async function removeAttachmentsForTask(taskId) {
-    var toRemove = state.attachments.filter(function(attachment) {
-      return attachment.Task_Id === taskId;
-    });
-    if (!toRemove.length) return;
-    await grist.docApi.applyUserActions(toRemove.map(function(attachment) {
-      return ["RemoveRecord", state.ATTACHMENTS_TABLE, attachment.id];
-    }));
-  }
-  async function removeTimeEntriesForTask(taskId) {
-    var toRemove = state.timeEntries.filter(function(entry) {
-      return entry.Task_Id === taskId;
-    });
-    if (!toRemove.length) return;
-    await grist.docApi.applyUserActions(toRemove.map(function(entry) {
-      return ["RemoveRecord", state.TIME_ENTRIES_TABLE, entry.id];
-    }));
-    delete state.activeTimers[taskId];
-  }
-  async function removeDraftChildren(taskId) {
-    await removeCommentsForTask(taskId);
-    await removeSubtasksForTask(taskId);
-    await removeAttachmentsForTask(taskId);
-    await removeTimeEntriesForTask(taskId);
-  }
-  async function saveTaskFormSilently(taskId) {
-    var title = requireTaskTitle();
-    if (!title) return false;
-    if (shouldLimitToMyProjects() && editAssignees.length === 0) {
-      var mine = myAssigneeValue();
-      if (mine) editAssignees = [mine];
-    }
-    var projectEl = document.getElementById("task-project");
-    var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
-    var record = {};
-    setField(record, "tasks", "title", title);
-    setField(record, "tasks", "description", getInputValue("task-desc").trim());
-    setField(record, "tasks", "status", getInputValue("task-status"));
-    setField(record, "tasks", "priority", getInputValue("task-priority"));
-    setField(record, "tasks", "assignee", editAssignees.join(", "));
-    setField(record, "tasks", "group", getInputValue("task-group"));
-    setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
-    setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
-    setField(record, "tasks", "category", getInputValue("task-category").trim());
-    setField(record, "tasks", "projectId", projectId);
-    setField(record, "tasks", "recurrence", getInputValue("task-recurrence", "none"));
-    setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
-    var tagEl = document.getElementById("task-tag");
-    if (tagEl) setField(record, "tasks", "tag", tagEl.value.trim());
-    if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
-      record.Accountable = editAccountable.join(", ");
-      record.Consulted = editConsulted.join(", ");
-      record.Informed = editInformed.join(", ");
-    }
-    record = await keepExistingTaskColumns(record);
-    await grist.docApi.applyUserActions([
-      ["UpdateRecord", state.TASKS_TABLE, taskId, record]
-    ]);
-    return true;
-  }
-  function captureTaskFormState() {
-    var autoExtendEl = document.getElementById("task-auto-extend");
-    return {
-      title: getInputValue("task-title"),
-      description: getInputValue("task-desc"),
-      status: getInputValue("task-status"),
-      priority: getInputValue("task-priority"),
-      group: getInputValue("task-group"),
-      start: getInputValue("task-start"),
-      due: getInputValue("task-due"),
-      category: getInputValue("task-category"),
-      project: getInputValue("task-project"),
-      tag: getInputValue("task-tag"),
-      recurrence: getInputValue("task-recurrence", "none"),
-      estimatedHours: getInputValue("task-estimated-hours"),
-      extensionDate: getInputValue("task-extension-date"),
-      autoExtend: autoExtendEl ? autoExtendEl.checked : null
-    };
-  }
-  function restoreTaskFormState(state2) {
-    if (!state2) return;
-    [
-      ["task-title", state2.title],
-      ["task-desc", state2.description],
-      ["task-status", state2.status],
-      ["task-priority", state2.priority],
-      ["task-group", state2.group],
-      ["task-start", state2.start],
-      ["task-due", state2.due],
-      ["task-category", state2.category],
-      ["task-project", state2.project],
-      ["task-tag", state2.tag],
-      ["task-recurrence", state2.recurrence],
-      ["task-estimated-hours", state2.estimatedHours],
-      ["task-extension-date", state2.extensionDate]
-    ].forEach(function(pair) {
-      var el = document.getElementById(pair[0]);
-      if (el && pair[1] !== void 0 && pair[1] !== null) el.value = pair[1];
-    });
-    var autoExtendEl = document.getElementById("task-auto-extend");
-    if (autoExtendEl && state2.autoExtend !== null) autoExtendEl.checked = state2.autoExtend;
-  }
-  function getColumnName(entity, field) {
-    if (!state.columnMapping[entity]) return field;
-    return state.columnMapping[entity][field] || field;
-  }
-  function getUserRoles(u) {
-    if (!u || !u.Role) return [];
-    var raw = u.Role;
-    if (Array.isArray(raw)) {
-      var arr = raw.length > 0 && raw[0] === "L" ? raw.slice(1) : raw;
-      return arr.filter(function(r) {
-        return r && r !== "L";
-      });
-    }
-    var s = String(raw).trim();
-    if (!s) return [];
-    if (s.length > 1 && s[0] === "L" && s[1] === ",") {
-      return s.slice(2).split(",").map(function(r) {
-        return r.trim();
-      }).filter(Boolean);
-    }
-    return [s];
-  }
-  function userMatchesRole(u, role) {
-    return getUserRoles(u).indexOf(role) !== -1;
-  }
-  function userRoleDisplay(u) {
-    var roles = getUserRoles(u);
-    return roles.length ? roles.join(", ") : "";
-  }
-  function getCurrentUserRecord() {
-    var em = (state.currentUserEmail || "").toLowerCase().trim();
-    if (!em) return null;
-    return state.users.find(function(u) {
-      return (u.Email || "").toLowerCase().trim() === em;
-    }) || null;
-  }
-  function getCurrentBusinessRoles() {
-    var u = getCurrentUserRecord();
-    return u ? getUserRoles(u) : [];
-  }
-  function hasCurrentBusinessRole(role) {
-    return getCurrentBusinessRoles().indexOf(role) !== -1;
-  }
-  function canSeeAllProjects() {
-    var roles = getCurrentBusinessRoles();
-    if (roles.length > 0) return roles.indexOf("admin") !== -1;
-    return state.isOwner;
-  }
-  function shouldLimitToMyProjects() {
-    if (canSeeAllProjects()) return false;
-    var roles = getCurrentBusinessRoles();
-    return roles.indexOf("member") !== -1 || roles.indexOf("viewer") !== -1;
-  }
-  function canEditWorkItems() {
-    return (state.isOwner || state.isEditor) && !hasCurrentBusinessRole("viewer");
-  }
-  function taskConcernsCurrentUser(task) {
-    var mine = myAssigneeValue();
-    var em = (state.currentUserEmail || "").toLowerCase().trim();
-    if (!task) return false;
-    if (mine) {
-      var assignees = (task.Assignee || "").split(",").map(function(s) {
-        return s.trim();
-      }).filter(Boolean);
-      if (assignees.indexOf(mine) !== -1) return true;
-    }
-    if (em && (task.Created_By || "").toLowerCase().trim() === em) return true;
-    return false;
-  }
-  function applyRoleVisibilityDefaults() {
-    if (shouldLimitToMyProjects()) {
-      state.mineOnly = true;
-      state.currentFilterRole = null;
-      state.currentFilterAssignee = null;
-      if (state.currentProjectId) {
-        var myIds = myProjectIdSet();
-        if (!myIds[state.currentProjectId]) state.currentProjectId = null;
-      }
-    }
-  }
-  function applyBusinessRoleRestrictions() {
-    var canEdit = canEditWorkItems();
-    document.querySelectorAll(".btn-new-task, .btn-new-project, .kanban-add-btn, .col-add").forEach(function(el) {
-      el.style.display = canEdit ? "" : "none";
-    });
-  }
-  function isOverdue(task) {
-    if (!task.Due_Date || task.Status === "done") return false;
-    var now = Math.floor(Date.now() / 1e3);
-    return task.Due_Date < now;
-  }
-  function getTaskSubtasks(taskId) {
-    return state.subtasks.filter(function(st) {
-      return st.Parent_Task_Id === taskId;
-    }).sort(function(a, b) {
-      var da = a.Due_Date || null;
-      var db = b.Due_Date || null;
-      if (da && db) {
-        if (da !== db) return da - db;
-      } else if (da) {
-        return -1;
-      } else if (db) {
-        return 1;
-      }
-      return (a.Order || 0) - (b.Order || 0);
-    });
-  }
-  function getTaskProgress(task) {
-    var taskSubtasks = getTaskSubtasks(task.id);
-    if (taskSubtasks.length === 0) {
-      return task.Status === "done" ? 100 : task.Status === "progress" ? 50 : 10;
-    }
-    var completed = taskSubtasks.filter(function(st) {
-      return st.Completed;
-    }).length;
-    return Math.round(completed / taskSubtasks.length * 100);
-  }
-  function getTaskDependencies(taskId) {
-    return state.dependencies.filter(function(d) {
-      return d.Task_Id === taskId;
-    }).map(function(d) {
-      return state.tasks.find(function(t2) {
-        return t2.id === d.Depends_On_Task_Id;
-      });
-    }).filter(Boolean);
-  }
-  function getTasksDependingOn(taskId) {
-    return state.dependencies.filter(function(d) {
-      return d.Depends_On_Task_Id === taskId;
-    }).map(function(d) {
-      return state.tasks.find(function(t2) {
-        return t2.id === d.Task_Id;
-      });
-    }).filter(Boolean);
-  }
-  function isTaskBlocked(taskId) {
-    var blockers = getTaskDependencies(taskId);
-    return blockers.some(function(blocker) {
-      return blocker && blocker.Status !== "done";
-    });
-  }
+
+  // src/ui/confirm-modal.js
   var confirmResolve = null;
   function showConfirmModal(message, title, okLabel) {
     return new Promise(function(resolve) {
@@ -1750,6 +1195,749 @@
       promptResolve(null);
       promptResolve = null;
     }
+  }
+
+  // src/main.js
+  Object.assign(window, {
+    addComment,
+    addCustomField,
+    addDefaultAutomationRules,
+    addDependency,
+    addKanbanStatus,
+    addManualTimeEntry,
+    addRaciChip,
+    addRoleChoice,
+    addSubtask,
+    applySecurityRules,
+    archiveTask,
+    calendarNav,
+    calendarToday,
+    cancelEditSubtask,
+    clearDependencyTaskSelection,
+    clearMsFilter,
+    closeAttachmentViewer,
+    closeAutomationModal,
+    closeConfirmModal,
+    closeModal,
+    closeModalForce,
+    closeNotifications,
+    closeProjectModal,
+    closePromptModal,
+    closeTagsModal,
+    collapseAllSubtasks,
+    createGroup,
+    createTask,
+    createTemplate,
+    createUser,
+    deleteAttachment,
+    deleteAutomationRule,
+    deleteCategory,
+    deleteComment,
+    deleteCustomField,
+    deleteGroup,
+    deleteProject,
+    deleteSubtask,
+    deleteTag,
+    deleteTask,
+    deleteTemplate,
+    deleteUser,
+    detectProjectColumns,
+    detectTaskColumns,
+    detectUserColumns,
+    downloadAttachment,
+    editCategory,
+    editKanbanStatus,
+    editProject,
+    editTag,
+    expandAllSubtasks,
+    exportGanttPdf,
+    filterComboSearch,
+    filterProjectDropdown,
+    filterStAssignees,
+    focusGanttTask,
+    ganttCollapseAll,
+    ganttExpandAll,
+    ganttNav,
+    ganttToday,
+    generateOccurrences,
+    generateSubtaskOccurrences,
+    hideGanttDependencyTooltip,
+    markAllNotificationsRead,
+    markNotificationRead,
+    onAutoActionChange,
+    onAutoTriggerChange,
+    onCalendarDayClick,
+    onCalendarDragOver,
+    onCalendarDrop,
+    onCalendarTaskDragStart,
+    onDragLeave,
+    onDragOver,
+    onDragStart,
+    onDrop,
+    openAddAutomationRuleModal,
+    openAttachmentInNewTab,
+    openCardAttachmentsModal,
+    openCardCommentsModal,
+    openCardSubtasksModal,
+    openCategoriesModal,
+    openColumnMappingModal,
+    openComputedNotification,
+    openCustomFieldsModal,
+    openDependencyTaskOptions,
+    openEditAutomationRuleModal,
+    openEditGroupModal,
+    openEditTaskModal,
+    openEditUserModal,
+    openManageRolesModal,
+    openNewGroupModal,
+    openNewTaskForDay,
+    openNewTaskModal,
+    openNewTemplateModal,
+    openNewUserModal,
+    openNotification,
+    openProjectModal,
+    openProjectModalForEdit,
+    openSubtaskDepModal,
+    openTagsModal,
+    pauseTimer,
+    quickAction,
+    refreshDependencyTaskOptions,
+    removeDependency,
+    removeKanbanStatus,
+    removeRaciChip,
+    removeRoleChoice,
+    removeSecurityRules,
+    renderActivityLog,
+    renderBurndownChart,
+    renderEmojiPicker,
+    renderProjectList,
+    renderSettingsProjectsList,
+    renderTableView,
+    renderTemplatesView,
+    renderTimelineChart,
+    resetFilters,
+    restoreTask,
+    runSetupDiagnostic,
+    saveAutomationRuleFromModal,
+    saveCategory,
+    saveColumnMapping,
+    saveEditSubtask,
+    saveInlineProjectEdit,
+    saveProject,
+    saveRoleChoices,
+    saveTag,
+    saveTaskFromFooter,
+    saveUiLabelSettings,
+    selectEmoji,
+    selectFilterCombo,
+    selectProjectOption,
+    setCalendarMode,
+    setGanttCustomRange,
+    setGanttMode,
+    setGanttSort,
+    setGanttYear,
+    setKanbanGroupBy,
+    setKanbanSort,
+    setStPill,
+    setStStatus,
+    setStType,
+    setupCreateFrenchTables,
+    setupUseExistingTables,
+    showGanttDependencyTooltip,
+    showNotifications,
+    sortTable,
+    startEditSubtask,
+    startTimer,
+    submitPromptModal,
+    switchTab,
+    toggleArchiveView,
+    toggleAutomationRule,
+    toggleCardDisplay,
+    toggleCardExpand,
+    toggleCfOptions,
+    toggleDependencyTaskOptions,
+    toggleEmojiPicker,
+    toggleFilterCombo,
+    toggleGanttFullscreen,
+    toggleGanttSubtask,
+    toggleKanbanCol,
+    toggleKanbanFullscreen,
+    toggleMsFilter,
+    toggleMsOption,
+    toggleMyProjects,
+    toggleNotifyConcerned,
+    toggleProjectDropdown,
+    toggleRaci,
+    toggleSubtask,
+    toggleSubtaskFromCard,
+    toggleSubtaskFromPopup,
+    toggleSubtasks,
+    updateCustomFieldValue,
+    updateGroup,
+    updateSubtaskDep,
+    updateTask,
+    updateTemplate,
+    updateUser,
+    uploadTaskAttachments,
+    useTemplate,
+    viewAttachment
+  });
+  var kanbanGroupBy = "status";
+  var kanbanSort = "manual";
+  var expandedKanbanCards = {};
+  var collapsedKanbanCols = {};
+  var defaultKanbanStatuses = [
+    { key: "todo", label_fr: "\xC0 faire", label_en: "To do", color: "#f59e0b", cssClass: "col-todo" },
+    { key: "progress", label_fr: "En cours", label_en: "In progress", color: "#3b82f6", cssClass: "col-progress" },
+    { key: "done", label_fr: "Termin\xE9", label_en: "Done", color: "#22c55e", cssClass: "col-done" }
+  ];
+  var customKanbanStatuses = null;
+  function getKanbanStatuses() {
+    return customKanbanStatuses || defaultKanbanStatuses;
+  }
+  async function saveKanbanStatuses() {
+    await saveSetting("kanban_statuses", JSON.stringify(customKanbanStatuses));
+    await syncTaskStatusChoices();
+    syncSubtaskStatusChoices();
+  }
+  async function syncTaskStatusChoices() {
+    try {
+      var statuses = getKanbanStatuses();
+      var choices = statuses.map(function(s) {
+        return s.key;
+      });
+      if (choices.indexOf("archived") === -1) choices.push("archived");
+      var choiceOptions = {};
+      statuses.forEach(function(s) {
+        if (s.color) choiceOptions[s.key] = { fillColor: s.color, textColor: "#271A79" };
+      });
+      choiceOptions.archived = { fillColor: "#EEFFEE", textColor: "#271A79" };
+      var statusCol = getColumnName("tasks", "status");
+      await grist.docApi.applyUserActions([
+        ["ModifyColumn", state.TASKS_TABLE, statusCol, { widgetOptions: JSON.stringify({ choices, choiceOptions }) }]
+      ]);
+      state.taskTableColumns = null;
+    } catch (e) {
+      console.log("syncTaskStatusChoices:", e.message);
+    }
+  }
+  async function syncSubtaskStatusChoices() {
+    try {
+      var statuses = getKanbanStatuses();
+      var choices = statuses.map(function(s) {
+        return s.key;
+      });
+      if (choices.indexOf("archived") === -1) choices.push("archived");
+      var choiceOptions = {};
+      statuses.forEach(function(s) {
+        if (s.color) choiceOptions[s.key] = { fillColor: s.color, textColor: "#ffffff" };
+      });
+      var widgetOptions = JSON.stringify({ widget: "TextBox", choices, choiceOptions });
+      if (typeof localStorage !== "undefined" && localStorage.getItem("pm_subtask_status_sig") === widgetOptions) return;
+      await grist.docApi.applyUserActions([
+        ["ModifyColumn", state.SUBTASKS_TABLE, "Status", { widgetOptions }]
+      ]);
+      if (typeof localStorage !== "undefined") localStorage.setItem("pm_subtask_status_sig", widgetOptions);
+    } catch (e) {
+      console.log("syncSubtaskStatusChoices:", e.message);
+    }
+  }
+  function getStatusLabel(key) {
+    var statuses = getKanbanStatuses();
+    var found = statuses.find(function(s) {
+      return s.key === key;
+    });
+    if (found) return currentLang === "fr" ? found.label_fr : found.label_en;
+    return key;
+  }
+  var defaultCardDisplay = { description: true, priority: true, date: true, assignee: true, tags: true, category: true, time: true, subtasks: true, comments: true };
+  var cardDisplaySettings = Object.assign({}, defaultCardDisplay);
+  async function saveCardDisplaySettings() {
+    await saveSetting("card_display", JSON.stringify(cardDisplaySettings));
+  }
+  async function loadSettings() {
+    try {
+      var data = await grist.docApi.fetchTable(state.SETTINGS_TABLE);
+      state._settingsCache = {};
+      if (data && data.id) {
+        for (var i = 0; i < data.id.length; i++) {
+          state._settingsCache[data.Key[i]] = { id: data.id[i], value: data.Value[i] };
+        }
+      }
+      if (state._settingsCache.kanban_statuses) {
+        try {
+          customKanbanStatuses = JSON.parse(state._settingsCache.kanban_statuses.value);
+        } catch (e) {
+        }
+      }
+      if (state._settingsCache.card_display) {
+        try {
+          cardDisplaySettings = Object.assign({}, defaultCardDisplay, JSON.parse(state._settingsCache.card_display.value));
+        } catch (e) {
+        }
+      }
+      if (state._settingsCache.raci_enabled) {
+        state.raciEnabled = state._settingsCache.raci_enabled.value === "true";
+      }
+      if (state._settingsCache.kanban_sort) {
+        kanbanSort = state._settingsCache.kanban_sort.value || "manual";
+      }
+      if (state._settingsCache.automation_rules) {
+        try {
+          state.automationRules = JSON.parse(state._settingsCache.automation_rules.value);
+        } catch (e2) {
+          state.automationRules = [];
+        }
+      }
+      if (state._settingsCache.notify_concerned) {
+        state.notifyConcernedEnabled = state._settingsCache.notify_concerned.value !== "false";
+      }
+      if (state._settingsCache.ui_labels) {
+        try {
+          state.uiLabels = Object.assign({}, defaultUiLabels, JSON.parse(state._settingsCache.ui_labels.value));
+        } catch (e3) {
+        }
+      }
+    } catch (e) {
+      console.log("[GristPM] PM_Settings not available yet");
+    }
+  }
+  async function saveSetting(key, value) {
+    try {
+      if (state._settingsCache[key]) {
+        await grist.docApi.applyUserActions([["UpdateRecord", state.SETTINGS_TABLE, state._settingsCache[key].id, { Value: value }]]);
+        state._settingsCache[key].value = value;
+      } else {
+        var result = await grist.docApi.applyUserActions([["AddRecord", state.SETTINGS_TABLE, null, { Key: key, Value: value }]]);
+        var newId = result && result.retValues && result.retValues[0] || result;
+        state._settingsCache[key] = { id: newId, value };
+      }
+    } catch (e) {
+      console.error("[GristPM] Error saving setting:", e);
+    }
+  }
+  var ganttMode = "days";
+  var ganttSort = "default";
+  var ganttCustomStart = "";
+  var ganttCustomEnd = "";
+  var ganttYear = (/* @__PURE__ */ new Date()).getFullYear();
+  var ganttMonth = (/* @__PURE__ */ new Date()).getMonth();
+  var expandedGanttTasks = {};
+  var selectedGanttTaskId = null;
+  var calendarYear = (/* @__PURE__ */ new Date()).getFullYear();
+  var calendarMonth = (/* @__PURE__ */ new Date()).getMonth();
+  var calendarMode = "month";
+  var calendarWeekOffset = 0;
+  var calendarDayOffset = 0;
+  function applyFrenchTableNames(updateDefaults) {
+    state.TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
+    state.USERS_TABLE = CLIENT_TABLE_NAMES.users;
+    state.GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
+    state.TEMPLATES_TABLE = CLIENT_TABLE_NAMES.templates;
+    state.SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
+    state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
+    state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
+    state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
+    state.CUSTOM_FIELDS_TABLE = CLIENT_TABLE_NAMES.customFields;
+    state.CUSTOM_FIELD_VALUES_TABLE = CLIENT_TABLE_NAMES.customFieldValues;
+    state.CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
+    state.TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
+    state.PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
+    state.CONFIG_TABLE = CLIENT_TABLE_NAMES.config;
+    state.SETTINGS_TABLE = CLIENT_TABLE_NAMES.settings;
+    state.NOTIFICATIONS_TABLE = CLIENT_TABLE_NAMES.notifications;
+    state.ACTIVITY_LOG_TABLE = CLIENT_TABLE_NAMES.activityLog;
+    state.ATTACHMENTS_TABLE = CLIENT_TABLE_NAMES.attachments;
+    state.USER_INFO_TABLE = CLIENT_TABLE_NAMES.userInfo;
+    if (updateDefaults) {
+      state.DEFAULT_TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
+      state.DEFAULT_USERS_TABLE = CLIENT_TABLE_NAMES.users;
+      state.DEFAULT_PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
+      state.DEFAULT_CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
+      state.DEFAULT_TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
+    }
+  }
+  function hasFrenchClientTables(tableIds) {
+    return tableIds.indexOf(CLIENT_TABLE_NAMES.config) !== -1 || tableIds.indexOf(CLIENT_TABLE_NAMES.tasks) !== -1;
+  }
+  function uiLabel(key) {
+    return state.uiLabels[key] || defaultUiLabels[key] || key;
+  }
+  async function saveUiLabels() {
+    await saveSetting("ui_labels", JSON.stringify(state.uiLabels));
+  }
+  function isInsideGrist() {
+    try {
+      return window.frameElement !== null || window !== window.parent;
+    } catch (e) {
+      return true;
+    }
+  }
+  function showToast(msg, type) {
+    var container = document.getElementById("toast-container");
+    var toast = document.createElement("div");
+    toast.className = "toast toast-" + (type || "info");
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(function() {
+      toast.remove();
+    }, 3e3);
+  }
+  async function loadColumnMapping() {
+    try {
+      var configData = await grist.docApi.fetchTable(state.CONFIG_TABLE);
+      if (!configData || !configData.Config_Key) return;
+      for (var i = 0; i < configData.Config_Key.length; i++) {
+        var key = configData.Config_Key[i];
+        var tableName = configData.Table_Name[i];
+        var columnName = configData.Column_Name[i];
+        var toCamel = function(s) {
+          return s.replace(/_([a-z])/g, function(_, c) {
+            return c.toUpperCase();
+          });
+        };
+        if (key.startsWith("task_")) {
+          var field = toCamel(key.slice(5));
+          if (state.columnMapping.tasks[field] !== void 0) {
+            state.columnMapping.tasks[field] = columnName;
+          }
+        } else if (key.startsWith("user_")) {
+          var field = toCamel(key.slice(5));
+          if (state.columnMapping.users[field] !== void 0) {
+            state.columnMapping.users[field] = columnName;
+          }
+        } else if (key.startsWith("project_")) {
+          var field = toCamel(key.slice(8));
+          if (state.columnMapping.projects[field] !== void 0) {
+            state.columnMapping.projects[field] = columnName;
+          }
+        } else if (key.startsWith("category_")) {
+          var field = toCamel(key.slice(9));
+          if (state.columnMapping.categories[field] !== void 0) {
+            state.columnMapping.categories[field] = columnName;
+          }
+        } else if (key.startsWith("tag_")) {
+          var field = toCamel(key.slice(4));
+          if (state.columnMapping.tags[field] !== void 0) {
+            state.columnMapping.tags[field] = columnName;
+          }
+        }
+        if (key === "task_title") state.TASKS_TABLE = tableName;
+        else if (key === "user_name") state.USERS_TABLE = tableName;
+        else if (key === "project_name") state.PROJECTS_TABLE = tableName;
+        else if (key === "category_name") state.CATEGORIES_TABLE = tableName;
+        else if (key === "tag_name") state.TAGS_TABLE = tableName;
+      }
+    } catch (e) {
+      console.log("Column mapping not loaded, using defaults:", e);
+    }
+  }
+  function setField(record, entity, field, value) {
+    if (!record || !state.columnMapping[entity]) return;
+    var columnName = state.columnMapping[entity][field];
+    if (columnName) {
+      record[columnName] = value;
+    }
+  }
+  function getInputValue(id, fallback) {
+    var el = document.getElementById(id);
+    if (!el) return fallback || "";
+    return el.value;
+  }
+  function getEstimatedHoursInput() {
+    var raw = String(getInputValue("task-estimated-hours", "")).trim().replace(",", ".");
+    if (!raw) return 0;
+    var value = parseFloat(raw);
+    return isFinite(value) && value >= 0 ? value : 0;
+  }
+  function requireTaskTitle() {
+    var modal = document.getElementById("modal-container");
+    var titleEl = modal ? modal.querySelector("#task-title") : null;
+    var title = titleEl ? titleEl.value.trim() : "";
+    if (!title) {
+      showToast(currentLang === "fr" ? "Ajoutez un titre avant d\u2019enregistrer." : "Add a title before saving.", "error");
+      if (titleEl) titleEl.focus();
+      return "";
+    }
+    return title;
+  }
+  async function refreshTaskTableColumns() {
+    try {
+      var data = await grist.docApi.fetchTable(state.TASKS_TABLE);
+      state.taskTableColumns = data ? Object.keys(data) : null;
+    } catch (e) {
+      state.taskTableColumns = null;
+    }
+  }
+  async function keepExistingTaskColumns(record) {
+    if (!state.taskTableColumns) await refreshTaskTableColumns();
+    if (!state.taskTableColumns) return record;
+    var filtered = {};
+    Object.keys(record).forEach(function(key) {
+      if (state.taskTableColumns.indexOf(key) !== -1) filtered[key] = record[key];
+    });
+    return filtered;
+  }
+  async function removeCommentsForTask(taskId) {
+    var toRemove = state.comments.filter(function(c) {
+      return c.Task_Id === taskId;
+    });
+    if (!toRemove.length) return;
+    await grist.docApi.applyUserActions(toRemove.map(function(c) {
+      return ["RemoveRecord", state.COMMENTS_TABLE, c.id];
+    }));
+  }
+  async function removeSubtasksForTask(taskId) {
+    var toRemove = state.subtasks.filter(function(st) {
+      return st.Parent_Task_Id === taskId;
+    });
+    if (!toRemove.length) return;
+    await grist.docApi.applyUserActions(toRemove.map(function(st) {
+      return ["RemoveRecord", state.SUBTASKS_TABLE, st.id];
+    }));
+  }
+  async function removeAttachmentsForTask(taskId) {
+    var toRemove = state.attachments.filter(function(attachment) {
+      return attachment.Task_Id === taskId;
+    });
+    if (!toRemove.length) return;
+    await grist.docApi.applyUserActions(toRemove.map(function(attachment) {
+      return ["RemoveRecord", state.ATTACHMENTS_TABLE, attachment.id];
+    }));
+  }
+  async function removeTimeEntriesForTask(taskId) {
+    var toRemove = state.timeEntries.filter(function(entry) {
+      return entry.Task_Id === taskId;
+    });
+    if (!toRemove.length) return;
+    await grist.docApi.applyUserActions(toRemove.map(function(entry) {
+      return ["RemoveRecord", state.TIME_ENTRIES_TABLE, entry.id];
+    }));
+    delete state.activeTimers[taskId];
+  }
+  async function removeDraftChildren(taskId) {
+    await removeCommentsForTask(taskId);
+    await removeSubtasksForTask(taskId);
+    await removeAttachmentsForTask(taskId);
+    await removeTimeEntriesForTask(taskId);
+  }
+  async function saveTaskFormSilently(taskId) {
+    var title = requireTaskTitle();
+    if (!title) return false;
+    if (shouldLimitToMyProjects() && editAssignees.length === 0) {
+      var mine = myAssigneeValue();
+      if (mine) editAssignees = [mine];
+    }
+    var projectEl = document.getElementById("task-project");
+    var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
+    var record = {};
+    setField(record, "tasks", "title", title);
+    setField(record, "tasks", "description", getInputValue("task-desc").trim());
+    setField(record, "tasks", "status", getInputValue("task-status"));
+    setField(record, "tasks", "priority", getInputValue("task-priority"));
+    setField(record, "tasks", "assignee", editAssignees.join(", "));
+    setField(record, "tasks", "group", getInputValue("task-group"));
+    setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
+    setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
+    setField(record, "tasks", "category", getInputValue("task-category").trim());
+    setField(record, "tasks", "projectId", projectId);
+    setField(record, "tasks", "recurrence", getInputValue("task-recurrence", "none"));
+    setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
+    var tagEl = document.getElementById("task-tag");
+    if (tagEl) setField(record, "tasks", "tag", tagEl.value.trim());
+    if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
+      record.Accountable = editAccountable.join(", ");
+      record.Consulted = editConsulted.join(", ");
+      record.Informed = editInformed.join(", ");
+    }
+    record = await keepExistingTaskColumns(record);
+    await grist.docApi.applyUserActions([
+      ["UpdateRecord", state.TASKS_TABLE, taskId, record]
+    ]);
+    return true;
+  }
+  function captureTaskFormState() {
+    var autoExtendEl = document.getElementById("task-auto-extend");
+    return {
+      title: getInputValue("task-title"),
+      description: getInputValue("task-desc"),
+      status: getInputValue("task-status"),
+      priority: getInputValue("task-priority"),
+      group: getInputValue("task-group"),
+      start: getInputValue("task-start"),
+      due: getInputValue("task-due"),
+      category: getInputValue("task-category"),
+      project: getInputValue("task-project"),
+      tag: getInputValue("task-tag"),
+      recurrence: getInputValue("task-recurrence", "none"),
+      estimatedHours: getInputValue("task-estimated-hours"),
+      extensionDate: getInputValue("task-extension-date"),
+      autoExtend: autoExtendEl ? autoExtendEl.checked : null
+    };
+  }
+  function restoreTaskFormState(state2) {
+    if (!state2) return;
+    [
+      ["task-title", state2.title],
+      ["task-desc", state2.description],
+      ["task-status", state2.status],
+      ["task-priority", state2.priority],
+      ["task-group", state2.group],
+      ["task-start", state2.start],
+      ["task-due", state2.due],
+      ["task-category", state2.category],
+      ["task-project", state2.project],
+      ["task-tag", state2.tag],
+      ["task-recurrence", state2.recurrence],
+      ["task-estimated-hours", state2.estimatedHours],
+      ["task-extension-date", state2.extensionDate]
+    ].forEach(function(pair) {
+      var el = document.getElementById(pair[0]);
+      if (el && pair[1] !== void 0 && pair[1] !== null) el.value = pair[1];
+    });
+    var autoExtendEl = document.getElementById("task-auto-extend");
+    if (autoExtendEl && state2.autoExtend !== null) autoExtendEl.checked = state2.autoExtend;
+  }
+  function getColumnName(entity, field) {
+    if (!state.columnMapping[entity]) return field;
+    return state.columnMapping[entity][field] || field;
+  }
+  function getUserRoles(u) {
+    if (!u || !u.Role) return [];
+    var raw = u.Role;
+    if (Array.isArray(raw)) {
+      var arr = raw.length > 0 && raw[0] === "L" ? raw.slice(1) : raw;
+      return arr.filter(function(r) {
+        return r && r !== "L";
+      });
+    }
+    var s = String(raw).trim();
+    if (!s) return [];
+    if (s.length > 1 && s[0] === "L" && s[1] === ",") {
+      return s.slice(2).split(",").map(function(r) {
+        return r.trim();
+      }).filter(Boolean);
+    }
+    return [s];
+  }
+  function userMatchesRole(u, role) {
+    return getUserRoles(u).indexOf(role) !== -1;
+  }
+  function userRoleDisplay(u) {
+    var roles = getUserRoles(u);
+    return roles.length ? roles.join(", ") : "";
+  }
+  function getCurrentUserRecord() {
+    var em = (state.currentUserEmail || "").toLowerCase().trim();
+    if (!em) return null;
+    return state.users.find(function(u) {
+      return (u.Email || "").toLowerCase().trim() === em;
+    }) || null;
+  }
+  function getCurrentBusinessRoles() {
+    var u = getCurrentUserRecord();
+    return u ? getUserRoles(u) : [];
+  }
+  function hasCurrentBusinessRole(role) {
+    return getCurrentBusinessRoles().indexOf(role) !== -1;
+  }
+  function canSeeAllProjects() {
+    var roles = getCurrentBusinessRoles();
+    if (roles.length > 0) return roles.indexOf("admin") !== -1;
+    return state.isOwner;
+  }
+  function shouldLimitToMyProjects() {
+    if (canSeeAllProjects()) return false;
+    var roles = getCurrentBusinessRoles();
+    return roles.indexOf("member") !== -1 || roles.indexOf("viewer") !== -1;
+  }
+  function canEditWorkItems() {
+    return (state.isOwner || state.isEditor) && !hasCurrentBusinessRole("viewer");
+  }
+  function taskConcernsCurrentUser(task) {
+    var mine = myAssigneeValue();
+    var em = (state.currentUserEmail || "").toLowerCase().trim();
+    if (!task) return false;
+    if (mine) {
+      var assignees = (task.Assignee || "").split(",").map(function(s) {
+        return s.trim();
+      }).filter(Boolean);
+      if (assignees.indexOf(mine) !== -1) return true;
+    }
+    if (em && (task.Created_By || "").toLowerCase().trim() === em) return true;
+    return false;
+  }
+  function applyRoleVisibilityDefaults() {
+    if (shouldLimitToMyProjects()) {
+      state.mineOnly = true;
+      state.currentFilterRole = null;
+      state.currentFilterAssignee = null;
+      if (state.currentProjectId) {
+        var myIds = myProjectIdSet();
+        if (!myIds[state.currentProjectId]) state.currentProjectId = null;
+      }
+    }
+  }
+  function applyBusinessRoleRestrictions() {
+    var canEdit = canEditWorkItems();
+    document.querySelectorAll(".btn-new-task, .btn-new-project, .kanban-add-btn, .col-add").forEach(function(el) {
+      el.style.display = canEdit ? "" : "none";
+    });
+  }
+  function isOverdue(task) {
+    if (!task.Due_Date || task.Status === "done") return false;
+    var now = Math.floor(Date.now() / 1e3);
+    return task.Due_Date < now;
+  }
+  function getTaskSubtasks(taskId) {
+    return state.subtasks.filter(function(st) {
+      return st.Parent_Task_Id === taskId;
+    }).sort(function(a, b) {
+      var da = a.Due_Date || null;
+      var db = b.Due_Date || null;
+      if (da && db) {
+        if (da !== db) return da - db;
+      } else if (da) {
+        return -1;
+      } else if (db) {
+        return 1;
+      }
+      return (a.Order || 0) - (b.Order || 0);
+    });
+  }
+  function getTaskProgress(task) {
+    var taskSubtasks = getTaskSubtasks(task.id);
+    if (taskSubtasks.length === 0) {
+      return task.Status === "done" ? 100 : task.Status === "progress" ? 50 : 10;
+    }
+    var completed = taskSubtasks.filter(function(st) {
+      return st.Completed;
+    }).length;
+    return Math.round(completed / taskSubtasks.length * 100);
+  }
+  function getTaskDependencies(taskId) {
+    return state.dependencies.filter(function(d) {
+      return d.Task_Id === taskId;
+    }).map(function(d) {
+      return state.tasks.find(function(t2) {
+        return t2.id === d.Depends_On_Task_Id;
+      });
+    }).filter(Boolean);
+  }
+  function getTasksDependingOn(taskId) {
+    return state.dependencies.filter(function(d) {
+      return d.Depends_On_Task_Id === taskId;
+    }).map(function(d) {
+      return state.tasks.find(function(t2) {
+        return t2.id === d.Task_Id;
+      });
+    }).filter(Boolean);
+  }
+  function isTaskBlocked(taskId) {
+    var blockers = getTaskDependencies(taskId);
+    return blockers.some(function(blocker) {
+      return blocker && blocker.Status !== "done";
+    });
   }
   function getTaskComments(taskId) {
     return state.comments.filter(function(c) {
