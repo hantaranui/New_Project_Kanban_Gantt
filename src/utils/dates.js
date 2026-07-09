@@ -1,4 +1,4 @@
-import { currentLang } from '../i18n.js';
+import { currentLang, t } from '../i18n.js';
 
 export function formatDate(d) {
   if (!d) return '';
@@ -40,4 +40,14 @@ export function getWeekStart(year, weekNum) {
   var monday = new Date(jan4);
   monday.setDate(jan4.getDate() - dayOfWeek + 1 + (weekNum - 1) * 7);
   return monday;
+}
+
+export function formatTimeAgo(timestamp) {
+  if (!timestamp) return '';
+  var now = Math.floor(Date.now() / 1000);
+  var diff = now - timestamp;
+  if (diff < 60) return t('justNow');
+  if (diff < 3600) return t('minutesAgo').replace('{n}', Math.floor(diff / 60));
+  if (diff < 86400) return t('hoursAgo').replace('{n}', Math.floor(diff / 3600));
+  return t('daysAgo').replace('{n}', Math.floor(diff / 86400));
 }
