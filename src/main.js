@@ -24,6 +24,13 @@ import {
 import {
   updateStats, renderStatsView, renderWorkloadChart, renderTimelineChart, renderBurndownChart
 } from './domains/stats.js';
+import {
+  openProjectModal, closeProjectModal, renderProjectList, editProject, saveProject, deleteProject
+} from './domains/projects.js';
+import {
+  getTaskCustomFieldValue, getTaskCustomFieldsText, renderCustomFieldInput, updateCustomFieldValue,
+  openCustomFieldsModal, toggleCfOptions, addCustomField, deleteCustomField
+} from './domains/custom-fields.js';
 
 // index.html can't change and calls these ~182 functions via inline
 // onclick="..."/onchange="..." attributes (both in the static HTML and in
@@ -328,7 +335,7 @@ async function loadColumnMapping() {
 }
 
 // Set field value in a record object using mapping
-function setField(record, entity, field, value) {
+export function setField(record, entity, field, value) {
   if (!record || !state.columnMapping[entity]) return;
   var columnName = state.columnMapping[entity][field];
   if (columnName) {
@@ -565,7 +572,7 @@ function shouldLimitToMyProjects() {
   return roles.indexOf('member') !== -1 || roles.indexOf('viewer') !== -1;
 }
 
-function canEditWorkItems() {
+export function canEditWorkItems() {
   return (state.isOwner || state.isEditor) && !hasCurrentBusinessRole('viewer');
 }
 
@@ -709,21 +716,6 @@ function formatDurationShort(seconds) {
   return mins + 'm';
 }
 
-function getTaskCustomFieldValue(taskId, fieldId) {
-  var cfv = state.customFieldValues.find(function(v) {
-    return v.Task_Id === taskId && v.Field_Id === fieldId;
-  });
-  return cfv ? cfv.Value : '';
-}
-
-// B3 : concatène toutes les valeurs de champs personnalisés d'une tâche (pour la recherche)
-function getTaskCustomFieldsText(taskId) {
-  return state.customFieldValues
-    .filter(function(v) { return v.Task_Id === taskId && v.Value; })
-    .map(function(v) { return String(v.Value); })
-    .join(' ');
-}
-
 function isSubtaskBlocked(subtask) {
   if (!subtask.Blocked_By_Subtask_Id) return false;
   var blocker = state.subtasks.find(function(st) { return st.id === subtask.Blocked_By_Subtask_Id; });
@@ -733,17 +725,6 @@ function isSubtaskBlocked(subtask) {
 function getSubtaskBlocker(subtask) {
   if (!subtask.Blocked_By_Subtask_Id) return null;
   return state.subtasks.find(function(st) { return st.id === subtask.Blocked_By_Subtask_Id; });
-}
-
-function getCustomFieldTypeLabel(type) {
-  switch (type) {
-    case 'text': return t('typeText');
-    case 'number': return t('typeNumber');
-    case 'date': return t('typeDate');
-    case 'checkbox': return t('typeCheckbox');
-    case 'select': return t('typeSelect');
-    default: return type;
-  }
 }
 
 export function getUserDisplayName(emailOrName) {
@@ -6934,177 +6915,6 @@ async function addManualTimeEntry(taskId) {
 }
 
 // =============================================================================
-// CUSTOM FIELDS
-// =============================================================================
-
-function renderCustomFieldInput(field, taskId, value) {
-  var inputId = 'cf-' + field.id;
-  var html = '';
-  
-  switch (field.Type) {
-    case 'text':
-      html = '<input type="text" id="' + inputId + '" class="cf-input" value="' + sanitize(value) + '" onchange="updateCustomFieldValue(' + taskId + ', ' + field.id + ', this.value)" />';
-      break;
-    case 'number':
-      html = '<input type="number" id="' + inputId + '" class="cf-input cf-number" value="' + sanitize(value) + '" onchange="updateCustomFieldValue(' + taskId + ', ' + field.id + ', this.value)" />';
-      break;
-    case 'date':
-      var dateVal = value ? new Date(parseInt(value) * 1000).toISOString().split('T')[0] : '';
-      html = '<input type="date" id="' + inputId + '" class="cf-input cf-date" value="' + dateVal + '" onchange="updateCustomFieldValue(' + taskId + ', ' + field.id + ', this.value ? Math.floor(new Date(this.value).getTime()/1000) : \'\')" />';
-      break;
-    case 'checkbox':
-      var checked = value === 'true' || value === '1';
-      html = '<input type="checkbox" id="' + inputId + '" class="cf-checkbox" ' + (checked ? 'checked' : '') + ' onchange="updateCustomFieldValue(' + taskId + ', ' + field.id + ', this.checked ? \'true\' : \'false\')" />';
-      break;
-    case 'select':
-      var options = field.Options ? field.Options.split(',').map(function(o) { return o.trim(); }) : [];
-      html = '<select id="' + inputId + '" class="cf-select" onchange="updateCustomFieldValue(' + taskId + ', ' + field.id + ', this.value)">';
-      html += '<option value="">--</option>';
-      for (var oi = 0; oi < options.length; oi++) {
-        html += '<option value="' + sanitize(options[oi]) + '"' + (value === options[oi] ? ' selected' : '') + '>' + sanitize(options[oi]) + '</option>';
-      }
-      html += '</select>';
-      break;
-    default:
-      html = '<input type="text" id="' + inputId + '" class="cf-input" value="' + sanitize(value) + '" />';
-  }
-  return html;
-}
-
-async function updateCustomFieldValue(taskId, fieldId, value) {
-  var existing = state.customFieldValues.find(function(v) {
-    return v.Task_Id === taskId && v.Field_Id === fieldId;
-  });
-  
-  try {
-    if (existing) {
-      await grist.docApi.applyUserActions([
-        ['UpdateRecord', state.CUSTOM_FIELD_VALUES_TABLE, existing.id, { Value: String(value) }]
-      ]);
-      existing.Value = String(value);
-    } else {
-      await grist.docApi.applyUserActions([
-        ['AddRecord', state.CUSTOM_FIELD_VALUES_TABLE, null, {
-          Task_Id: taskId,
-          Field_Id: fieldId,
-          Value: String(value)
-        }]
-      ]);
-      await loadAllData();
-    }
-  } catch (e) {
-    console.error('Error updating custom field value:', e);
-  }
-}
-
-function openCustomFieldsModal() {
-  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-  html += '<div class="modal modal-cf" onclick="event.stopPropagation()">';
-  html += '<div class="modal-header"><h3>🏷️ ' + t('manageCustomFields') + '</h3><button class="modal-close" onclick="closeModalForce()">✕</button></div>';
-  html += '<div class="modal-body">';
-  
-  // Existing fields
-  html += '<div class="cf-list">';
-  if (state.customFields.length === 0) {
-    html += '<div class="cf-empty-modal">' + t('noCustomFields') + '</div>';
-  } else {
-    for (var i = 0; i < state.customFields.length; i++) {
-      var cf = state.customFields[i];
-      html += '<div class="cf-list-item">';
-      html += '<span class="cf-list-name">' + sanitize(cf.Name) + '</span>';
-      html += '<span class="cf-list-type">' + getCustomFieldTypeLabel(cf.Type) + '</span>';
-      html += '<button class="cf-delete-btn" onclick="deleteCustomField(' + cf.id + ')">🗑️</button>';
-      html += '</div>';
-    }
-  }
-  html += '</div>';
-  
-  // Add new field form
-  html += '<div class="cf-add-form">';
-  html += '<h4>' + t('addCustomField') + '</h4>';
-  html += '<div class="cf-form-row">';
-  html += '<input type="text" id="new-cf-name" placeholder="' + t('customFieldName') + '" class="cf-form-input" />';
-  html += '<select id="new-cf-type" class="cf-form-select" onchange="toggleCfOptions()">';
-  html += '<option value="text">' + t('typeText') + '</option>';
-  html += '<option value="number">' + t('typeNumber') + '</option>';
-  html += '<option value="date">' + t('typeDate') + '</option>';
-  html += '<option value="checkbox">' + t('typeCheckbox') + '</option>';
-  html += '<option value="select">' + t('typeSelect') + '</option>';
-  html += '</select>';
-  html += '</div>';
-  html += '<div id="cf-options-row" class="cf-form-row" style="display:none;">';
-  html += '<input type="text" id="new-cf-options" placeholder="' + t('fieldOptions') + '" class="cf-form-input" />';
-  html += '</div>';
-  html += '<button class="btn btn-primary" onclick="addCustomField()">' + t('addCustomField') + '</button>';
-  html += '</div>';
-  
-  html += '</div></div></div>';
-  
-  document.getElementById('modal-container').innerHTML = html;
-}
-
-function toggleCfOptions() {
-  var type = document.getElementById('new-cf-type').value;
-  document.getElementById('cf-options-row').style.display = type === 'select' ? 'flex' : 'none';
-}
-
-async function addCustomField() {
-  var name = document.getElementById('new-cf-name').value.trim();
-  var type = document.getElementById('new-cf-type').value;
-  var options = document.getElementById('new-cf-options').value.trim();
-  
-  if (!name) return;
-  
-  var maxOrder = state.customFields.length > 0 ? Math.max.apply(null, state.customFields.map(function(cf) { return cf.Order || 0; })) : 0;
-  
-  try {
-    await grist.docApi.applyUserActions([
-      ['AddRecord', state.CUSTOM_FIELDS_TABLE, null, {
-        Name: name,
-        Type: type,
-        Options: type === 'select' ? options : '',
-        Order: maxOrder + 1,
-        Created_At: Math.floor(Date.now() / 1000)
-      }]
-    ]);
-    showToast(t('customFieldCreated'), 'success');
-    await loadAllData();
-    openCustomFieldsModal();
-  } catch (e) {
-    console.error('Error adding custom field:', e);
-    showToast('Error: ' + e.message, 'error');
-  }
-}
-
-async function deleteCustomField(fieldId) {
-  if (!state.isOwner) return;
-  var confirmed = await showConfirmModal(
-    currentLang === 'fr' ? 'Supprimer ce champ personnalisé et toutes ses valeurs ?' : 'Delete this custom field and all its values?',
-    currentLang === 'fr' ? 'Supprimer le champ' : 'Delete field'
-  );
-  if (!confirmed) return;
-  
-  try {
-    // Delete field values first
-    var valuesToDelete = state.customFieldValues.filter(function(v) { return v.Field_Id === fieldId; });
-    for (var i = 0; i < valuesToDelete.length; i++) {
-      await grist.docApi.applyUserActions([
-        ['RemoveRecord', state.CUSTOM_FIELD_VALUES_TABLE, valuesToDelete[i].id]
-      ]);
-    }
-    // Delete field
-    await grist.docApi.applyUserActions([
-      ['RemoveRecord', state.CUSTOM_FIELDS_TABLE, fieldId]
-    ]);
-    showToast(t('customFieldDeleted'), 'info');
-    await loadAllData();
-    openCustomFieldsModal();
-  } catch (e) {
-    console.error('Error deleting custom field:', e);
-  }
-}
-
-// =============================================================================
 // RECURRENCE HANDLING
 // =============================================================================
 
@@ -7557,193 +7367,6 @@ function applyOwnerRestrictions() {
   var activeBtn = document.querySelector('.tab-btn.active');
   if (activeBtn && !isTabAllowed(activeBtn.getAttribute('data-tab'))) {
     switchTab('kanban');
-  }
-}
-
-// =============================================================================
-// PROJECT MANAGEMENT
-// =============================================================================
-
-// Remplit le sélecteur "Responsable" avec les utilisateurs (et présélectionne)
-function populateProjectLead(selectedValue) {
-  var sel = document.getElementById('project-lead');
-  if (!sel) return;
-  var html = '<option value="">--</option>';
-  state.users.forEach(function (u) {
-    var val = u.Email || u.Name;
-    if (!val) return;
-    html += '<option value="' + sanitize(val) + '"' + (val === selectedValue ? ' selected' : '') + '>' + sanitize(u.Name || u.Email) + '</option>';
-  });
-  sel.innerHTML = html;
-}
-
-function openProjectModal() {
-  if (!canEditWorkItems()) {
-    showToast(currentLang === 'fr' ? 'Vous n’avez pas les droits pour créer un projet.' : 'You do not have permission to create a project.', 'error');
-    return;
-  }
-  document.getElementById('project-modal').style.display = 'flex';
-  document.getElementById('edit-project-id').value = '';
-  document.getElementById('project-name').value = '';
-  document.getElementById('project-description').value = '';
-  document.getElementById('project-color').value = '#6366f1';
-  document.getElementById('project-status').value = 'active';
-  populateProjectLead('');
-  document.getElementById('project-form-title').textContent = t('addProject');
-  var psearch = document.getElementById('project-search');
-  if (psearch) psearch.value = '';
-  renderProjectList();
-}
-
-function closeProjectModal() {
-  document.getElementById('project-modal').style.display = 'none';
-}
-
-var PROJECT_LIST_LIMIT = 5;
-function renderProjectList() {
-  var searchEl = document.getElementById('project-search');
-  var q = (searchEl && searchEl.value ? searchEl.value : '').trim().toLowerCase();
-
-  var html = '';
-  if (state.projects.length === 0) {
-    html = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + t('noProject') + '</div>';
-    document.getElementById('project-list').innerHTML = html;
-    return;
-  }
-
-  // Tri du plus récent au plus ancien (id décroissant)
-  var sorted = state.projects.slice().sort(function(a, b) { return (b.id || 0) - (a.id || 0); });
-
-  var matching = q
-    ? sorted.filter(function(p) { return (p.Name || '').toLowerCase().indexOf(q) !== -1; })
-    : sorted;
-
-  // Sans recherche : limiter aux N plus récents
-  var shown = q ? matching : matching.slice(0, PROJECT_LIST_LIMIT);
-
-  if (matching.length === 0) {
-    html = '<div style="text-align:center;color:#94a3b8;padding:16px;">' + (currentLang === 'fr' ? 'Aucun projet trouvé' : 'No project found') + '</div>';
-    document.getElementById('project-list').innerHTML = html;
-    return;
-  }
-
-  var filteredTasks = getFilteredTasks();
-  html = '<div class="project-items">';
-  shown.forEach(function(proj) {
-    var taskCount = filteredTasks.filter(function(t) { return t.Project_Id === proj.id; }).length;
-    html += '<div class="project-item" style="border-left: 4px solid ' + (proj.Color || '#6366f1') + ';">';
-    html += '<div class="project-item-info">';
-    html += '<strong>' + sanitize(proj.Name) + '</strong>';
-    var metaTxt = taskCount + ' ' + (currentLang === 'fr' ? 'tâches' : 'tasks');
-    if (proj.Lead) metaTxt += ' · 👤 ' + (currentLang === 'fr' ? 'resp. ' : 'lead ') + sanitize(getUserDisplayName(proj.Lead));
-    if (proj.CreatedBy) metaTxt += ' · ' + (currentLang === 'fr' ? 'créé par ' : 'created by ') + sanitize(getUserDisplayName(proj.CreatedBy));
-    html += '<span class="project-item-meta">' + metaTxt + '</span>';
-    html += '</div>';
-    html += '<div class="project-item-actions">';
-    html += '<button class="btn-icon" onclick="editProject(' + proj.id + ')" title="' + t('editProject') + '">✏️</button>';
-    html += '<button class="btn-icon" onclick="deleteProject(' + proj.id + ')" title="' + t('deleteProject') + '">🗑️</button>';
-    html += '</div>';
-    html += '</div>';
-  });
-  html += '</div>';
-
-  // Indicateur si des projets sont masqués (hors recherche)
-  if (!q && matching.length > PROJECT_LIST_LIMIT) {
-    html += '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:6px;">'
-      + (currentLang === 'fr'
-        ? '+ ' + (matching.length - PROJECT_LIST_LIMIT) + ' autre(s) — utilisez la recherche'
-        : '+ ' + (matching.length - PROJECT_LIST_LIMIT) + ' more — use search')
-      + '</div>';
-  }
-
-  document.getElementById('project-list').innerHTML = html;
-}
-
-function editProject(projectId) {
-  var proj = state.projects.find(function(p) { return p.id === projectId; });
-  if (!proj) return;
-  
-  document.getElementById('edit-project-id').value = proj.id;
-  document.getElementById('project-name').value = proj.Name || '';
-  document.getElementById('project-description').value = proj.Description || '';
-  document.getElementById('project-color').value = proj.Color || '#6366f1';
-  document.getElementById('project-status').value = proj.Status || 'active';
-  populateProjectLead(proj.Lead || '');
-  document.getElementById('project-form-title').textContent = t('editProject');
-}
-
-async function saveProject() {
-  var projectId = document.getElementById('edit-project-id').value;
-  var name = document.getElementById('project-name').value.trim();
-  var description = document.getElementById('project-description').value.trim();
-  var color = document.getElementById('project-color').value;
-  var status = document.getElementById('project-status').value;
-  var leadEl = document.getElementById('project-lead');
-  var lead = leadEl ? leadEl.value : '';
-
-  if (!name) {
-    showToast(t('projectName') + ' ' + t('required'), 'error');
-    return;
-  }
-
-  try {
-    var record = {};
-    setField(record, 'projects', 'name', name);
-    setField(record, 'projects', 'description', description);
-    setField(record, 'projects', 'color', color);
-    setField(record, 'projects', 'status', status);
-    setField(record, 'projects', 'lead', lead);
-    
-    if (projectId) {
-      await grist.docApi.applyUserActions([
-        ['UpdateRecord', state.PROJECTS_TABLE, parseInt(projectId), record]
-      ]);
-      showToast(t('editProject') + ' ✓', 'success');
-    } else {
-      // Créateur du projet (auteur) — uniquement sur la table par défaut qui possède ces colonnes
-      if (state.PROJECTS_TABLE === state.DEFAULT_PROJECTS_TABLE) {
-        record.CreatedBy = state.currentUserEmail || '';
-        record.CreatedAt = new Date().toISOString();
-      }
-      await grist.docApi.applyUserActions([
-        ['AddRecord', state.PROJECTS_TABLE, null, record]
-      ]);
-      showToast(t('addProject') + ' ✓', 'success');
-    }
-    closeModalForce();
-    await loadAllData();
-    refreshAllViews();
-    renderProjectList();
-    document.getElementById('edit-project-id').value = '';
-    document.getElementById('project-name').value = '';
-    document.getElementById('project-description').value = '';
-    document.getElementById('project-color').value = '#6366f1';
-    document.getElementById('project-status').value = 'active';
-    populateProjectLead('');
-    document.getElementById('project-form-title').textContent = t('addProject');
-  } catch (e) {
-    console.error('Error saving project:', e);
-    showToast('Error: ' + e.message, 'error');
-  }
-}
-
-async function deleteProject(projectId) {
-  var confirmed = await showConfirmModal(
-    currentLang === 'fr' ? 'Supprimer ce projet ?' : 'Delete this project?',
-    currentLang === 'fr' ? 'Supprimer le projet' : 'Delete project'
-  );
-  if (!confirmed) return;
-  
-  try {
-    await grist.docApi.applyUserActions([
-      ['RemoveRecord', state.PROJECTS_TABLE, projectId]
-    ]);
-    showToast(t('deleteProject') + ' ✓', 'success');
-    await loadAllData();
-    renderProjectList();
-  } catch (e) {
-    console.error('Error deleting project:', e);
-    showToast('Error: ' + e.message, 'error');
   }
 }
 
