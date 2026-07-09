@@ -1,0 +1,14 @@
+{
+  "name": "grist-pm-widget",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "esbuild src/main.js --bundle --format=iife --tree-shaking=false --outfile=widget.js --sourcemap --watch",
+    "build": "esbuild src/main.js --bundle --format=iife --tree-shaking=false --outfile=widget.js",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "vitest": "^4.1.10"
+  }
+}
