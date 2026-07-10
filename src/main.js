@@ -5,7 +5,7 @@
 import { APP_VERSION, currentLang, i18n, t } from './i18n.js';
 import { formatDate, toEpoch, fromEpoch, getISOWeek, getWeekStart, formatTimeAgo } from './utils/dates.js';
 import { priorityLabel, isMilestone, recurrenceSymbol } from './utils/labels.js';
-import { CLIENT_TABLE_NAMES, defaultUiLabels } from './config.js';
+import { CLIENT_TABLE_NAMES, defaultUiLabels, setField } from './config.js';
 import { state } from './store.js';
 import { sanitize } from './utils/sanitize.js';
 import {
@@ -122,6 +122,7 @@ import {
   setupCreateFrenchTables, setupUseExistingTables
 } from './bootstrap/ensure-tables.js';
 import { switchTab, restoreActiveTab, refreshAllViews } from './ui/tabs.js';
+import { openCategoriesModal, editCategory, saveCategory, deleteCategory } from './domains/categories.js';
 
 // index.html can't change and calls these ~182 functions via inline
 // onclick="..."/onchange="..." attributes (both in the static HTML and in
@@ -236,100 +237,6 @@ export async function loadSettings() {
 // COLUMN MAPPING UTILITIES
 // =============================================================================
 
-// Load column mapping from PM_Config table
-export async function loadColumnMapping() {
-  try {
-    var configData = await grist.docApi.fetchTable(state.CONFIG_TABLE);
-    if (!configData || !configData.Config_Key) return;
-    
-    // Update columnMapping object from config table
-    for (var i = 0; i < configData.Config_Key.length; i++) {
-      var key = configData.Config_Key[i];
-      var tableName = configData.Table_Name[i];
-      var columnName = configData.Column_Name[i];
-      
-      // Convertit un suffixe snake_case vers camelCase (ex. start_date -> startDate)
-      var toCamel = function(s) { return s.replace(/_([a-z])/g, function(_, c) { return c.toUpperCase(); }); };
-
-      // Parse key to determine which mapping to update
-      if (key.startsWith('task_')) {
-        var field = toCamel(key.slice(5));
-        if (state.columnMapping.tasks[field] !== undefined) {
-          state.columnMapping.tasks[field] = columnName;
-        }
-      } else if (key.startsWith('user_')) {
-        var field = toCamel(key.slice(5));
-        if (state.columnMapping.users[field] !== undefined) {
-          state.columnMapping.users[field] = columnName;
-        }
-      } else if (key.startsWith('project_')) {
-        var field = toCamel(key.slice(8));
-        if (state.columnMapping.projects[field] !== undefined) {
-          state.columnMapping.projects[field] = columnName;
-        }
-      } else if (key.startsWith('category_')) {
-        var field = toCamel(key.slice(9));
-        if (state.columnMapping.categories[field] !== undefined) {
-          state.columnMapping.categories[field] = columnName;
-        }
-      } else if (key.startsWith('tag_')) {
-        var field = toCamel(key.slice(4));
-        if (state.columnMapping.tags[field] !== undefined) {
-          state.columnMapping.tags[field] = columnName;
-        }
-      }
-      
-      // Also update table names if they differ
-      if (key === 'task_title') state.TASKS_TABLE = tableName;
-      else if (key === 'user_name') state.USERS_TABLE = tableName;
-      else if (key === 'project_name') state.PROJECTS_TABLE = tableName;
-      else if (key === 'category_name') state.CATEGORIES_TABLE = tableName;
-      else if (key === 'tag_name') state.TAGS_TABLE = tableName;
-    }
-  } catch (e) {
-    console.log('Column mapping not loaded, using defaults:', e);
-  }
-}
-
-// Set field value in a record object using mapping
-export function setField(record, entity, field, value) {
-  if (!record || !state.columnMapping[entity]) return;
-  var columnName = state.columnMapping[entity][field];
-  if (columnName) {
-    record[columnName] = value;
-  }
-}
-
-
-// Get column name for a field using mapping
-export function getColumnName(entity, field) {
-  if (!state.columnMapping[entity]) return field;
-  return state.columnMapping[entity][field] || field;
-}
-
-export function isOverdue(task) {
-  if (!task.Due_Date || task.Status === 'done') return false;
-  var now = Math.floor(Date.now() / 1000);
-  return task.Due_Date < now;
-}
-
-export function getUserDisplayName(emailOrName) {
-  if (!emailOrName) return '';
-  // Try to find user by email
-  var user = state.users.find(function(u) { 
-    return u.Email === emailOrName || u.Name === emailOrName; 
-  });
-  if (user && user.Name) return user.Name;
-  // If no user found or no name, extract name from email
-  if (emailOrName.indexOf('@') !== -1) {
-    return emailOrName.split('@')[0];
-  }
-  return emailOrName;
-}
-
-export function statusLabel(s) {
-  return getStatusLabel(s) || s || '';
-}
 
 // =============================================================================
 // TABS
@@ -358,123 +265,6 @@ function setKanbanSort(value) {
 // Sous-tâches du Gantt : on les affiche toutes. Celles sans date restent lisibles côté libellé.
 
 
-export function renderCategoriesList() {
-  var container = document.getElementById('categories-list');
-  if (!container) return;
-
-  if (state.categories.length === 0) {
-    container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">' + t('noCategories') + '</div>';
-    return;
-  }
-
-  var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
-  for (var i = 0; i < state.categories.length; i++) {
-    var cat = state.categories[i];
-    html += '<span class="category-chip" style="background:' + (cat.Color || '#6366f1') + '20;color:' + (cat.Color || '#6366f1') + ';border:1px solid ' + (cat.Color || '#6366f1') + '40;">';
-    html += sanitize(cat.Name);
-    html += '</span>';
-  }
-  html += '</div>';
-  container.innerHTML = html;
-}
-
-function openCategoriesModal() {
-  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-  html += '<div class="modal modal-cf" onclick="event.stopPropagation()">';
-  html += '<div class="modal-header"><h3>🏷️ ' + t('manageCategories') + '</h3><button class="modal-close" onclick="closeModalForce()">✕</button></div>';
-  html += '<div class="modal-body">';
-  
-  // Existing categories
-  html += '<div class="cf-list">';
-  if (state.categories.length === 0) {
-    html += '<div class="cf-empty-modal">' + t('noCategories') + '</div>';
-  } else {
-    for (var i = 0; i < state.categories.length; i++) {
-      var cat = state.categories[i];
-      html += '<div class="cf-list-item">';
-      html += '<span class="category-color-dot" style="background:' + (cat.Color || '#6366f1') + ';"></span>';
-      html += '<span class="cf-list-name">' + sanitize(cat.Name) + '</span>';
-      html += '<button class="cf-delete-btn" onclick="editCategory(' + cat.id + ',\'' + sanitize(cat.Name).replace(/'/g, "\\'") + '\',\'' + (cat.Color || '#6366f1') + '\')">✏️</button>';
-      html += '<button class="cf-delete-btn" onclick="deleteCategory(' + cat.id + ')">🗑️</button>';
-      html += '</div>';
-    }
-  }
-  html += '</div>';
-  
-  // Add / edit category form
-  html += '<div class="cf-add-form">';
-  html += '<h4 id="cat-form-title">' + t('addCategory') + '</h4>';
-  html += '<input type="hidden" id="edit-cat-id" value="" />';
-  html += '<div class="cf-form-row">';
-  html += '<input type="text" id="new-cat-name" placeholder="' + t('fieldName') + '" class="cf-form-input" />';
-  html += '<input type="color" id="new-cat-color" value="#6366f1" style="width:40px;height:36px;border:none;cursor:pointer;" />';
-  html += '<button class="btn btn-primary" onclick="saveCategory()">' + t('save') + '</button>';
-  html += '</div>';
-  html += '</div>';
-  
-  html += '</div></div></div>';
-  
-  document.getElementById('modal-container').innerHTML = html;
-}
-
-function editCategory(catId, name, color) {
-  document.getElementById('edit-cat-id').value = catId;
-  document.getElementById('new-cat-name').value = name;
-  document.getElementById('new-cat-color').value = color;
-  document.getElementById('cat-form-title').textContent = t('edit');
-}
-
-async function saveCategory() {
-  var name = document.getElementById('new-cat-name').value.trim();
-  var color = document.getElementById('new-cat-color').value;
-  var editId = document.getElementById('edit-cat-id').value;
-
-  if (!name) return;
-
-  try {
-    if (editId) {
-      var updateRec = {};
-      setField(updateRec, 'categories', 'name', name);
-      setField(updateRec, 'categories', 'color', color);
-      await grist.docApi.applyUserActions([['UpdateRecord', state.CATEGORIES_TABLE, parseInt(editId), updateRec]]);
-      showToast(t('saved'), 'success');
-    } else {
-      var maxOrder = state.categories.length > 0 ? Math.max.apply(null, state.categories.map(function(c) { return c.Order || 0; })) : 0;
-      var record = {};
-      setField(record, 'categories', 'name', name);
-      setField(record, 'categories', 'color', color);
-      setField(record, 'categories', 'order', maxOrder + 1);
-      await grist.docApi.applyUserActions([['AddRecord', state.CATEGORIES_TABLE, null, record]]);
-      showToast(t('categoryCreated'), 'success');
-    }
-    closeModalForce();
-    await loadAllData();
-    refreshAllViews();
-    renderSettingsCategoriesList();
-  } catch (e) {
-    console.error('Error adding category:', e);
-    showToast('Error: ' + e.message, 'error');
-  }
-}
-
-async function deleteCategory(categoryId) {
-  if (!state.isOwner) return;
-  var confirmed = await showConfirmModal(currentLang === 'fr' ? 'Supprimer cette catégorie ?' : 'Delete this category?', currentLang === 'fr' ? 'Supprimer' : 'Delete');
-  if (!confirmed) return;
-
-  try {
-    await grist.docApi.applyUserActions([
-      ['RemoveRecord', state.CATEGORIES_TABLE, categoryId]
-    ]);
-    showToast(t('categoryDeleted'), 'info');
-    closeModalForce();
-    await loadAllData();
-    refreshAllViews();
-    renderSettingsCategoriesList();
-  } catch (e) {
-    console.error('Error deleting category:', e);
-  }
-}
 
 
 // =============================================================================

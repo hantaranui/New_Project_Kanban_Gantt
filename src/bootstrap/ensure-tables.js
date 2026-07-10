@@ -1,15 +1,14 @@
 import { t, currentLang, APP_VERSION } from '../i18n.js';
 import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
-import { CLIENT_TABLE_NAMES } from '../config.js';
+import { CLIENT_TABLE_NAMES, loadColumnMapping } from '../config.js';
 import { showToast } from '../ui/toast.js';
 import { openColumnMappingModal } from '../domains/column-mapping-ui.js';
 import { saveSetting } from '../domains/settings.js';
 import { switchTab } from '../ui/tabs.js';
-// Temporary backwards imports: loadColumnMapping -> config, loadSettings
-// stays in main.js since it reassigns
-// kanbanSort/cardDisplaySettings/customKanbanStatuses.
-import { loadColumnMapping, loadSettings } from '../main.js';
+// Temporary backwards import: loadSettings stays in main.js since it
+// reassigns kanbanSort/cardDisplaySettings/customKanbanStatuses.
+import { loadSettings } from '../main.js';
 
 export function applyFrenchTableNames(updateDefaults) {
   state.TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;

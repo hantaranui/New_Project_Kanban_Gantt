@@ -7,9 +7,22 @@ import { userMatchesRole, userRoleDisplay, getUserRoles } from './permissions.js
 import { roleLabel } from './filters.js';
 import { loadAllData } from './data-loader.js';
 import { closeModalForce } from './task-modal.js';
-// Temporary backwards imports: none of these are extracted yet
-// (getColumnName -> config, renderCategoriesList -> settings domain).
-import { getColumnName, renderCategoriesList } from '../main.js';
+import { getColumnName } from '../config.js';
+import { renderCategoriesList } from './categories.js';
+
+export function getUserDisplayName(emailOrName) {
+  if (!emailOrName) return '';
+  // Try to find user by email
+  var user = state.users.find(function(u) {
+    return u.Email === emailOrName || u.Name === emailOrName;
+  });
+  if (user && user.Name) return user.Name;
+  // If no user found or no name, extract name from email
+  if (emailOrName.indexOf('@') !== -1) {
+    return emailOrName.split('@')[0];
+  }
+  return emailOrName;
+}
 
 // =============================================================================
 // TEAM VIEW (Users & Groups)

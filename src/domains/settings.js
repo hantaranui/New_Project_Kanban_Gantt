@@ -1,7 +1,7 @@
 import { t, currentLang } from '../i18n.js';
 import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
-import { defaultUiLabels } from '../config.js';
+import { defaultUiLabels, setField } from '../config.js';
 import { showToast } from '../ui/toast.js';
 import { showConfirmModal, showPromptModal } from '../ui/confirm-modal.js';
 import { checkSecurityStatus } from './permissions.js';
@@ -11,13 +11,12 @@ import { getKanbanStatuses, renderKanbanView } from './kanban.js';
 import { closeModalForce } from './task-modal.js';
 import { refreshAllViews } from '../ui/tabs.js';
 // Temporary backwards imports: none of these are extracted yet
-// (setField -> config, renderKanbanStatusesList -> kanban domain but stays
-// in main.js since it reassigns customKanbanStatuses like loadSettings()
-// does, defaultCardDisplay/cardDisplaySettings -> stay in main.js because
+// (renderKanbanStatusesList -> kanban domain but stays in main.js since it
+// reassigns customKanbanStatuses like loadSettings() does,
+// defaultCardDisplay/cardDisplaySettings -> stay in main.js because
 // loadSettings() reassigns cardDisplaySettings and can't move until
 // bootstrap/ensure-tables.js is extracted).
 import {
-  setField,
   renderKanbanStatusesList,
   defaultCardDisplay, cardDisplaySettings
 } from '../main.js';

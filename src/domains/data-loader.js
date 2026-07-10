@@ -1,8 +1,7 @@
 import { state } from '../store.js';
 import { renderProjectSelector } from './filters.js';
 import { refreshAllViews } from '../ui/tabs.js';
-// Temporary backwards import: loadColumnMapping/getColumnName -> config.
-import { loadColumnMapping, getColumnName } from '../main.js';
+import { loadColumnMapping, getColumnName } from '../config.js';
 
 export async function loadAllData() {
   // Load column mapping first

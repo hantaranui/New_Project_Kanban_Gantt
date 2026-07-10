@@ -1,8 +1,7 @@
 import { t, currentLang } from '../i18n.js';
 import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
-// Temporary backwards import: getUserDisplayName isn't extracted yet (team domain).
-import { getUserDisplayName } from '../main.js';
+import { getUserDisplayName } from './team.js';
 
 export async function logActivity(action, taskId, taskTitle, details) {
   try {

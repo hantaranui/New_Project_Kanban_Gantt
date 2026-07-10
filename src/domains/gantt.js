@@ -11,9 +11,8 @@ import { ganttDepBadge } from './dependencies.js';
 import { getFilteredTasks, getProjectName, getProjectColor } from './filters.js';
 import { getKanbanStatuses, openCardCommentsModal, openCardAttachmentsModal } from './kanban.js';
 import { openEditTaskModal } from './task-modal.js';
-// Temporary backwards imports: none of these are extracted yet
-// (isOverdue/getUserDisplayName -> various not-yet-extracted domains).
-import { isOverdue, getUserDisplayName } from '../main.js';
+import { getUserDisplayName } from './team.js';
+import { isOverdue } from './tasks.js';
 
 export var ganttMode = 'days';
 export var ganttSort = 'default'; // 'default' | 'priority' | 'alpha' | 'due'

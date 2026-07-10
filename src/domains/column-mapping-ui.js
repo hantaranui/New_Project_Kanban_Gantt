@@ -8,12 +8,10 @@ import {
   ensureConfigAndSettingsTables, hasValidMappedTaskTable, formatAccessError
 } from '../bootstrap/ensure-tables.js';
 import { refreshAllViews } from '../ui/tabs.js';
-// Temporary backwards imports: none of these are extracted yet
-// (getColumnName/loadColumnMapping -> config, loadSettings stays in main.js
-// since it reassigns kanbanSort/cardDisplaySettings/customKanbanStatuses).
-import {
-  getColumnName, loadColumnMapping, loadSettings
-} from '../main.js';
+import { getColumnName, loadColumnMapping } from '../config.js';
+// Temporary backwards import: loadSettings stays in main.js since it
+// reassigns kanbanSort/cardDisplaySettings/customKanbanStatuses.
+import { loadSettings } from '../main.js';
 
 export async function openColumnMappingModal() {
   var html = '<div class="modal-overlay" onclick="closeModal(event)">';

@@ -8,11 +8,8 @@ import { loadAllData } from './data-loader.js';
 import { canEditWorkItems } from './permissions.js';
 import { closeModalForce } from './task-modal.js';
 import { refreshAllViews } from '../ui/tabs.js';
-// Temporary backwards imports: none of these are extracted yet
-// (setField -> config domain, getUserDisplayName -> team domain).
-import {
-  setField, getUserDisplayName
-} from '../main.js';
+import { setField } from '../config.js';
+import { getUserDisplayName } from './team.js';
 
 export function populateProjectLead(selectedValue) {
   var sel = document.getElementById('project-lead');

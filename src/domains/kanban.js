@@ -15,14 +15,15 @@ import { notifyTaskCompleted, evaluateAutomationRules } from './notifications.js
 import { saveSetting } from './settings.js';
 import { closeModalForce } from './task-modal.js';
 import { refreshAllViews } from '../ui/tabs.js';
-// Temporary backwards imports: none of these are extracted yet
-// (isOverdue/getColumnName/getUserDisplayName -> various not-yet-extracted
-// domains, kanbanSort/cardDisplaySettings/customKanbanStatuses stay in
-// main.js because loadSettings() reassigns them - and, for
-// customKanbanStatuses, ensureCustomStatuses() also reassigns it - and
-// can't move until bootstrap/ensure-tables.js is extracted).
+import { getColumnName } from '../config.js';
+import { getUserDisplayName } from './team.js';
+import { isOverdue } from './tasks.js';
+// Temporary backwards imports: kanbanSort/cardDisplaySettings/
+// customKanbanStatuses stay in main.js because loadSettings() reassigns
+// them - and, for customKanbanStatuses, ensureCustomStatuses() also
+// reassigns it - and can't move until bootstrap/ensure-tables.js is
+// extracted.
 import {
-  isOverdue, getColumnName, getUserDisplayName,
   kanbanSort, cardDisplaySettings, customKanbanStatuses
 } from '../main.js';
 
