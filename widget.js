@@ -5662,6 +5662,455 @@
     }
   }
 
+  // src/domains/team.js
+  function renderTeamView() {
+    renderUsersList();
+    renderGroupsList();
+    renderCategoriesList();
+  }
+  function renderUsersList() {
+    var container = document.getElementById("users-list");
+    if (!container) return;
+    var displayedUsers = state.currentFilterRole ? state.users.filter(function(u2) {
+      return userMatchesRole(u2, state.currentFilterRole);
+    }) : state.users;
+    if (displayedUsers.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noUsers") + "</div>";
+      return;
+    }
+    var html = '<table class="data-table"><thead><tr>';
+    html += "<th>" + t("fieldName") + "</th>";
+    html += "<th>" + t("fieldEmail") + "</th>";
+    html += "<th>" + t("fieldRole") + "</th>";
+    html += "<th>" + t("fieldGroup") + "</th>";
+    html += "<th>" + t("colActions") + "</th>";
+    html += "</tr></thead><tbody>";
+    for (var i = 0; i < displayedUsers.length; i++) {
+      var u = displayedUsers[i];
+      var roleText = userRoleDisplay(u) ? userRoleDisplay(u).split(",").map(function(r) {
+        return roleLabel(r.trim());
+      }).join(", ") : "";
+      var firstRole = getUserRoles(u)[0] || "member";
+      var roleBg = firstRole === "admin" ? "#fef2f2;color:#dc2626" : firstRole === "viewer" ? "#f1f5f9;color:#64748b" : "#eff6ff;color:#1e40af";
+      html += "<tr>";
+      html += '<td style="font-weight:700;">\u{1F464} ' + sanitize(u.Name) + "</td>";
+      html += "<td>" + sanitize(u.Email) + "</td>";
+      html += '<td><span style="padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;background:' + roleBg + '">' + sanitize(roleText) + "</span></td>";
+      html += "<td>" + (u.Group_Name ? '<span class="assignee-chip">\u{1F465} ' + sanitize(u.Group_Name) + "</span>" : "--") + "</td>";
+      html += '<td><button class="btn-icon" onclick="openEditUserModal(' + u.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
+      html += '<button class="btn-icon" onclick="deleteUser(' + u.id + ')">\u{1F5D1}\uFE0F</button></td>';
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  }
+  function renderGroupsList() {
+    var container = document.getElementById("groups-list");
+    if (!container) return;
+    if (state.groups.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noGroups") + "</div>";
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < state.groups.length; i++) {
+      var g = state.groups[i];
+      var memberCount = state.users.filter(function(u) {
+        return u.Group_Name === g.Name;
+      }).length;
+      var memberNames = state.users.filter(function(u) {
+        return u.Group_Name === g.Name;
+      }).map(function(u) {
+        return u.Name || u.Email;
+      });
+      html += '<div class="template-card">';
+      html += '<div class="template-card-info">';
+      html += "<h4>\u{1F465} " + sanitize(g.Name) + "</h4>";
+      html += '<div class="template-meta">';
+      html += memberCount + " " + t("members");
+      if (g.Description) html += " \u2022 " + sanitize(g.Description);
+      html += "</div>";
+      if (memberNames.length > 0) {
+        html += '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">';
+        for (var j = 0; j < memberNames.length; j++) {
+          html += '<span class="assignee-chip">\u{1F464} ' + sanitize(memberNames[j]) + "</span>";
+        }
+        html += "</div>";
+      }
+      html += "</div>";
+      html += '<button class="btn-icon" onclick="openEditGroupModal(' + g.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
+      html += '<button class="btn-icon" onclick="deleteGroup(' + g.id + ')">\u{1F5D1}\uFE0F</button>';
+      html += "</div>";
+    }
+    container.innerHTML = html;
+  }
+  async function getRoleChoicesFromGrist() {
+    var roleSet = {};
+    var hasGristChoices = false;
+    try {
+      var roleColName = getColumnName("users", "role");
+      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
+      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
+      var tableRowId = null;
+      if (tablesData && tablesData.id && tablesData.tableId) {
+        for (var i = 0; i < tablesData.id.length; i++) {
+          if (tablesData.tableId[i] === state.USERS_TABLE) {
+            tableRowId = tablesData.id[i];
+            break;
+          }
+        }
+      }
+      if (tableRowId !== null && columnsData && columnsData.id) {
+        for (var j = 0; j < columnsData.id.length; j++) {
+          if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
+            var wo = columnsData.widgetOptions[j];
+            if (wo) {
+              try {
+                var opts = JSON.parse(wo);
+                if (opts.choices && Array.isArray(opts.choices) && opts.choices.length > 0) {
+                  opts.choices.forEach(function(c) {
+                    roleSet[c] = true;
+                  });
+                  hasGristChoices = true;
+                }
+              } catch (e) {
+              }
+            }
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Could not fetch role choices from Grist metadata:", e);
+    }
+    if (!hasGristChoices) {
+      ["admin", "member", "viewer"].forEach(function(r) {
+        roleSet[r] = true;
+      });
+    }
+    state.users.forEach(function(u) {
+      getUserRoles(u).forEach(function(r) {
+        if (r) roleSet[r] = true;
+      });
+    });
+    return Object.keys(roleSet).sort();
+  }
+  var _manageRolesState = { choices: [] };
+  async function openManageRolesModal() {
+    var choices = await getRoleChoicesFromGrist();
+    _manageRolesState.choices = choices.slice();
+    renderManageRolesModal();
+  }
+  function renderManageRolesModal() {
+    var choices = _manageRolesState.choices;
+    var usage = {};
+    state.users.forEach(function(u) {
+      getUserRoles(u).forEach(function(r2) {
+        if (r2) usage[r2] = (usage[r2] || 0) + 1;
+      });
+    });
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("manageRolesTitle") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<p style="color:#64748b;font-size:13px;margin:0 0 12px 0;">' + t("manageRolesSubtitle") + "</p>";
+    html += '<div class="settings-items">';
+    if (choices.length === 0) {
+      html += '<div style="text-align:center;color:#94a3b8;padding:20px;">--</div>';
+    } else {
+      for (var i = 0; i < choices.length; i++) {
+        var r = choices[i];
+        var count = usage[r] || 0;
+        html += '<div class="settings-item">';
+        html += '<div class="settings-item-info">';
+        html += "<strong>" + sanitize(roleLabel(r)) + "</strong>";
+        html += '<span class="settings-item-meta">' + count + " " + (currentLang === "fr" ? "utilisateur(s)" : "user(s)") + "</span>";
+        html += "</div>";
+        html += '<div class="settings-item-actions">';
+        html += '<button class="btn-icon" onclick="removeRoleChoice(' + i + ')" title="' + t("confirmDeleteRole") + '">\u{1F5D1}\uFE0F</button>';
+        html += "</div>";
+        html += "</div>";
+      }
+    }
+    html += "</div>";
+    html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+    html += '<input type="text" id="new-role-name" placeholder="' + t("newRolePlaceholder") + `" style="flex:1;" onkeydown="if(event.key==='Enter'){addRoleChoice();}" />`;
+    html += '<button class="btn btn-primary btn-sm" onclick="addRoleChoice()">+ ' + t("addRole") + "</button>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="saveRoleChoices()">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function addRoleChoice() {
+    var input = document.getElementById("new-role-name");
+    var name = (input.value || "").trim();
+    if (!name) return;
+    if (_manageRolesState.choices.indexOf(name) !== -1) {
+      showToast(currentLang === "fr" ? "Ce r\xF4le existe d\xE9j\xE0" : "Role already exists", "error");
+      return;
+    }
+    _manageRolesState.choices.push(name);
+    renderManageRolesModal();
+  }
+  function removeRoleChoice(index) {
+    var role = _manageRolesState.choices[index];
+    var inUse = state.users.some(function(u) {
+      return userMatchesRole(u, role);
+    });
+    if (inUse) {
+      if (!confirm(t("cannotDeleteUsedRole") + ". " + (currentLang === "fr" ? "Continuer ?" : "Continue?"))) {
+        return;
+      }
+    } else if (!confirm(t("confirmDeleteRole"))) {
+      return;
+    }
+    _manageRolesState.choices.splice(index, 1);
+    renderManageRolesModal();
+  }
+  async function saveRoleChoices() {
+    try {
+      var roleColName = getColumnName("users", "role");
+      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
+      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
+      var tableRowId = null;
+      for (var i = 0; i < tablesData.id.length; i++) {
+        if (tablesData.tableId[i] === state.USERS_TABLE) {
+          tableRowId = tablesData.id[i];
+          break;
+        }
+      }
+      if (tableRowId === null) throw new Error("Table not found");
+      var existingOpts = {};
+      for (var j = 0; j < columnsData.id.length; j++) {
+        if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
+          var wo = columnsData.widgetOptions[j];
+          if (wo) {
+            try {
+              existingOpts = JSON.parse(wo);
+            } catch (e) {
+            }
+          }
+          break;
+        }
+      }
+      existingOpts.choices = _manageRolesState.choices;
+      if (!existingOpts.widget) existingOpts.widget = "TextBox";
+      await grist.docApi.applyUserActions([
+        ["ModifyColumn", state.USERS_TABLE, roleColName, { widgetOptions: JSON.stringify(existingOpts) }]
+      ]);
+      showToast(t("rolesUpdated"), "success");
+      closeModalForce();
+    } catch (e) {
+      console.error("Error saving roles:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function openEditUserModal(userId) {
+    var user = state.users.find(function(u) {
+      return u.id === userId;
+    });
+    if (!user) return;
+    var groupOptions = '<option value="">--</option>';
+    for (var i = 0; i < state.groups.length; i++) {
+      var sel = state.groups[i].Name === user.Group_Name ? " selected" : "";
+      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + ">" + sanitize(state.groups[i].Name) + "</option>";
+    }
+    var roleChoices = await getRoleChoicesFromGrist();
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(user.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" value="' + sanitize(user.Name) + '" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" value="' + sanitize(user.Email) + '" /></div>';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
+    if (user.Role && roleChoices.indexOf(user.Role) === -1) {
+      html += '<option value="' + sanitize(user.Role) + '" selected>' + sanitize(roleLabel(user.Role)) + "</option>";
+    }
+    for (var i = 0; i < roleChoices.length; i++) {
+      var r = roleChoices[i];
+      var sel = user.Role === r ? " selected" : "";
+      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
+    }
+    html += "</select></div>";
+    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="updateUser(' + userId + ')">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function openEditGroupModal(groupId) {
+    var group = state.groups.find(function(g) {
+      return g.id === groupId;
+    });
+    if (!group) return;
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(group.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" value="' + sanitize(group.Name) + '" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc">' + sanitize(group.Description || "") + "</textarea></div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="updateGroup(' + groupId + ')">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  async function updateUser(userId) {
+    var name = document.getElementById("user-name").value.trim();
+    if (!name) return;
+    var record = {};
+    record[getColumnName("users", "name")] = name;
+    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
+    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
+    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.USERS_TABLE, userId, record]
+      ]);
+      showToast(t("taskUpdated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error updating user:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function updateGroup(groupId) {
+    var name = document.getElementById("group-name").value.trim();
+    if (!name) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.GROUPS_TABLE, groupId, {
+          Name: name,
+          Description: document.getElementById("group-desc").value.trim()
+        }]
+      ]);
+      showToast(t("taskUpdated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error updating group:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function openNewUserModal() {
+    var groupOptions = '<option value="">--</option>';
+    for (var i = 0; i < state.groups.length; i++) {
+      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + "</option>";
+    }
+    var roleChoices = await getRoleChoicesFromGrist();
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("modalNewUser") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" /></div>';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
+    for (var i = 0; i < roleChoices.length; i++) {
+      var r = roleChoices[i];
+      var sel = r === "member" ? " selected" : "";
+      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
+    }
+    html += "</select></div>";
+    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="createUser()">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function openNewGroupModal() {
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("modalNewGroup") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc"></textarea></div>';
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="createGroup()">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  async function createUser() {
+    var name = document.getElementById("user-name").value.trim();
+    if (!name) return;
+    var record = {};
+    record[getColumnName("users", "name")] = name;
+    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
+    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
+    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.USERS_TABLE, null, record]
+      ]);
+      showToast(t("userCreated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error creating user:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function createGroup() {
+    var name = document.getElementById("group-name").value.trim();
+    if (!name) return;
+    var record = {
+      Name: name,
+      Description: document.getElementById("group-desc").value.trim()
+    };
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.GROUPS_TABLE, null, record]
+      ]);
+      showToast(t("groupCreated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error creating group:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function deleteUser(userId) {
+    if (!state.isOwner) return;
+    var confirmed = await showConfirmModal(t("confirmDeleteUser"), currentLang === "fr" ? "Supprimer l'utilisateur" : "Delete user");
+    if (!confirmed) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["RemoveRecord", state.USERS_TABLE, userId]
+      ]);
+      showToast(t("userDeleted"), "info");
+      await loadAllData();
+    } catch (e) {
+      console.error("Error deleting user:", e);
+    }
+  }
+  async function deleteGroup(groupId) {
+    if (!state.isOwner) return;
+    var confirmed = await showConfirmModal(t("confirmDeleteGroup"), currentLang === "fr" ? "Supprimer le groupe" : "Delete group");
+    if (!confirmed) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["RemoveRecord", state.GROUPS_TABLE, groupId]
+      ]);
+      showToast(t("groupDeleted"), "info");
+      await loadAllData();
+    } catch (e) {
+      console.error("Error deleting group:", e);
+    }
+  }
+
   // src/main.js
   Object.assign(window, {
     addComment,
@@ -5683,6 +6132,7 @@
     closeAttachmentViewer,
     closeAutomationModal,
     closeConfirmModal,
+    closeDependencyTaskOptions,
     closeModal,
     closeModalForce,
     closeNotifications,
@@ -8347,86 +8797,6 @@
       btn.textContent = on ? "\u2199" : "\u26F6";
     }
   }
-  function renderTeamView() {
-    renderUsersList();
-    renderGroupsList();
-    renderCategoriesList();
-  }
-  function renderUsersList() {
-    var container = document.getElementById("users-list");
-    if (!container) return;
-    var displayedUsers = state.currentFilterRole ? state.users.filter(function(u2) {
-      return userMatchesRole(u2, state.currentFilterRole);
-    }) : state.users;
-    if (displayedUsers.length === 0) {
-      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noUsers") + "</div>";
-      return;
-    }
-    var html = '<table class="data-table"><thead><tr>';
-    html += "<th>" + t("fieldName") + "</th>";
-    html += "<th>" + t("fieldEmail") + "</th>";
-    html += "<th>" + t("fieldRole") + "</th>";
-    html += "<th>" + t("fieldGroup") + "</th>";
-    html += "<th>" + t("colActions") + "</th>";
-    html += "</tr></thead><tbody>";
-    for (var i = 0; i < displayedUsers.length; i++) {
-      var u = displayedUsers[i];
-      var roleText = userRoleDisplay(u) ? userRoleDisplay(u).split(",").map(function(r) {
-        return roleLabel(r.trim());
-      }).join(", ") : "";
-      var firstRole = getUserRoles(u)[0] || "member";
-      var roleBg = firstRole === "admin" ? "#fef2f2;color:#dc2626" : firstRole === "viewer" ? "#f1f5f9;color:#64748b" : "#eff6ff;color:#1e40af";
-      html += "<tr>";
-      html += '<td style="font-weight:700;">\u{1F464} ' + sanitize(u.Name) + "</td>";
-      html += "<td>" + sanitize(u.Email) + "</td>";
-      html += '<td><span style="padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;background:' + roleBg + '">' + sanitize(roleText) + "</span></td>";
-      html += "<td>" + (u.Group_Name ? '<span class="assignee-chip">\u{1F465} ' + sanitize(u.Group_Name) + "</span>" : "--") + "</td>";
-      html += '<td><button class="btn-icon" onclick="openEditUserModal(' + u.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
-      html += '<button class="btn-icon" onclick="deleteUser(' + u.id + ')">\u{1F5D1}\uFE0F</button></td>';
-      html += "</tr>";
-    }
-    html += "</tbody></table>";
-    container.innerHTML = html;
-  }
-  function renderGroupsList() {
-    var container = document.getElementById("groups-list");
-    if (!container) return;
-    if (state.groups.length === 0) {
-      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noGroups") + "</div>";
-      return;
-    }
-    var html = "";
-    for (var i = 0; i < state.groups.length; i++) {
-      var g = state.groups[i];
-      var memberCount = state.users.filter(function(u) {
-        return u.Group_Name === g.Name;
-      }).length;
-      var memberNames = state.users.filter(function(u) {
-        return u.Group_Name === g.Name;
-      }).map(function(u) {
-        return u.Name || u.Email;
-      });
-      html += '<div class="template-card">';
-      html += '<div class="template-card-info">';
-      html += "<h4>\u{1F465} " + sanitize(g.Name) + "</h4>";
-      html += '<div class="template-meta">';
-      html += memberCount + " " + t("members");
-      if (g.Description) html += " \u2022 " + sanitize(g.Description);
-      html += "</div>";
-      if (memberNames.length > 0) {
-        html += '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">';
-        for (var j = 0; j < memberNames.length; j++) {
-          html += '<span class="assignee-chip">\u{1F464} ' + sanitize(memberNames[j]) + "</span>";
-        }
-        html += "</div>";
-      }
-      html += "</div>";
-      html += '<button class="btn-icon" onclick="openEditGroupModal(' + g.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
-      html += '<button class="btn-icon" onclick="deleteGroup(' + g.id + ')">\u{1F5D1}\uFE0F</button>';
-      html += "</div>";
-    }
-    container.innerHTML = html;
-  }
   function renderCategoriesList() {
     var container = document.getElementById("categories-list");
     if (!container) return;
@@ -8529,373 +8899,6 @@
       renderSettingsCategoriesList();
     } catch (e) {
       console.error("Error deleting category:", e);
-    }
-  }
-  async function getRoleChoicesFromGrist() {
-    var roleSet = {};
-    var hasGristChoices = false;
-    try {
-      var roleColName = getColumnName("users", "role");
-      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
-      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
-      var tableRowId = null;
-      if (tablesData && tablesData.id && tablesData.tableId) {
-        for (var i = 0; i < tablesData.id.length; i++) {
-          if (tablesData.tableId[i] === state.USERS_TABLE) {
-            tableRowId = tablesData.id[i];
-            break;
-          }
-        }
-      }
-      if (tableRowId !== null && columnsData && columnsData.id) {
-        for (var j = 0; j < columnsData.id.length; j++) {
-          if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
-            var wo = columnsData.widgetOptions[j];
-            if (wo) {
-              try {
-                var opts = JSON.parse(wo);
-                if (opts.choices && Array.isArray(opts.choices) && opts.choices.length > 0) {
-                  opts.choices.forEach(function(c) {
-                    roleSet[c] = true;
-                  });
-                  hasGristChoices = true;
-                }
-              } catch (e) {
-              }
-            }
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      console.log("Could not fetch role choices from Grist metadata:", e);
-    }
-    if (!hasGristChoices) {
-      ["admin", "member", "viewer"].forEach(function(r) {
-        roleSet[r] = true;
-      });
-    }
-    state.users.forEach(function(u) {
-      getUserRoles(u).forEach(function(r) {
-        if (r) roleSet[r] = true;
-      });
-    });
-    return Object.keys(roleSet).sort();
-  }
-  var _manageRolesState = { choices: [] };
-  async function openManageRolesModal() {
-    var choices = await getRoleChoicesFromGrist();
-    _manageRolesState.choices = choices.slice();
-    renderManageRolesModal();
-  }
-  function renderManageRolesModal() {
-    var choices = _manageRolesState.choices;
-    var usage = {};
-    state.users.forEach(function(u) {
-      getUserRoles(u).forEach(function(r2) {
-        if (r2) usage[r2] = (usage[r2] || 0) + 1;
-      });
-    });
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("manageRolesTitle") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<p style="color:#64748b;font-size:13px;margin:0 0 12px 0;">' + t("manageRolesSubtitle") + "</p>";
-    html += '<div class="settings-items">';
-    if (choices.length === 0) {
-      html += '<div style="text-align:center;color:#94a3b8;padding:20px;">--</div>';
-    } else {
-      for (var i = 0; i < choices.length; i++) {
-        var r = choices[i];
-        var count = usage[r] || 0;
-        html += '<div class="settings-item">';
-        html += '<div class="settings-item-info">';
-        html += "<strong>" + sanitize(roleLabel(r)) + "</strong>";
-        html += '<span class="settings-item-meta">' + count + " " + (currentLang === "fr" ? "utilisateur(s)" : "user(s)") + "</span>";
-        html += "</div>";
-        html += '<div class="settings-item-actions">';
-        html += '<button class="btn-icon" onclick="removeRoleChoice(' + i + ')" title="' + t("confirmDeleteRole") + '">\u{1F5D1}\uFE0F</button>';
-        html += "</div>";
-        html += "</div>";
-      }
-    }
-    html += "</div>";
-    html += '<div style="display:flex;gap:8px;margin-top:16px;">';
-    html += '<input type="text" id="new-role-name" placeholder="' + t("newRolePlaceholder") + `" style="flex:1;" onkeydown="if(event.key==='Enter'){addRoleChoice();}" />`;
-    html += '<button class="btn btn-primary btn-sm" onclick="addRoleChoice()">+ ' + t("addRole") + "</button>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="saveRoleChoices()">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function addRoleChoice() {
-    var input = document.getElementById("new-role-name");
-    var name = (input.value || "").trim();
-    if (!name) return;
-    if (_manageRolesState.choices.indexOf(name) !== -1) {
-      showToast(currentLang === "fr" ? "Ce r\xF4le existe d\xE9j\xE0" : "Role already exists", "error");
-      return;
-    }
-    _manageRolesState.choices.push(name);
-    renderManageRolesModal();
-  }
-  function removeRoleChoice(index) {
-    var role = _manageRolesState.choices[index];
-    var inUse = state.users.some(function(u) {
-      return userMatchesRole(u, role);
-    });
-    if (inUse) {
-      if (!confirm(t("cannotDeleteUsedRole") + ". " + (currentLang === "fr" ? "Continuer ?" : "Continue?"))) {
-        return;
-      }
-    } else if (!confirm(t("confirmDeleteRole"))) {
-      return;
-    }
-    _manageRolesState.choices.splice(index, 1);
-    renderManageRolesModal();
-  }
-  async function saveRoleChoices() {
-    try {
-      var roleColName = getColumnName("users", "role");
-      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
-      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
-      var tableRowId = null;
-      for (var i = 0; i < tablesData.id.length; i++) {
-        if (tablesData.tableId[i] === state.USERS_TABLE) {
-          tableRowId = tablesData.id[i];
-          break;
-        }
-      }
-      if (tableRowId === null) throw new Error("Table not found");
-      var existingOpts = {};
-      for (var j = 0; j < columnsData.id.length; j++) {
-        if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
-          var wo = columnsData.widgetOptions[j];
-          if (wo) {
-            try {
-              existingOpts = JSON.parse(wo);
-            } catch (e) {
-            }
-          }
-          break;
-        }
-      }
-      existingOpts.choices = _manageRolesState.choices;
-      if (!existingOpts.widget) existingOpts.widget = "TextBox";
-      await grist.docApi.applyUserActions([
-        ["ModifyColumn", state.USERS_TABLE, roleColName, { widgetOptions: JSON.stringify(existingOpts) }]
-      ]);
-      showToast(t("rolesUpdated"), "success");
-      closeModalForce();
-    } catch (e) {
-      console.error("Error saving roles:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function openEditUserModal(userId) {
-    var user = state.users.find(function(u) {
-      return u.id === userId;
-    });
-    if (!user) return;
-    var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      var sel = state.groups[i].Name === user.Group_Name ? " selected" : "";
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + ">" + sanitize(state.groups[i].Name) + "</option>";
-    }
-    var roleChoices = await getRoleChoicesFromGrist();
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(user.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" value="' + sanitize(user.Name) + '" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" value="' + sanitize(user.Email) + '" /></div>';
-    html += '<div class="form-row">';
-    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
-    if (user.Role && roleChoices.indexOf(user.Role) === -1) {
-      html += '<option value="' + sanitize(user.Role) + '" selected>' + sanitize(roleLabel(user.Role)) + "</option>";
-    }
-    for (var i = 0; i < roleChoices.length; i++) {
-      var r = roleChoices[i];
-      var sel = user.Role === r ? " selected" : "";
-      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
-    }
-    html += "</select></div>";
-    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="updateUser(' + userId + ')">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function openEditGroupModal(groupId) {
-    var group = state.groups.find(function(g) {
-      return g.id === groupId;
-    });
-    if (!group) return;
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(group.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" value="' + sanitize(group.Name) + '" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc">' + sanitize(group.Description || "") + "</textarea></div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="updateGroup(' + groupId + ')">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  async function updateUser(userId) {
-    var name = document.getElementById("user-name").value.trim();
-    if (!name) return;
-    var record = {};
-    record[getColumnName("users", "name")] = name;
-    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
-    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
-    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.USERS_TABLE, userId, record]
-      ]);
-      showToast(t("taskUpdated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error updating user:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function updateGroup(groupId) {
-    var name = document.getElementById("group-name").value.trim();
-    if (!name) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.GROUPS_TABLE, groupId, {
-          Name: name,
-          Description: document.getElementById("group-desc").value.trim()
-        }]
-      ]);
-      showToast(t("taskUpdated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error updating group:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function openNewUserModal() {
-    var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + "</option>";
-    }
-    var roleChoices = await getRoleChoicesFromGrist();
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("modalNewUser") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" /></div>';
-    html += '<div class="form-row">';
-    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
-    for (var i = 0; i < roleChoices.length; i++) {
-      var r = roleChoices[i];
-      var sel = r === "member" ? " selected" : "";
-      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
-    }
-    html += "</select></div>";
-    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="createUser()">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function openNewGroupModal() {
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("modalNewGroup") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc"></textarea></div>';
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="createGroup()">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  async function createUser() {
-    var name = document.getElementById("user-name").value.trim();
-    if (!name) return;
-    var record = {};
-    record[getColumnName("users", "name")] = name;
-    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
-    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
-    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.USERS_TABLE, null, record]
-      ]);
-      showToast(t("userCreated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error creating user:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function createGroup() {
-    var name = document.getElementById("group-name").value.trim();
-    if (!name) return;
-    var record = {
-      Name: name,
-      Description: document.getElementById("group-desc").value.trim()
-    };
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.GROUPS_TABLE, null, record]
-      ]);
-      showToast(t("groupCreated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error creating group:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function deleteUser(userId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(t("confirmDeleteUser"), currentLang === "fr" ? "Supprimer l'utilisateur" : "Delete user");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.USERS_TABLE, userId]
-      ]);
-      showToast(t("userDeleted"), "info");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error deleting user:", e);
-    }
-  }
-  async function deleteGroup(groupId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(t("confirmDeleteGroup"), currentLang === "fr" ? "Supprimer le groupe" : "Delete group");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.GROUPS_TABLE, groupId]
-      ]);
-      showToast(t("groupDeleted"), "info");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error deleting group:", e);
     }
   }
   function openNewTaskModal(defaultStatus) {
