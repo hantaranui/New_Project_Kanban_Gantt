@@ -2,9 +2,7 @@ import { t, currentLang } from '../i18n.js';
 import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
 import { myProjectIdSet } from './filters.js';
-// Temporary backwards imports: shouldLimitToMyProjects/taskConcernsCurrentUser
-// aren't extracted yet (permissions domain).
-import { shouldLimitToMyProjects, taskConcernsCurrentUser } from '../main.js';
+import { shouldLimitToMyProjects, taskConcernsCurrentUser } from './permissions.js';
 
 export function getTaskDependencies(taskId) {
   // Returns tasks that this task depends on (blockers)

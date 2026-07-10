@@ -1,15 +1,13 @@
 import { t, currentLang } from '../i18n.js';
 import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
-// Temporary backwards imports: none of these are extracted yet
-// (shouldLimitToMyProjects/taskConcernsCurrentUser/canSeeAllProjects/getUserRoles/
-// userMatchesRole -> permissions domain; refreshAllViews stays in main.js - it's
-// the cross-view orchestrator and still needs renderKanbanView/renderGanttView/
-// renderTeamView, none extracted yet).
 import {
-  shouldLimitToMyProjects, taskConcernsCurrentUser, canSeeAllProjects,
-  getUserRoles, userMatchesRole, refreshAllViews
-} from '../main.js';
+  shouldLimitToMyProjects, taskConcernsCurrentUser, canSeeAllProjects, getUserRoles, userMatchesRole
+} from './permissions.js';
+// Temporary backwards import: refreshAllViews stays in main.js - it's the
+// cross-view orchestrator and still needs renderKanbanView/renderGanttView/
+// renderTeamView, none extracted yet.
+import { refreshAllViews } from '../main.js';
 
 export function roleLabel(role) {
   if (role === 'admin') return t('roleAdmin');
