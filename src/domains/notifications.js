@@ -32,36 +32,20 @@ export function getMyNotifications() {
     .sort(function(a, b) { return (b.Created_At || 0) - (a.Created_At || 0); });
 }
 
+// Boîte de réception, pas un journal : une notification qui existe est en
+// attente par définition (elle est supprimée dès qu'on clique dessus).
 export function getUnreadCount() {
-	return getMyNotifications().filter(function(n) { return !n.Is_Read; }).length;
-}
-
-export function getComputedAlertKey(task, type) {
-	return 'computed:' + type + ':' + Number(task && task.Due_Date || 0);
-}
-
-export function isComputedAlertRead(taskId, type) {
-	var email = (state.currentUserEmail || '').toLowerCase().trim();
-	var task = state.tasks.find(function(item) { return Number(item.id) === Number(taskId); });
-	var alertKey = getComputedAlertKey(task, type);
-	return state.pmNotifications.some(function(n) {
-	  return Number(n.Task_Id) === Number(taskId) && n.Type === type && n.Is_Read &&
-	    (n.User_Email || '').toLowerCase().trim() === email && n.Rule_Id === alertKey;
-	});
-}
-
-export function getUnreadComputedTasks(tasksList, type) {
-	return tasksList.filter(function(task) { return !isComputedAlertRead(task.id, type); });
+  return getMyNotifications().length;
 }
 
 export function updateNotificationBadge() {
-  var unread = getUnreadCount();
+  var pending = getUnreadCount();
   var hasOverdueRule = state.automationRules.some(function(r) { return r.enabled && r.trigger === 'overdue'; });
   var hasApproachingRule = state.automationRules.some(function(r) { return r.enabled && r.trigger === 'approaching_deadline'; });
   var computed = 0;
-	if (!hasOverdueRule) computed += getUnreadComputedTasks(getOverdueTasks(), 'computed_overdue').length;
-	if (!hasApproachingRule) computed += getUnreadComputedTasks(getUpcomingTasks(), 'computed_upcoming').length;
-  var total = unread + computed;
+  if (!hasOverdueRule) computed += getOverdueTasks().length;
+  if (!hasApproachingRule) computed += getUpcomingTasks().length;
+  var total = pending + computed;
   var badge = document.getElementById('notif-badge');
   if (badge) {
     badge.textContent = total;
@@ -71,31 +55,28 @@ export function updateNotificationBadge() {
 
 export function showNotifications() {
   var myNotifs = getMyNotifications();
-  var unread = myNotifs.filter(function(n) { return !n.Is_Read; });
-  var readRecent = myNotifs.filter(function(n) { return n.Is_Read; }).slice(0, 10);
   var hasOverdueRule = state.automationRules.some(function(r) { return r.enabled && r.trigger === 'overdue'; });
   var hasApproachingRule = state.automationRules.some(function(r) { return r.enabled && r.trigger === 'approaching_deadline'; });
-	var overdue = !hasOverdueRule ? getUnreadComputedTasks(getOverdueTasks(), 'computed_overdue') : [];
-	var upcoming = !hasApproachingRule ? getUnreadComputedTasks(getUpcomingTasks(), 'computed_upcoming') : [];
+  var overdue = !hasOverdueRule ? getOverdueTasks() : [];
+  var upcoming = !hasApproachingRule ? getUpcomingTasks() : [];
 
   var html = '<div class="notif-dropdown" id="notif-dropdown">';
   html += '<div class="notif-header" style="display:flex;justify-content:space-between;align-items:center;">';
   html += '<span>🔔 ' + t('notifications') + '</span>';
-  if (unread.length > 0) {
-    html += '<button onclick="event.stopPropagation();markAllNotificationsRead();" style="background:#3b82f6;color:white;border:none;border-radius:4px;font-size:10px;padding:3px 8px;cursor:pointer;">' + t('markAllRead') + '</button>';
+  if (myNotifs.length > 0) {
+    html += '<button onclick="event.stopPropagation();dismissAllNotifications();" style="background:#3b82f6;color:white;border:none;border-radius:4px;font-size:10px;padding:3px 8px;cursor:pointer;">' + t('markAllRead') + '</button>';
   }
   html += '</div>';
 
-  if (unread.length > 0) {
-    html += '<div style="padding:6px 16px;font-size:10px;color:#3b82f6;font-weight:700;">🔵 ' + unread.length + ' ' + t('notifUnread') + '</div>';
-    for (var ui = 0; ui < unread.length; ui++) {
-      var n = unread[ui];
-	      html += '<div class="notif-item" style="display:flex;align-items:center;gap:6px;font-weight:600;" onclick="openNotification(' + n.id + ', ' + n.Task_Id + ');">';
+  if (myNotifs.length > 0) {
+    for (var ui = 0; ui < myNotifs.length; ui++) {
+      var n = myNotifs[ui];
+      html += '<div class="notif-item" style="display:flex;align-items:center;gap:6px;font-weight:600;" onclick="openNotification(' + n.id + ', ' + n.Task_Id + ');">';
       html += '<div style="flex:1;">';
       html += '<div class="notif-item-title">' + sanitize(n.Message) + '</div>';
       html += '<div class="notif-item-date">' + formatDate(n.Created_At) + '</div>';
       html += '</div>';
-      html += '<button onclick="event.stopPropagation();markNotificationRead(' + n.id + ');" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:14px;" title="' + t('markAsRead') + '">✓</button>';
+      html += '<button onclick="event.stopPropagation();dismissNotification(' + n.id + ');" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:14px;" title="' + t('markAsRead') + '">✓</button>';
       html += '</div>';
     }
   }
@@ -103,7 +84,7 @@ export function showNotifications() {
   if (overdue.length > 0) {
     html += '<div style="padding:6px 16px;font-size:10px;color:#ef4444;font-weight:700;">⚠️ ' + overdue.length + ' ' + t('overdueTasksAlert') + '</div>';
     for (var oi = 0; oi < overdue.length; oi++) {
-	      html += '<div class="notif-item overdue" onclick="openComputedNotification(' + overdue[oi].id + ', \'computed_overdue\');">';
+      html += '<div class="notif-item overdue" onclick="openEditTaskModal(' + overdue[oi].id + '); closeNotifications();">';
       html += '<div class="notif-item-title">' + sanitize(overdue[oi].Title) + '</div>';
       html += '<div class="notif-item-date">📅 ' + formatDate(overdue[oi].Due_Date) + '</div>';
       html += '</div>';
@@ -112,25 +93,14 @@ export function showNotifications() {
   if (upcoming.length > 0) {
     html += '<div style="padding:6px 16px;font-size:10px;color:#f59e0b;font-weight:700;">📅 ' + upcoming.length + ' ' + t('upcomingTasksAlert') + '</div>';
     for (var upi = 0; upi < upcoming.length; upi++) {
-	      html += '<div class="notif-item upcoming" onclick="openComputedNotification(' + upcoming[upi].id + ', \'computed_upcoming\');">';
+      html += '<div class="notif-item upcoming" onclick="openEditTaskModal(' + upcoming[upi].id + '); closeNotifications();">';
       html += '<div class="notif-item-title">' + sanitize(upcoming[upi].Title) + '</div>';
       html += '<div class="notif-item-date">📅 ' + formatDate(upcoming[upi].Due_Date) + '</div>';
       html += '</div>';
     }
   }
 
-  if (readRecent.length > 0) {
-    html += '<div style="padding:6px 16px;font-size:10px;color:#94a3b8;font-weight:700;border-top:1px solid #e2e8f0;">📋 ' + (currentLang === 'fr' ? 'Historique' : 'History') + '</div>';
-    for (var ri = 0; ri < readRecent.length; ri++) {
-      var rn = readRecent[ri];
-      html += '<div class="notif-item" style="opacity:0.5;" onclick="openEditTaskModal(' + rn.Task_Id + '); closeNotifications();">';
-      html += '<div class="notif-item-title">' + sanitize(rn.Message) + '</div>';
-      html += '<div class="notif-item-date">' + formatDate(rn.Created_At) + '</div>';
-      html += '</div>';
-    }
-  }
-
-  if (unread.length === 0 && overdue.length === 0 && upcoming.length === 0 && readRecent.length === 0) {
+  if (myNotifs.length === 0 && overdue.length === 0 && upcoming.length === 0) {
     html += '<div class="notif-empty">' + t('noAlerts') + '</div>';
   }
   html += '</div>';
@@ -156,65 +126,35 @@ export function closeNotificationsOnOutsideClick(e) {
 
 export async function openNotification(notifId, taskId) {
 	closeNotifications();
-	await markNotificationRead(notifId, false);
+	await dismissNotification(notifId, false);
 	openEditTaskModal(taskId);
 }
 
-export async function openComputedNotification(taskId, type) {
-	closeNotifications();
-	var task = state.tasks.find(function(item) { return Number(item.id) === Number(taskId); });
-	if (!task || !state.currentUserEmail || isComputedAlertRead(taskId, type)) {
-	  openEditTaskModal(taskId);
-	  return;
-	}
-	var messagePrefix = type === 'computed_overdue'
-	  ? (currentLang === 'fr' ? 'Tâche en retard : ' : 'Overdue task: ')
-	  : (currentLang === 'fr' ? 'Échéance proche : ' : 'Upcoming deadline: ');
-	var record = {
-	  Task_Id: taskId,
-	  User_Email: state.currentUserEmail,
-	  Type: type,
-	  Message: messagePrefix + (task.Title || ''),
-	  Is_Read: true,
-	  Created_At: Math.floor(Date.now() / 1000),
-	  Rule_Id: getComputedAlertKey(task, type)
-	};
+// Une notification est une chose à traiter, pas un log : on la supprime dès
+// qu'elle a été vue (clic individuel ou "tout marquer").
+export async function dismissNotification(notifId, reopenDropdown) {
 	try {
-	  var result = await grist.docApi.applyUserActions([['AddRecord', state.NOTIFICATIONS_TABLE, null, record]]);
-	  record.id = (result && result.retValues && result.retValues[0]) ||
-	    (state.pmNotifications.length ? Math.max.apply(null, state.pmNotifications.map(function(n) { return n.id; })) + 1 : 1);
-	  state.pmNotifications.push(record);
-	  updateNotificationBadge();
-	} catch (e) {
-	  console.error('[GristPM] Error dismissing computed notification:', e);
-	}
-	openEditTaskModal(taskId);
-}
-
-export async function markNotificationRead(notifId, reopenDropdown) {
-	try {
-	  await grist.docApi.applyUserActions([['UpdateRecord', state.NOTIFICATIONS_TABLE, notifId, { Is_Read: true }]]);
-	  var n = state.pmNotifications.find(function(x) { return x.id === notifId; });
-	  if (n) n.Is_Read = true;
+	  await grist.docApi.applyUserActions([['RemoveRecord', state.NOTIFICATIONS_TABLE, notifId]]);
+	  state.pmNotifications = state.pmNotifications.filter(function(n) { return n.id !== notifId; });
 	  updateNotificationBadge();
 	  if (reopenDropdown !== false) showNotifications();
 	} catch (e) {
-	  console.error('[GristPM] Error marking notification read:', e);
+	  console.error('[GristPM] Error dismissing notification:', e);
 	}
 }
 
-export async function markAllNotificationsRead() {
-  var myUnread = getMyNotifications().filter(function(n) { return !n.Is_Read; });
-  if (myUnread.length === 0) return;
+export async function dismissAllNotifications() {
+  var mine = getMyNotifications();
+  if (mine.length === 0) return;
   try {
-    var ids = myUnread.map(function(n) { return n.id; });
-    var flags = ids.map(function() { return true; });
-    await grist.docApi.applyUserActions([['BulkUpdateRecord', state.NOTIFICATIONS_TABLE, ids, { Is_Read: flags }]]);
-    myUnread.forEach(function(n) { n.Is_Read = true; });
+    var ids = mine.map(function(n) { return n.id; });
+    var actions = ids.map(function(id) { return ['RemoveRecord', state.NOTIFICATIONS_TABLE, id]; });
+    await grist.docApi.applyUserActions(actions);
+    state.pmNotifications = state.pmNotifications.filter(function(n) { return ids.indexOf(n.id) === -1; });
     updateNotificationBadge();
     showNotifications();
   } catch (e) {
-    console.error('[GristPM] Error marking all read:', e);
+    console.error('[GristPM] Error dismissing all notifications:', e);
   }
 }
 
@@ -229,7 +169,6 @@ export async function createNotification(taskId, userEmail, type, message, ruleI
 	    User_Email: resolvedEmail,
       Type: type,
       Message: message,
-      Is_Read: false,
       Created_At: Math.floor(Date.now() / 1000),
       Rule_Id: ruleId || ''
     };
@@ -286,12 +225,13 @@ export async function notifyConcernedUsers(taskId, emails, eventType, title) {
 	var messages = {
 	  task_assigned: currentLang === 'fr' ? 'Une tâche vous a été assignée : ' : 'A task was assigned to you: ',
 	  task_completed: currentLang === 'fr' ? 'Tâche terminée : ' : 'Task completed: ',
-	  task_updated: currentLang === 'fr' ? 'Tâche modifiée : ' : 'Task updated: '
+	  task_updated: currentLang === 'fr' ? 'Tâche modifiée : ' : 'Task updated: ',
+	  comment_added: currentLang === 'fr' ? 'Nouveau commentaire sur : ' : 'New comment on: '
 	};
 	var msg = (messages[eventType] || messages.task_updated) + title;
 	var now = Math.floor(Date.now() / 1000);
   var actions = recipients.map(function(email) {
-    return ['AddRecord', state.NOTIFICATIONS_TABLE, null, { Task_Id: taskId, User_Email: email, Type: eventType, Message: msg, Is_Read: false, Created_At: now, Rule_Id: 'builtin' }];
+    return ['AddRecord', state.NOTIFICATIONS_TABLE, null, { Task_Id: taskId, User_Email: email, Type: eventType, Message: msg, Created_At: now, Rule_Id: 'builtin' }];
   });
   try { await grist.docApi.applyUserActions(actions); } catch (e) { console.error('[GristPM] notifyConcernedUsers', e); }
 }
@@ -392,24 +332,5 @@ export async function checkTimeBasedAutomations() {
     }
   }
   updateNotificationBadge();
-}
-
-export async function cleanupOldNotifications() {
-  var now = Math.floor(Date.now() / 1000);
-  var thirtyDays = 30 * 86400;
-  var ninetyDays = 90 * 86400;
-  var toDelete = state.pmNotifications.filter(function(n) {
-    var age = now - (n.Created_At || 0);
-    return (n.Is_Read && age > thirtyDays) || age > ninetyDays;
-  });
-  if (toDelete.length === 0) return;
-  try {
-    var ids = toDelete.map(function(n) { return n.id; });
-    var actions = ids.map(function(id) { return ['RemoveRecord', state.NOTIFICATIONS_TABLE, id]; });
-    await grist.docApi.applyUserActions(actions);
-    state.pmNotifications = state.pmNotifications.filter(function(n) { return ids.indexOf(n.id) === -1; });
-  } catch (e) {
-    console.log('[GristPM] Notification cleanup skipped:', e.message);
-  }
 }
 

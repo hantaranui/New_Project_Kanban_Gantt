@@ -288,7 +288,6 @@ export async function loadAllData() {
           User_Email: notifData.User_Email ? notifData.User_Email[ni] : '',
           Type: notifData.Type ? notifData.Type[ni] : '',
           Message: notifData.Message ? notifData.Message[ni] : '',
-          Is_Read: notifData.Is_Read ? notifData.Is_Read[ni] : false,
           Created_At: notifData.Created_At ? notifData.Created_At[ni] : null,
           Rule_Id: notifData.Rule_Id ? notifData.Rule_Id[ni] : ''
         });

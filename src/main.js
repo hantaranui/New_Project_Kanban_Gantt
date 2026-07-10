@@ -68,12 +68,12 @@ import {
   openColumnMappingModal, detectTaskColumns, detectUserColumns, detectProjectColumns, saveColumnMapping
 } from './domains/column-mapping-ui.js';
 import {
-  getOverdueTasks, getUpcomingTasks, getMyNotifications, getUnreadCount, getComputedAlertKey,
-  isComputedAlertRead, getUnreadComputedTasks, updateNotificationBadge, showNotifications,
-  closeNotifications, closeNotificationsOnOutsideClick, openNotification, openComputedNotification,
-  markNotificationRead, markAllNotificationsRead, createNotification, splitRecipientValues,
+  getOverdueTasks, getUpcomingTasks, getMyNotifications, getUnreadCount,
+  updateNotificationBadge, showNotifications,
+  closeNotifications, closeNotificationsOnOutsideClick, openNotification,
+  dismissNotification, dismissAllNotifications, createNotification, splitRecipientValues,
   resolveUserEmail, getProjectLead, notifyTaskCompleted, notifyConcernedUsers, resolveRecipients,
-  renderAutoMessage, evaluateAutomationRules, checkTimeBasedAutomations, cleanupOldNotifications
+  renderAutoMessage, evaluateAutomationRules, checkTimeBasedAutomations
 } from './domains/notifications.js';
 import {
   renderTeamView, renderUsersList, renderGroupsList, getRoleChoicesFromGrist, openManageRolesModal,
@@ -132,13 +132,14 @@ Object.assign(window, {
   closeTagsModal, collapseAllSubtasks, createGroup, createTask, createUser,
   deleteAttachment, deleteAutomationRule, deleteCategory, deleteComment, deleteGroup,
   deleteProject, deleteSubtask, deleteTag, deleteTask, deleteUser,
-  detectProjectColumns, detectTaskColumns, detectUserColumns, downloadAttachment, editCategory, editKanbanStatus,
+  detectProjectColumns, detectTaskColumns, detectUserColumns, dismissNotification, dismissAllNotifications,
+  downloadAttachment, editCategory, editKanbanStatus,
   editProject, editTag, expandActivityLog, expandAllSubtasks, exportGanttPdf, filterComboSearch, filterProjectDropdown,
   filterStAssignees, focusGanttTask, ganttCollapseAll, ganttExpandAll, ganttNav, ganttToday,
-  generateOccurrences, generateSubtaskOccurrences, hideGanttDependencyTooltip, markAllNotificationsRead, markNotificationRead, onAutoActionChange,
+  generateOccurrences, generateSubtaskOccurrences, hideGanttDependencyTooltip, onAutoActionChange,
   onAutoTriggerChange, onCalendarDayClick, onCalendarDragOver, onCalendarDrop, onCalendarTaskDragStart, onDragLeave,
   onDragOver, onDragStart, onDrop, openAddAutomationRuleModal, openAttachmentInNewTab, openCardAttachmentsModal,
-  openCardCommentsModal, openCardSubtasksModal, openCategoriesModal, openColumnMappingModal, openComputedNotification,
+  openCardCommentsModal, openCardSubtasksModal, openCategoriesModal, openColumnMappingModal,
   openDependencyTaskOptions, openEditAutomationRuleModal, openEditGroupModal, openEditTaskModal, openEditUserModal, openManageRolesModal,
   openNewGroupModal, openNewTaskForDay, openNewTaskModal, openNewUserModal, openNotification,
   openProjectModal, openProjectModalForEdit, openSubtaskDepModal, openTagsModal, pauseTimer, quickAction,
@@ -547,7 +548,6 @@ if (!isInsideGrist()) {
     refreshAllViews();
     updateNotificationBadge();
     await checkTimeBasedAutomations();
-    await cleanupOldNotifications();
     updateNotificationBadge();
     restoreFilters(); // conserver les filtres en changeant de page / au rechargement
     try { var _sp = localStorage.getItem('pm-current-project'); if (_sp) state.currentProjectId = parseInt(_sp) || null; } catch (e) {}

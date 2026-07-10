@@ -568,7 +568,6 @@ export async function ensureTables() {
           { id: 'User_Email', type: 'Text' },
           { id: 'Type', type: 'Text' },
           { id: 'Message', type: 'Text' },
-          { id: 'Is_Read', type: 'Bool' },
           { id: 'Created_At', type: 'Date' },
           { id: 'Rule_Id', type: 'Text' }
         ]]

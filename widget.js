@@ -91,9 +91,8 @@
       overdueTasksAlert: "t\xE2che(s) en retard",
       upcomingTasksAlert: "t\xE2che(s) \xE0 venir (3j)",
       noAlerts: "Aucune alerte",
-      markAllRead: "Tout lu",
-      markAsRead: "Marquer comme lu",
-      notifUnread: "non lu(s)",
+      markAllRead: "Tout effacer",
+      markAsRead: "Effacer",
       automationTitle: "Automatisations",
       automationSubtitle: "Actions automatiques quand les t\xE2ches changent",
       addRule: "Ajouter une r\xE8gle",
@@ -1776,30 +1775,10 @@
     });
   }
   function getUnreadCount() {
-    return getMyNotifications().filter(function(n) {
-      return !n.Is_Read;
-    }).length;
-  }
-  function getComputedAlertKey(task, type) {
-    return "computed:" + type + ":" + Number(task && task.Due_Date || 0);
-  }
-  function isComputedAlertRead(taskId, type) {
-    var email = (state.currentUserEmail || "").toLowerCase().trim();
-    var task = state.tasks.find(function(item) {
-      return Number(item.id) === Number(taskId);
-    });
-    var alertKey = getComputedAlertKey(task, type);
-    return state.pmNotifications.some(function(n) {
-      return Number(n.Task_Id) === Number(taskId) && n.Type === type && n.Is_Read && (n.User_Email || "").toLowerCase().trim() === email && n.Rule_Id === alertKey;
-    });
-  }
-  function getUnreadComputedTasks(tasksList, type) {
-    return tasksList.filter(function(task) {
-      return !isComputedAlertRead(task.id, type);
-    });
+    return getMyNotifications().length;
   }
   function updateNotificationBadge() {
-    var unread = getUnreadCount();
+    var pending = getUnreadCount();
     var hasOverdueRule = state.automationRules.some(function(r) {
       return r.enabled && r.trigger === "overdue";
     });
@@ -1807,9 +1786,9 @@
       return r.enabled && r.trigger === "approaching_deadline";
     });
     var computed = 0;
-    if (!hasOverdueRule) computed += getUnreadComputedTasks(getOverdueTasks(), "computed_overdue").length;
-    if (!hasApproachingRule) computed += getUnreadComputedTasks(getUpcomingTasks(), "computed_upcoming").length;
-    var total = unread + computed;
+    if (!hasOverdueRule) computed += getOverdueTasks().length;
+    if (!hasApproachingRule) computed += getUpcomingTasks().length;
+    var total = pending + computed;
     var badge = document.getElementById("notif-badge");
     if (badge) {
       badge.textContent = total;
@@ -1818,44 +1797,37 @@
   }
   function showNotifications() {
     var myNotifs = getMyNotifications();
-    var unread = myNotifs.filter(function(n2) {
-      return !n2.Is_Read;
-    });
-    var readRecent = myNotifs.filter(function(n2) {
-      return n2.Is_Read;
-    }).slice(0, 10);
     var hasOverdueRule = state.automationRules.some(function(r) {
       return r.enabled && r.trigger === "overdue";
     });
     var hasApproachingRule = state.automationRules.some(function(r) {
       return r.enabled && r.trigger === "approaching_deadline";
     });
-    var overdue = !hasOverdueRule ? getUnreadComputedTasks(getOverdueTasks(), "computed_overdue") : [];
-    var upcoming = !hasApproachingRule ? getUnreadComputedTasks(getUpcomingTasks(), "computed_upcoming") : [];
+    var overdue = !hasOverdueRule ? getOverdueTasks() : [];
+    var upcoming = !hasApproachingRule ? getUpcomingTasks() : [];
     var html = '<div class="notif-dropdown" id="notif-dropdown">';
     html += '<div class="notif-header" style="display:flex;justify-content:space-between;align-items:center;">';
     html += "<span>\u{1F514} " + t("notifications") + "</span>";
-    if (unread.length > 0) {
-      html += '<button onclick="event.stopPropagation();markAllNotificationsRead();" style="background:#3b82f6;color:white;border:none;border-radius:4px;font-size:10px;padding:3px 8px;cursor:pointer;">' + t("markAllRead") + "</button>";
+    if (myNotifs.length > 0) {
+      html += '<button onclick="event.stopPropagation();dismissAllNotifications();" style="background:#3b82f6;color:white;border:none;border-radius:4px;font-size:10px;padding:3px 8px;cursor:pointer;">' + t("markAllRead") + "</button>";
     }
     html += "</div>";
-    if (unread.length > 0) {
-      html += '<div style="padding:6px 16px;font-size:10px;color:#3b82f6;font-weight:700;">\u{1F535} ' + unread.length + " " + t("notifUnread") + "</div>";
-      for (var ui = 0; ui < unread.length; ui++) {
-        var n = unread[ui];
+    if (myNotifs.length > 0) {
+      for (var ui = 0; ui < myNotifs.length; ui++) {
+        var n = myNotifs[ui];
         html += '<div class="notif-item" style="display:flex;align-items:center;gap:6px;font-weight:600;" onclick="openNotification(' + n.id + ", " + n.Task_Id + ');">';
         html += '<div style="flex:1;">';
         html += '<div class="notif-item-title">' + sanitize(n.Message) + "</div>";
         html += '<div class="notif-item-date">' + formatDate(n.Created_At) + "</div>";
         html += "</div>";
-        html += '<button onclick="event.stopPropagation();markNotificationRead(' + n.id + ');" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:14px;" title="' + t("markAsRead") + '">\u2713</button>';
+        html += '<button onclick="event.stopPropagation();dismissNotification(' + n.id + ');" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:14px;" title="' + t("markAsRead") + '">\u2713</button>';
         html += "</div>";
       }
     }
     if (overdue.length > 0) {
       html += '<div style="padding:6px 16px;font-size:10px;color:#ef4444;font-weight:700;">\u26A0\uFE0F ' + overdue.length + " " + t("overdueTasksAlert") + "</div>";
       for (var oi = 0; oi < overdue.length; oi++) {
-        html += '<div class="notif-item overdue" onclick="openComputedNotification(' + overdue[oi].id + `, 'computed_overdue');">`;
+        html += '<div class="notif-item overdue" onclick="openEditTaskModal(' + overdue[oi].id + '); closeNotifications();">';
         html += '<div class="notif-item-title">' + sanitize(overdue[oi].Title) + "</div>";
         html += '<div class="notif-item-date">\u{1F4C5} ' + formatDate(overdue[oi].Due_Date) + "</div>";
         html += "</div>";
@@ -1864,23 +1836,13 @@
     if (upcoming.length > 0) {
       html += '<div style="padding:6px 16px;font-size:10px;color:#f59e0b;font-weight:700;">\u{1F4C5} ' + upcoming.length + " " + t("upcomingTasksAlert") + "</div>";
       for (var upi = 0; upi < upcoming.length; upi++) {
-        html += '<div class="notif-item upcoming" onclick="openComputedNotification(' + upcoming[upi].id + `, 'computed_upcoming');">`;
+        html += '<div class="notif-item upcoming" onclick="openEditTaskModal(' + upcoming[upi].id + '); closeNotifications();">';
         html += '<div class="notif-item-title">' + sanitize(upcoming[upi].Title) + "</div>";
         html += '<div class="notif-item-date">\u{1F4C5} ' + formatDate(upcoming[upi].Due_Date) + "</div>";
         html += "</div>";
       }
     }
-    if (readRecent.length > 0) {
-      html += '<div style="padding:6px 16px;font-size:10px;color:#94a3b8;font-weight:700;border-top:1px solid #e2e8f0;">\u{1F4CB} ' + (currentLang === "fr" ? "Historique" : "History") + "</div>";
-      for (var ri = 0; ri < readRecent.length; ri++) {
-        var rn = readRecent[ri];
-        html += '<div class="notif-item" style="opacity:0.5;" onclick="openEditTaskModal(' + rn.Task_Id + '); closeNotifications();">';
-        html += '<div class="notif-item-title">' + sanitize(rn.Message) + "</div>";
-        html += '<div class="notif-item-date">' + formatDate(rn.Created_At) + "</div>";
-        html += "</div>";
-      }
-    }
-    if (unread.length === 0 && overdue.length === 0 && upcoming.length === 0 && readRecent.length === 0) {
+    if (myNotifs.length === 0 && overdue.length === 0 && upcoming.length === 0) {
       html += '<div class="notif-empty">' + t("noAlerts") + "</div>";
     }
     html += "</div>";
@@ -1904,73 +1866,39 @@
   }
   async function openNotification(notifId, taskId) {
     closeNotifications();
-    await markNotificationRead(notifId, false);
+    await dismissNotification(notifId, false);
     openEditTaskModal(taskId);
   }
-  async function openComputedNotification(taskId, type) {
-    closeNotifications();
-    var task = state.tasks.find(function(item) {
-      return Number(item.id) === Number(taskId);
-    });
-    if (!task || !state.currentUserEmail || isComputedAlertRead(taskId, type)) {
-      openEditTaskModal(taskId);
-      return;
-    }
-    var messagePrefix = type === "computed_overdue" ? currentLang === "fr" ? "T\xE2che en retard : " : "Overdue task: " : currentLang === "fr" ? "\xC9ch\xE9ance proche : " : "Upcoming deadline: ";
-    var record = {
-      Task_Id: taskId,
-      User_Email: state.currentUserEmail,
-      Type: type,
-      Message: messagePrefix + (task.Title || ""),
-      Is_Read: true,
-      Created_At: Math.floor(Date.now() / 1e3),
-      Rule_Id: getComputedAlertKey(task, type)
-    };
+  async function dismissNotification(notifId, reopenDropdown) {
     try {
-      var result = await grist.docApi.applyUserActions([["AddRecord", state.NOTIFICATIONS_TABLE, null, record]]);
-      record.id = result && result.retValues && result.retValues[0] || (state.pmNotifications.length ? Math.max.apply(null, state.pmNotifications.map(function(n) {
-        return n.id;
-      })) + 1 : 1);
-      state.pmNotifications.push(record);
-      updateNotificationBadge();
-    } catch (e) {
-      console.error("[GristPM] Error dismissing computed notification:", e);
-    }
-    openEditTaskModal(taskId);
-  }
-  async function markNotificationRead(notifId, reopenDropdown) {
-    try {
-      await grist.docApi.applyUserActions([["UpdateRecord", state.NOTIFICATIONS_TABLE, notifId, { Is_Read: true }]]);
-      var n = state.pmNotifications.find(function(x) {
-        return x.id === notifId;
+      await grist.docApi.applyUserActions([["RemoveRecord", state.NOTIFICATIONS_TABLE, notifId]]);
+      state.pmNotifications = state.pmNotifications.filter(function(n) {
+        return n.id !== notifId;
       });
-      if (n) n.Is_Read = true;
       updateNotificationBadge();
       if (reopenDropdown !== false) showNotifications();
     } catch (e) {
-      console.error("[GristPM] Error marking notification read:", e);
+      console.error("[GristPM] Error dismissing notification:", e);
     }
   }
-  async function markAllNotificationsRead() {
-    var myUnread = getMyNotifications().filter(function(n) {
-      return !n.Is_Read;
-    });
-    if (myUnread.length === 0) return;
+  async function dismissAllNotifications() {
+    var mine = getMyNotifications();
+    if (mine.length === 0) return;
     try {
-      var ids = myUnread.map(function(n) {
+      var ids = mine.map(function(n) {
         return n.id;
       });
-      var flags = ids.map(function() {
-        return true;
+      var actions = ids.map(function(id) {
+        return ["RemoveRecord", state.NOTIFICATIONS_TABLE, id];
       });
-      await grist.docApi.applyUserActions([["BulkUpdateRecord", state.NOTIFICATIONS_TABLE, ids, { Is_Read: flags }]]);
-      myUnread.forEach(function(n) {
-        n.Is_Read = true;
+      await grist.docApi.applyUserActions(actions);
+      state.pmNotifications = state.pmNotifications.filter(function(n) {
+        return ids.indexOf(n.id) === -1;
       });
       updateNotificationBadge();
       showNotifications();
     } catch (e) {
-      console.error("[GristPM] Error marking all read:", e);
+      console.error("[GristPM] Error dismissing all notifications:", e);
     }
   }
   async function createNotification(taskId, userEmail, type, message, ruleId) {
@@ -1982,7 +1910,6 @@
         User_Email: resolvedEmail,
         Type: type,
         Message: message,
-        Is_Read: false,
         Created_At: Math.floor(Date.now() / 1e3),
         Rule_Id: ruleId || ""
       };
@@ -2040,12 +1967,13 @@
     var messages = {
       task_assigned: currentLang === "fr" ? "Une t\xE2che vous a \xE9t\xE9 assign\xE9e : " : "A task was assigned to you: ",
       task_completed: currentLang === "fr" ? "T\xE2che termin\xE9e : " : "Task completed: ",
-      task_updated: currentLang === "fr" ? "T\xE2che modifi\xE9e : " : "Task updated: "
+      task_updated: currentLang === "fr" ? "T\xE2che modifi\xE9e : " : "Task updated: ",
+      comment_added: currentLang === "fr" ? "Nouveau commentaire sur : " : "New comment on: "
     };
     var msg = (messages[eventType] || messages.task_updated) + title;
     var now = Math.floor(Date.now() / 1e3);
     var actions = recipients.map(function(email) {
-      return ["AddRecord", state.NOTIFICATIONS_TABLE, null, { Task_Id: taskId, User_Email: email, Type: eventType, Message: msg, Is_Read: false, Created_At: now, Rule_Id: "builtin" }];
+      return ["AddRecord", state.NOTIFICATIONS_TABLE, null, { Task_Id: taskId, User_Email: email, Type: eventType, Message: msg, Created_At: now, Rule_Id: "builtin" }];
     });
     try {
       await grist.docApi.applyUserActions(actions);
@@ -2139,30 +2067,6 @@
       }
     }
     updateNotificationBadge();
-  }
-  async function cleanupOldNotifications() {
-    var now = Math.floor(Date.now() / 1e3);
-    var thirtyDays = 30 * 86400;
-    var ninetyDays = 90 * 86400;
-    var toDelete = state.pmNotifications.filter(function(n) {
-      var age = now - (n.Created_At || 0);
-      return n.Is_Read && age > thirtyDays || age > ninetyDays;
-    });
-    if (toDelete.length === 0) return;
-    try {
-      var ids = toDelete.map(function(n) {
-        return n.id;
-      });
-      var actions = ids.map(function(id) {
-        return ["RemoveRecord", state.NOTIFICATIONS_TABLE, id];
-      });
-      await grist.docApi.applyUserActions(actions);
-      state.pmNotifications = state.pmNotifications.filter(function(n) {
-        return ids.indexOf(n.id) === -1;
-      });
-    } catch (e) {
-      console.log("[GristPM] Notification cleanup skipped:", e.message);
-    }
   }
 
   // src/domains/calendar.js
@@ -4972,6 +4876,10 @@
     };
     if (newStartDate) fields.Start_Date = newStartDate;
     if (newDueDate) fields.Due_Date = newDueDate;
+    var existingSubtask = state.subtasks.find(function(s) {
+      return s.id === subtaskId;
+    });
+    var previousAssignee = existingSubtask ? existingSubtask.Assignee : "";
     var savedAssignees = editAssignees.slice();
     var savedAccountable = editAccountable.slice();
     var savedConsulted = editConsulted.slice();
@@ -4979,6 +4887,20 @@
     try {
       await grist.docApi.applyUserActions([["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, fields]]);
       showToast(t("subtaskSaved"), "success");
+      if (fields.Assignee !== previousAssignee) {
+        var previousKeys = {};
+        splitRecipientValues(previousAssignee).forEach(function(value) {
+          var email = resolveUserEmail(value);
+          previousKeys[(email || value).toLowerCase()] = true;
+        });
+        var newlyAssigned = splitRecipientValues(fields.Assignee).filter(function(value) {
+          var email = resolveUserEmail(value);
+          return !previousKeys[(email || String(value)).toLowerCase()];
+        });
+        if (newlyAssigned.length) {
+          await notifyConcernedUsers(parentTaskId, newlyAssigned, "task_assigned", newTitle);
+        }
+      }
       await loadAllData();
       editAssignees = savedAssignees;
       editAccountable = savedAccountable;
@@ -5136,6 +5058,9 @@
         return t2.id === taskId;
       });
       logActivity("comment_added", taskId, commentTask ? commentTask.Title : "", content.substring(0, 80));
+      if (commentTask) {
+        await notifyConcernedUsers(taskId, splitRecipientValues(commentTask.Assignee), "comment_added", commentTask.Title || "");
+      }
       await loadAllData();
       editAssignees = savedAssignees;
       editAccountable = savedAccountable;
@@ -8818,7 +8743,6 @@
             User_Email: notifData.User_Email ? notifData.User_Email[ni] : "",
             Type: notifData.Type ? notifData.Type[ni] : "",
             Message: notifData.Message ? notifData.Message[ni] : "",
-            Is_Read: notifData.Is_Read ? notifData.Is_Read[ni] : false,
             Created_At: notifData.Created_At ? notifData.Created_At[ni] : null,
             Rule_Id: notifData.Rule_Id ? notifData.Rule_Id[ni] : ""
           });
@@ -9736,7 +9660,6 @@
             { id: "User_Email", type: "Text" },
             { id: "Type", type: "Text" },
             { id: "Message", type: "Text" },
-            { id: "Is_Read", type: "Bool" },
             { id: "Created_At", type: "Date" },
             { id: "Rule_Id", type: "Text" }
           ]]
@@ -10150,6 +10073,8 @@
     detectProjectColumns,
     detectTaskColumns,
     detectUserColumns,
+    dismissNotification,
+    dismissAllNotifications,
     downloadAttachment,
     editCategory,
     editKanbanStatus,
@@ -10169,8 +10094,6 @@
     generateOccurrences,
     generateSubtaskOccurrences,
     hideGanttDependencyTooltip,
-    markAllNotificationsRead,
-    markNotificationRead,
     onAutoActionChange,
     onAutoTriggerChange,
     onCalendarDayClick,
@@ -10188,7 +10111,6 @@
     openCardSubtasksModal,
     openCategoriesModal,
     openColumnMappingModal,
-    openComputedNotification,
     openDependencyTaskOptions,
     openEditAutomationRuleModal,
     openEditGroupModal,
@@ -10607,7 +10529,6 @@
       refreshAllViews();
       updateNotificationBadge();
       await checkTimeBasedAutomations();
-      await cleanupOldNotifications();
       updateNotificationBadge();
       restoreFilters();
       try {

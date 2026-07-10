@@ -1232,6 +1232,8 @@ export async function saveEditSubtask(subtaskId, parentTaskId) {
   };
   if (newStartDate) fields.Start_Date = newStartDate;
   if (newDueDate) fields.Due_Date = newDueDate;
+  var existingSubtask = state.subtasks.find(function(s) { return s.id === subtaskId; });
+  var previousAssignee = existingSubtask ? existingSubtask.Assignee : '';
   var savedAssignees = editAssignees.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
@@ -1239,6 +1241,20 @@ export async function saveEditSubtask(subtaskId, parentTaskId) {
   try {
     await grist.docApi.applyUserActions([['UpdateRecord', state.SUBTASKS_TABLE, subtaskId, fields]]);
     showToast(t('subtaskSaved'), 'success');
+    if (fields.Assignee !== previousAssignee) {
+      var previousKeys = {};
+      splitRecipientValues(previousAssignee).forEach(function(value) {
+        var email = resolveUserEmail(value);
+        previousKeys[(email || value).toLowerCase()] = true;
+      });
+      var newlyAssigned = splitRecipientValues(fields.Assignee).filter(function(value) {
+        var email = resolveUserEmail(value);
+        return !previousKeys[(email || String(value)).toLowerCase()];
+      });
+      if (newlyAssigned.length) {
+        await notifyConcernedUsers(parentTaskId, newlyAssigned, 'task_assigned', newTitle);
+      }
+    }
     await loadAllData();
     editAssignees = savedAssignees;
     editAccountable = savedAccountable;
@@ -1406,6 +1422,9 @@ export async function addComment(taskId) {
     showToast(t('commentAdded'), 'success');
     var commentTask = state.tasks.find(function(t2) { return t2.id === taskId; });
     logActivity('comment_added', taskId, commentTask ? commentTask.Title : '', content.substring(0, 80));
+    if (commentTask) {
+      await notifyConcernedUsers(taskId, splitRecipientValues(commentTask.Assignee), 'comment_added', commentTask.Title || '');
+    }
     await loadAllData();
     editAssignees = savedAssignees;
     editAccountable = savedAccountable;
