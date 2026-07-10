@@ -6,11 +6,12 @@ import { showConfirmModal } from '../ui/confirm-modal.js';
 import { getFilteredTasks } from './filters.js';
 import { loadAllData } from './data-loader.js';
 import { canEditWorkItems } from './permissions.js';
+import { closeModalForce } from './task-modal.js';
 // Temporary backwards imports: none of these are extracted yet
 // (setField -> config domain, getUserDisplayName -> team domain,
-// closeModalForce -> task-modal, refreshAllViews -> main orchestration).
+// refreshAllViews -> main orchestration).
 import {
-  setField, getUserDisplayName, closeModalForce, refreshAllViews
+  setField, getUserDisplayName, refreshAllViews
 } from '../main.js';
 
 export function populateProjectLead(selectedValue) {

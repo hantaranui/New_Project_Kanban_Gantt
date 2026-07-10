@@ -13,14 +13,14 @@ import { getFilteredTasks, getProjectName, getProjectColor, showArchivedTasks } 
 import { logActivity } from './activity-log.js';
 import { notifyTaskCompleted, evaluateAutomationRules } from './notifications.js';
 import { saveSetting } from './settings.js';
+import { closeModalForce } from './task-modal.js';
 // Temporary backwards imports: none of these are extracted yet
 // (isOverdue/getColumnName/getUserDisplayName -> various not-yet-extracted
-// domains, closeModalForce -> task-modal, refreshAllViews -> main
-// orchestration, kanbanSort/cardDisplaySettings stay in main.js because
-// loadSettings() reassigns them and can't move until
-// bootstrap/ensure-tables.js is extracted).
+// domains, refreshAllViews -> main orchestration, kanbanSort/
+// cardDisplaySettings stay in main.js because loadSettings() reassigns
+// them and can't move until bootstrap/ensure-tables.js is extracted).
 import {
-  isOverdue, getColumnName, getUserDisplayName, closeModalForce, refreshAllViews,
+  isOverdue, getColumnName, getUserDisplayName, refreshAllViews,
   kanbanSort, cardDisplaySettings
 } from '../main.js';
 

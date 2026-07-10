@@ -5,9 +5,7 @@ import { showToast } from '../ui/toast.js';
 import { getTaskSubtasks } from './subtasks.js';
 import { getFilteredTasks } from './filters.js';
 import { loadAllData } from './data-loader.js';
-// Temporary backwards imports: none of these are extracted yet
-// (openEditTaskModal/startNewTask -> task-modal domain).
-import { openEditTaskModal, startNewTask } from '../main.js';
+import { openEditTaskModal, startNewTask } from './task-modal.js';
 
 export let calendarYear = new Date().getFullYear();
 export let calendarMonth = new Date().getMonth();

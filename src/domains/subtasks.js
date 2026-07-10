@@ -5,8 +5,7 @@ import { showToast } from '../ui/toast.js';
 import { renderTableView } from './table-view.js';
 import { loadAllData } from './data-loader.js';
 import { openCardSubtasksModal, renderKanbanView, getKanbanStatuses } from './kanban.js';
-// Temporary backwards import: openEditTaskModal/closeModalForce aren't extracted yet (task-modal).
-import { openEditTaskModal, closeModalForce } from '../main.js';
+import { openEditTaskModal, closeModalForce } from './task-modal.js';
 
 export function getTaskSubtasks(taskId) {
   // D1 : tri par échéance croissante (sans date en dernier), Order en départage

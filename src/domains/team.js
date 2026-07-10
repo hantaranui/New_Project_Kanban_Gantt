@@ -6,10 +6,10 @@ import { showConfirmModal } from '../ui/confirm-modal.js';
 import { userMatchesRole, userRoleDisplay, getUserRoles } from './permissions.js';
 import { roleLabel } from './filters.js';
 import { loadAllData } from './data-loader.js';
+import { closeModalForce } from './task-modal.js';
 // Temporary backwards imports: none of these are extracted yet
-// (getColumnName -> config, closeModalForce -> task-modal,
-// renderCategoriesList -> settings domain).
-import { getColumnName, closeModalForce, renderCategoriesList } from '../main.js';
+// (getColumnName -> config, renderCategoriesList -> settings domain).
+import { getColumnName, renderCategoriesList } from '../main.js';
 
 // =============================================================================
 // TEAM VIEW (Users & Groups)

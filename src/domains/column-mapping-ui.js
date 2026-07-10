@@ -3,15 +3,15 @@ import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
 import { loadAllData } from './data-loader.js';
 import { saveSetting } from './settings.js';
+import { closeModalForce } from './task-modal.js';
 // Temporary backwards imports: none of these are extracted yet
 // (getColumnName/loadColumnMapping -> config, loadSettings/
 // ensureConfigAndSettingsTables/hasValidMappedTaskTable -> bootstrap,
-// closeModalForce -> task-modal, refreshAllViews -> main orchestration,
-// formatAccessError -> bootstrap).
+// refreshAllViews -> main orchestration, formatAccessError -> bootstrap).
 import {
   getColumnName, loadColumnMapping, loadSettings,
   ensureConfigAndSettingsTables, hasValidMappedTaskTable,
-  closeModalForce, refreshAllViews, formatAccessError
+  refreshAllViews, formatAccessError
 } from '../main.js';
 
 export async function openColumnMappingModal() {

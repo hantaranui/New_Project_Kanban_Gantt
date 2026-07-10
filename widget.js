@@ -1227,6 +1227,2464 @@
     });
   }
 
+  // src/domains/activity-log.js
+  async function logActivity(action, taskId, taskTitle, details) {
+    try {
+      var record = {
+        Timestamp: Math.floor(Date.now() / 1e3),
+        User_Email: state.currentUserEmail || "unknown",
+        Action: action,
+        Task_Id: taskId || 0,
+        Task_Title: taskTitle || "",
+        Details: details || ""
+      };
+      await grist.docApi.applyUserActions([["AddRecord", state.ACTIVITY_LOG_TABLE, null, record]]);
+      state.activityLog.push(record);
+    } catch (e) {
+      console.log("[GristPM] Activity log skipped:", e.message);
+    }
+  }
+  var _activityLogLimit = 20;
+  function renderActivityLog() {
+    var container = document.getElementById("activity-log-list");
+    if (!container) return;
+    var sorted = state.activityLog.slice().sort(function(a, b) {
+      return (b.Timestamp || 0) - (a.Timestamp || 0);
+    });
+    var shown = sorted.slice(0, _activityLogLimit);
+    if (shown.length === 0) {
+      container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + t("actNoActivity") + "</div>";
+      return;
+    }
+    var ACTION_ICONS = {
+      task_created: "\u{1F195}",
+      task_updated: "\u270F\uFE0F",
+      task_deleted: "\u{1F5D1}\uFE0F",
+      status_changed: "\u{1F504}",
+      task_archived: "\u{1F4E6}",
+      task_restored: "\u267B\uFE0F",
+      comment_added: "\u{1F4AC}"
+    };
+    var ACTION_I18N = {
+      task_created: "actTaskCreated",
+      task_updated: "actTaskUpdated",
+      task_deleted: "actTaskDeleted",
+      status_changed: "actStatusChanged",
+      task_archived: "actTaskArchived",
+      task_restored: "actTaskRestored",
+      comment_added: "actCommentAdded"
+    };
+    var html = "";
+    var lastDateStr = "";
+    for (var i = 0; i < shown.length; i++) {
+      var entry = shown[i];
+      var dateObj = entry.Timestamp ? new Date(entry.Timestamp * 1e3) : /* @__PURE__ */ new Date();
+      var dateStr = dateObj.toLocaleDateString(currentLang === "fr" ? "fr-FR" : "en-US", { weekday: "long", day: "numeric", month: "long" });
+      if (dateStr !== lastDateStr) {
+        html += '<div style="font-size:11px;font-weight:700;color:#94a3b8;padding:8px 0 4px;border-bottom:1px solid #f1f5f9;text-transform:capitalize;">' + dateStr + "</div>";
+        lastDateStr = dateStr;
+      }
+      var icon = ACTION_ICONS[entry.Action] || "\u{1F4CB}";
+      var actionText = t(ACTION_I18N[entry.Action] || entry.Action);
+      var userName = getUserDisplayName(entry.User_Email);
+      var timeStr = dateObj.toLocaleTimeString(currentLang === "fr" ? "fr-FR" : "en-US", { hour: "2-digit", minute: "2-digit" });
+      html += '<div class="activity-entry" style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f8fafc;"';
+      if (entry.Task_Id) html += ' onclick="openEditTaskModal(' + entry.Task_Id + ')" style="cursor:pointer;"';
+      html += ">";
+      html += '<span style="font-size:16px;flex-shrink:0;margin-top:2px;">' + icon + "</span>";
+      html += '<div style="flex:1;min-width:0;">';
+      html += '<div style="font-size:13px;"><strong>' + sanitize(userName) + "</strong> " + actionText;
+      if (entry.Task_Title) html += ' <span style="color:#3b82f6;font-weight:600;">' + sanitize(entry.Task_Title) + "</span>";
+      html += "</div>";
+      if (entry.Details) html += '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + sanitize(entry.Details) + "</div>";
+      html += "</div>";
+      html += '<span style="font-size:10px;color:#94a3b8;white-space:nowrap;margin-top:3px;">' + timeStr + "</span>";
+      html += "</div>";
+    }
+    if (sorted.length > _activityLogLimit) {
+      html += '<div style="text-align:center;padding:12px;"><button class="btn btn-secondary btn-sm" onclick="expandActivityLog()">' + t("actLoadMore") + "</button></div>";
+    }
+    container.innerHTML = html;
+  }
+  function expandActivityLog() {
+    _activityLogLimit += 20;
+    renderActivityLog();
+  }
+
+  // src/domains/time-tracking.js
+  function getTaskTimeEntries(taskId) {
+    return state.timeEntries.filter(function(te) {
+      return te.Task_Id === taskId;
+    }).sort(function(a, b) {
+      return (b.Start_Time || 0) - (a.Start_Time || 0);
+    });
+  }
+  function getTaskTotalTime(taskId) {
+    var entries = getTaskTimeEntries(taskId);
+    var total = 0;
+    for (var i = 0; i < entries.length; i++) {
+      total += entries[i].Duration || 0;
+    }
+    if (state.activeTimers[taskId]) {
+      total += Math.floor(Date.now() / 1e3) - state.activeTimers[taskId];
+    }
+    return total;
+  }
+  function formatDuration(seconds) {
+    if (!seconds || seconds < 0) return "0" + t("minutes");
+    var hours = Math.floor(seconds / 3600);
+    var mins = Math.floor(seconds % 3600 / 60);
+    if (hours > 0) {
+      return hours + t("hours") + " " + mins + t("minutes");
+    }
+    return mins + t("minutes");
+  }
+  function formatDurationShort(seconds) {
+    if (!seconds || seconds < 0) return "0m";
+    var hours = Math.floor(seconds / 3600);
+    var mins = Math.floor(seconds % 3600 / 60);
+    if (hours > 0) {
+      return hours + "h" + (mins > 0 ? mins + "m" : "");
+    }
+    return mins + "m";
+  }
+  async function startTimer(taskId) {
+    if (state.activeTimers[taskId]) return;
+    var now = Math.floor(Date.now() / 1e3);
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
+          Task_Id: taskId,
+          User: state.currentUserEmail || "Utilisateur",
+          Start_Time: now,
+          End_Time: null,
+          Duration: 0,
+          Description: currentLang === "fr" ? "Timer en cours" : "Running timer"
+        }]
+      ]);
+      state.activeTimers[taskId] = now;
+      await loadAllData();
+      openEditTaskModal(taskId);
+    } catch (e) {
+      console.error("Error starting timer:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function stopTimer(taskId) {
+    if (!state.activeTimers[taskId]) return;
+    var startTime = state.activeTimers[taskId];
+    var endTime = Math.floor(Date.now() / 1e3);
+    var duration = endTime - startTime;
+    var openEntry = state.timeEntries.find(function(te) {
+      return te.Task_Id === taskId && te.Start_Time === startTime && !te.End_Time;
+    });
+    try {
+      if (openEntry) {
+        await grist.docApi.applyUserActions([
+          ["UpdateRecord", state.TIME_ENTRIES_TABLE, openEntry.id, {
+            End_Time: endTime,
+            Duration: duration,
+            Description: ""
+          }]
+        ]);
+      } else {
+        await grist.docApi.applyUserActions([
+          ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
+            Task_Id: taskId,
+            User: state.currentUserEmail || "Utilisateur",
+            Start_Time: startTime,
+            End_Time: endTime,
+            Duration: duration,
+            Description: ""
+          }]
+        ]);
+      }
+      delete state.activeTimers[taskId];
+      showToast(t("timeEntryAdded"), "success");
+      await loadAllData();
+      openEditTaskModal(taskId);
+    } catch (e) {
+      console.error("Error stopping timer:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function pauseTimer(taskId) {
+    await stopTimer(taskId);
+  }
+  async function addManualTimeEntry(taskId) {
+    var hours = parseInt(document.getElementById("manual-hours").value) || 0;
+    var minutes = parseInt(document.getElementById("manual-minutes").value) || 0;
+    var duration = hours * 3600 + minutes * 60;
+    if (duration <= 0) {
+      showToast(currentLang === "fr" ? "Entrez une dur\xE9e valide" : "Enter a valid duration", "error");
+      return;
+    }
+    var now = Math.floor(Date.now() / 1e3);
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
+          Task_Id: taskId,
+          User: state.currentUserEmail || "Utilisateur",
+          Start_Time: now - duration,
+          End_Time: now,
+          Duration: duration,
+          Description: currentLang === "fr" ? "Saisie manuelle" : "Manual entry"
+        }]
+      ]);
+      showToast(t("timeEntryAdded"), "success");
+      await loadAllData();
+      openEditTaskModal(taskId);
+    } catch (e) {
+      console.error("Error adding manual time entry:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+
+  // src/domains/dependencies.js
+  function getTaskDependencies(taskId) {
+    return state.dependencies.filter(function(d) {
+      return d.Task_Id === taskId;
+    }).map(function(d) {
+      return state.tasks.find(function(t2) {
+        return t2.id === d.Depends_On_Task_Id;
+      });
+    }).filter(Boolean);
+  }
+  function getTasksDependingOn(taskId) {
+    return state.dependencies.filter(function(d) {
+      return d.Depends_On_Task_Id === taskId;
+    }).map(function(d) {
+      return state.tasks.find(function(t2) {
+        return t2.id === d.Task_Id;
+      });
+    }).filter(Boolean);
+  }
+  function isTaskBlocked(taskId) {
+    var blockers = getTaskDependencies(taskId);
+    return blockers.some(function(blocker) {
+      return blocker && blocker.Status !== "done";
+    });
+  }
+  function ganttDepBadge(task) {
+    var deps = getTaskDependencies(task.id);
+    var blocks = getTasksDependingOn(task.id);
+    var html = "";
+    if (deps.length > 0) {
+      var dependsText = (currentLang === "fr" ? "Cette t\xE2che d\xE9pend de : " : "This task depends on: ") + deps.map(function(d) {
+        return d.Title;
+      }).join(", ") + ".";
+      html += ' <button type="button" class="gantt-dep-badge gantt-dep-depends" data-tooltip="' + sanitize(dependsText) + '" aria-label="' + sanitize(dependsText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">\u{1F517}' + deps.length + "</button>";
+    }
+    if (blocks.length > 0) {
+      var blocksText = (currentLang === "fr" ? "Cette t\xE2che bloque : " : "This task blocks: ") + blocks.map(function(d) {
+        return d.Title;
+      }).join(", ") + (currentLang === "fr" ? ". La t\xE2che indiqu\xE9e attend que celle-ci soit termin\xE9e." : ". The listed task is waiting for this one to be completed.");
+      html += ' <button type="button" class="gantt-dep-badge gantt-dep-blocks" data-tooltip="' + sanitize(blocksText) + '" aria-label="' + sanitize(blocksText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">\u23F3' + blocks.length + "</button>";
+    }
+    return html;
+  }
+  function showGanttDependencyTooltip(event) {
+    var target = event && event.currentTarget;
+    if (!target) return;
+    var message = target.getAttribute("data-tooltip");
+    if (!message) return;
+    var tooltip = document.getElementById("gantt-dependency-tooltip");
+    if (!tooltip) {
+      tooltip = document.createElement("div");
+      tooltip.id = "gantt-dependency-tooltip";
+      tooltip.setAttribute("role", "tooltip");
+      document.body.appendChild(tooltip);
+    }
+    tooltip.textContent = message;
+    tooltip.style.display = "block";
+    var rect = target.getBoundingClientRect();
+    var left = Math.min(Math.max(8, rect.left), window.innerWidth - tooltip.offsetWidth - 8);
+    var top = rect.bottom + 8;
+    if (top + tooltip.offsetHeight > window.innerHeight - 8) top = rect.top - tooltip.offsetHeight - 8;
+    tooltip.style.left = left + "px";
+    tooltip.style.top = Math.max(8, top) + "px";
+  }
+  function hideGanttDependencyTooltip() {
+    var tooltip = document.getElementById("gantt-dependency-tooltip");
+    if (tooltip) tooltip.style.display = "none";
+  }
+  function normalizeDependencyProjectId(value) {
+    var parsed = parseInt(value, 10);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  function getDependencyCandidates(taskId, projectId, query) {
+    var normalizedProjectId = normalizeDependencyProjectId(projectId);
+    if (!normalizedProjectId) return [];
+    var normalizedQuery = String(query || "").trim().toLowerCase();
+    var existingDependencyIds = {};
+    getTaskDependencies(taskId).forEach(function(dependency) {
+      existingDependencyIds[dependency.id] = true;
+    });
+    return state.tasks.filter(function(candidate) {
+      if (candidate.id === taskId || candidate.Status === "archived" || existingDependencyIds[candidate.id]) return false;
+      if (normalizeDependencyProjectId(candidate.Project_Id) !== normalizedProjectId) return false;
+      if (normalizedQuery && String(candidate.Title || "").toLowerCase().indexOf(normalizedQuery) === -1) return false;
+      if (shouldLimitToMyProjects()) {
+        var myIds = myProjectIdSet();
+        if (!(candidate.Project_Id && myIds[candidate.Project_Id] || taskConcernsCurrentUser(candidate))) return false;
+      }
+      return true;
+    }).sort(function(a, b) {
+      return String(a.Title || "").localeCompare(String(b.Title || ""));
+    });
+  }
+  function refreshDependencyTaskOptions(taskId, resetSelection) {
+    var selectedInput = document.getElementById("dep-select");
+    var optionsContainer = document.getElementById("dep-options");
+    if (!selectedInput || !optionsContainer) return;
+    var projectEl = document.getElementById("task-project");
+    var searchEl = document.getElementById("dep-search");
+    if (resetSelection) {
+      selectedInput.value = "";
+      if (searchEl) searchEl.value = "";
+    }
+    var candidates = getDependencyCandidates(taskId, projectEl ? projectEl.value : 0, searchEl ? searchEl.value : "");
+    optionsContainer.innerHTML = "";
+    if (!normalizeDependencyProjectId(projectEl ? projectEl.value : 0)) {
+      var noProject = document.createElement("div");
+      noProject.className = "dep-option-empty";
+      noProject.textContent = currentLang === "fr" ? "Choisissez d\u2019abord un projet." : "Choose a project first.";
+      optionsContainer.appendChild(noProject);
+      return;
+    }
+    if (!candidates.length) {
+      var empty = document.createElement("div");
+      empty.className = "dep-option-empty";
+      empty.textContent = currentLang === "fr" ? "Aucune t\xE2che correspondante." : "No matching task.";
+      optionsContainer.appendChild(empty);
+      return;
+    }
+    candidates.forEach(function(candidate) {
+      var option = document.createElement("button");
+      option.type = "button";
+      option.className = "dep-option";
+      option.setAttribute("role", "option");
+      option.textContent = candidate.Title || "";
+      option.onclick = function() {
+        selectDependencyTask(candidate.id);
+      };
+      optionsContainer.appendChild(option);
+    });
+  }
+  function clearDependencyTaskSelection() {
+    var selectedInput = document.getElementById("dep-select");
+    if (selectedInput) selectedInput.value = "";
+  }
+  function openDependencyTaskOptions(taskId) {
+    refreshDependencyTaskOptions(taskId);
+    var combobox = document.getElementById("dep-combobox");
+    var searchEl = document.getElementById("dep-search");
+    if (combobox) combobox.classList.add("open");
+    if (searchEl) searchEl.setAttribute("aria-expanded", "true");
+  }
+  function closeDependencyTaskOptions() {
+    var combobox = document.getElementById("dep-combobox");
+    var searchEl = document.getElementById("dep-search");
+    if (combobox) combobox.classList.remove("open");
+    if (searchEl) searchEl.setAttribute("aria-expanded", "false");
+  }
+  function toggleDependencyTaskOptions(taskId) {
+    var combobox = document.getElementById("dep-combobox");
+    if (combobox && combobox.classList.contains("open")) closeDependencyTaskOptions();
+    else openDependencyTaskOptions(taskId);
+  }
+  function selectDependencyTask(taskId) {
+    var selectedTask = state.tasks.find(function(candidate) {
+      return candidate.id === taskId;
+    });
+    var selectedInput = document.getElementById("dep-select");
+    var searchEl = document.getElementById("dep-search");
+    if (!selectedTask || !selectedInput || !searchEl) return;
+    selectedInput.value = String(selectedTask.id);
+    searchEl.value = selectedTask.Title || "";
+    closeDependencyTaskOptions();
+  }
+
+  // src/domains/recurrence.js
+  async function generateOccurrences(taskId, period) {
+    var task = state.tasks.find(function(t2) {
+      return t2.id === taskId;
+    });
+    if (!task || !task.Recurrence || task.Recurrence === "none") return;
+    var now = Math.floor(Date.now() / 1e3);
+    var periodEnd;
+    if (period === "month") {
+      var endOfMonth = /* @__PURE__ */ new Date();
+      endOfMonth.setDate(1);
+      endOfMonth.setMonth(endOfMonth.getMonth() + 1);
+      endOfMonth.setDate(0);
+      endOfMonth.setHours(23, 59, 59);
+      periodEnd = Math.floor(endOfMonth.getTime() / 1e3);
+    } else {
+      var endOfYear = new Date((/* @__PURE__ */ new Date()).getFullYear(), 11, 31, 23, 59, 59);
+      periodEnd = Math.floor(endOfYear.getTime() / 1e3);
+    }
+    var stepSeconds = task.Recurrence === "daily" ? 86400 : task.Recurrence === "weekly" ? 604800 : 2592e3;
+    var existingDates = state.tasks.filter(function(t2) {
+      return t2.Title === task.Title && t2.Due_Date;
+    }).map(function(t2) {
+      return t2.Due_Date;
+    });
+    var cursor = existingDates.length > 0 ? Math.max.apply(null, existingDates) : task.Due_Date || now;
+    var actions = [];
+    var count = 0;
+    var safety = 0;
+    while (cursor + stepSeconds <= periodEnd && safety < 100) {
+      cursor += stepSeconds;
+      safety++;
+      var alreadyExists = state.tasks.some(function(t2) {
+        return t2.Title === task.Title && t2.Due_Date && Math.abs(t2.Due_Date - cursor) < 43200;
+      });
+      if (alreadyExists) continue;
+      var record = {};
+      setField(record, "tasks", "title", task.Title);
+      setField(record, "tasks", "description", task.Description);
+      setField(record, "tasks", "status", "todo");
+      setField(record, "tasks", "priority", task.Priority);
+      setField(record, "tasks", "assignee", task.Assignee);
+      setField(record, "tasks", "group", task.Group_Name);
+      var startOffset = task.Start_Date && task.Due_Date ? task.Due_Date - task.Start_Date : 0;
+      setField(record, "tasks", "startDate", cursor - startOffset);
+      setField(record, "tasks", "dueDate", cursor);
+      setField(record, "tasks", "category", task.Category);
+      setField(record, "tasks", "tag", task.Tag);
+      setField(record, "tasks", "recurrence", task.Recurrence);
+      setField(record, "tasks", "estimatedHours", task.Estimated_Hours);
+      setField(record, "tasks", "projectId", task.Project_Id);
+      setField(record, "tasks", "createdAt", now);
+      actions.push(["AddRecord", state.TASKS_TABLE, null, record]);
+      count++;
+    }
+    if (actions.length === 0) {
+      showToast("Aucune occurrence \xE0 g\xE9n\xE9rer pour cette p\xE9riode", "info");
+      return;
+    }
+    try {
+      await grist.docApi.applyUserActions(actions);
+      showToast(count + " " + t("occurrencesGenerated"), "success");
+      await loadAllData();
+      renderCurrentView();
+    } catch (e) {
+      console.error("Error generating occurrences:", e);
+      showToast("Erreur : " + e.message, "error");
+    }
+  }
+  function addRecurrenceToEpoch(epoch, rec) {
+    if (!epoch) return null;
+    var d = new Date(epoch * 1e3);
+    switch (rec) {
+      case "daily":
+        d.setDate(d.getDate() + 1);
+        break;
+      case "weekly":
+        d.setDate(d.getDate() + 7);
+        break;
+      case "biweekly":
+        d.setDate(d.getDate() + 14);
+        break;
+      case "monthly":
+        d.setMonth(d.getMonth() + 1);
+        break;
+      case "quarterly":
+        d.setMonth(d.getMonth() + 3);
+        break;
+      case "yearly":
+        d.setFullYear(d.getFullYear() + 1);
+        break;
+      default:
+        return epoch;
+    }
+    return Math.floor(d.getTime() / 1e3);
+  }
+  async function createNextOccurrence(task) {
+    if (!task.Recurrence || task.Recurrence === "none") return;
+    var newStartDate = addRecurrenceToEpoch(task.Start_Date, task.Recurrence);
+    var newDueDate = addRecurrenceToEpoch(task.Due_Date, task.Recurrence);
+    var now = Math.floor(Date.now() / 1e3);
+    try {
+      var record = {};
+      setField(record, "tasks", "title", task.Title);
+      setField(record, "tasks", "description", task.Description);
+      setField(record, "tasks", "status", "todo");
+      setField(record, "tasks", "priority", task.Priority);
+      setField(record, "tasks", "assignee", task.Assignee);
+      setField(record, "tasks", "group", task.Group_Name);
+      setField(record, "tasks", "startDate", newStartDate);
+      setField(record, "tasks", "dueDate", newDueDate);
+      setField(record, "tasks", "category", task.Category);
+      setField(record, "tasks", "tag", task.Tag);
+      setField(record, "tasks", "recurrence", task.Recurrence);
+      setField(record, "tasks", "estimatedHours", task.Estimated_Hours);
+      setField(record, "tasks", "createdAt", now);
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.TASKS_TABLE, null, record]
+      ]);
+      showToast(t("nextOccurrence"), "success");
+    } catch (e) {
+      console.error("Error creating next occurrence:", e);
+    }
+  }
+
+  // src/domains/notifications.js
+  function getOverdueTasks() {
+    var now = Math.floor(Date.now() / 1e3);
+    return getFilteredTasks().filter(function(t2) {
+      return t2.Due_Date && t2.Due_Date < now && t2.Status !== "done" && t2.Status !== "archived";
+    });
+  }
+  function getUpcomingTasks() {
+    var now = Math.floor(Date.now() / 1e3);
+    var threeDays = now + 3 * 24 * 60 * 60;
+    return getFilteredTasks().filter(function(t2) {
+      return t2.Due_Date && t2.Due_Date >= now && t2.Due_Date <= threeDays && t2.Status !== "done" && t2.Status !== "archived";
+    });
+  }
+  function getMyNotifications() {
+    var email = (state.currentUserEmail || "").toLowerCase().trim();
+    if (!email) return [];
+    return state.pmNotifications.filter(function(n) {
+      return (n.User_Email || "").toLowerCase().trim() === email;
+    }).sort(function(a, b) {
+      return (b.Created_At || 0) - (a.Created_At || 0);
+    });
+  }
+  function getUnreadCount() {
+    return getMyNotifications().filter(function(n) {
+      return !n.Is_Read;
+    }).length;
+  }
+  function getComputedAlertKey(task, type) {
+    return "computed:" + type + ":" + Number(task && task.Due_Date || 0);
+  }
+  function isComputedAlertRead(taskId, type) {
+    var email = (state.currentUserEmail || "").toLowerCase().trim();
+    var task = state.tasks.find(function(item) {
+      return Number(item.id) === Number(taskId);
+    });
+    var alertKey = getComputedAlertKey(task, type);
+    return state.pmNotifications.some(function(n) {
+      return Number(n.Task_Id) === Number(taskId) && n.Type === type && n.Is_Read && (n.User_Email || "").toLowerCase().trim() === email && n.Rule_Id === alertKey;
+    });
+  }
+  function getUnreadComputedTasks(tasksList, type) {
+    return tasksList.filter(function(task) {
+      return !isComputedAlertRead(task.id, type);
+    });
+  }
+  function updateNotificationBadge() {
+    var unread = getUnreadCount();
+    var hasOverdueRule = state.automationRules.some(function(r) {
+      return r.enabled && r.trigger === "overdue";
+    });
+    var hasApproachingRule = state.automationRules.some(function(r) {
+      return r.enabled && r.trigger === "approaching_deadline";
+    });
+    var computed = 0;
+    if (!hasOverdueRule) computed += getUnreadComputedTasks(getOverdueTasks(), "computed_overdue").length;
+    if (!hasApproachingRule) computed += getUnreadComputedTasks(getUpcomingTasks(), "computed_upcoming").length;
+    var total = unread + computed;
+    var badge = document.getElementById("notif-badge");
+    if (badge) {
+      badge.textContent = total;
+      badge.classList.toggle("show", total > 0);
+    }
+  }
+  function showNotifications() {
+    var myNotifs = getMyNotifications();
+    var unread = myNotifs.filter(function(n2) {
+      return !n2.Is_Read;
+    });
+    var readRecent = myNotifs.filter(function(n2) {
+      return n2.Is_Read;
+    }).slice(0, 10);
+    var hasOverdueRule = state.automationRules.some(function(r) {
+      return r.enabled && r.trigger === "overdue";
+    });
+    var hasApproachingRule = state.automationRules.some(function(r) {
+      return r.enabled && r.trigger === "approaching_deadline";
+    });
+    var overdue = !hasOverdueRule ? getUnreadComputedTasks(getOverdueTasks(), "computed_overdue") : [];
+    var upcoming = !hasApproachingRule ? getUnreadComputedTasks(getUpcomingTasks(), "computed_upcoming") : [];
+    var html = '<div class="notif-dropdown" id="notif-dropdown">';
+    html += '<div class="notif-header" style="display:flex;justify-content:space-between;align-items:center;">';
+    html += "<span>\u{1F514} " + t("notifications") + "</span>";
+    if (unread.length > 0) {
+      html += '<button onclick="event.stopPropagation();markAllNotificationsRead();" style="background:#3b82f6;color:white;border:none;border-radius:4px;font-size:10px;padding:3px 8px;cursor:pointer;">' + t("markAllRead") + "</button>";
+    }
+    html += "</div>";
+    if (unread.length > 0) {
+      html += '<div style="padding:6px 16px;font-size:10px;color:#3b82f6;font-weight:700;">\u{1F535} ' + unread.length + " " + t("notifUnread") + "</div>";
+      for (var ui = 0; ui < unread.length; ui++) {
+        var n = unread[ui];
+        html += '<div class="notif-item" style="display:flex;align-items:center;gap:6px;font-weight:600;" onclick="openNotification(' + n.id + ", " + n.Task_Id + ');">';
+        html += '<div style="flex:1;">';
+        html += '<div class="notif-item-title">' + sanitize(n.Message) + "</div>";
+        html += '<div class="notif-item-date">' + formatDate(n.Created_At) + "</div>";
+        html += "</div>";
+        html += '<button onclick="event.stopPropagation();markNotificationRead(' + n.id + ');" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:14px;" title="' + t("markAsRead") + '">\u2713</button>';
+        html += "</div>";
+      }
+    }
+    if (overdue.length > 0) {
+      html += '<div style="padding:6px 16px;font-size:10px;color:#ef4444;font-weight:700;">\u26A0\uFE0F ' + overdue.length + " " + t("overdueTasksAlert") + "</div>";
+      for (var oi = 0; oi < overdue.length; oi++) {
+        html += '<div class="notif-item overdue" onclick="openComputedNotification(' + overdue[oi].id + `, 'computed_overdue');">`;
+        html += '<div class="notif-item-title">' + sanitize(overdue[oi].Title) + "</div>";
+        html += '<div class="notif-item-date">\u{1F4C5} ' + formatDate(overdue[oi].Due_Date) + "</div>";
+        html += "</div>";
+      }
+    }
+    if (upcoming.length > 0) {
+      html += '<div style="padding:6px 16px;font-size:10px;color:#f59e0b;font-weight:700;">\u{1F4C5} ' + upcoming.length + " " + t("upcomingTasksAlert") + "</div>";
+      for (var upi = 0; upi < upcoming.length; upi++) {
+        html += '<div class="notif-item upcoming" onclick="openComputedNotification(' + upcoming[upi].id + `, 'computed_upcoming');">`;
+        html += '<div class="notif-item-title">' + sanitize(upcoming[upi].Title) + "</div>";
+        html += '<div class="notif-item-date">\u{1F4C5} ' + formatDate(upcoming[upi].Due_Date) + "</div>";
+        html += "</div>";
+      }
+    }
+    if (readRecent.length > 0) {
+      html += '<div style="padding:6px 16px;font-size:10px;color:#94a3b8;font-weight:700;border-top:1px solid #e2e8f0;">\u{1F4CB} ' + (currentLang === "fr" ? "Historique" : "History") + "</div>";
+      for (var ri = 0; ri < readRecent.length; ri++) {
+        var rn = readRecent[ri];
+        html += '<div class="notif-item" style="opacity:0.5;" onclick="openEditTaskModal(' + rn.Task_Id + '); closeNotifications();">';
+        html += '<div class="notif-item-title">' + sanitize(rn.Message) + "</div>";
+        html += '<div class="notif-item-date">' + formatDate(rn.Created_At) + "</div>";
+        html += "</div>";
+      }
+    }
+    if (unread.length === 0 && overdue.length === 0 && upcoming.length === 0 && readRecent.length === 0) {
+      html += '<div class="notif-empty">' + t("noAlerts") + "</div>";
+    }
+    html += "</div>";
+    closeNotifications();
+    var btn = document.getElementById("notifications-btn");
+    btn.style.position = "relative";
+    btn.insertAdjacentHTML("beforeend", html);
+    setTimeout(function() {
+      document.addEventListener("click", closeNotificationsOnOutsideClick);
+    }, 10);
+  }
+  function closeNotifications() {
+    var dropdown = document.getElementById("notif-dropdown");
+    if (dropdown) dropdown.remove();
+    document.removeEventListener("click", closeNotificationsOnOutsideClick);
+  }
+  function closeNotificationsOnOutsideClick(e) {
+    if (!e.target.closest("#notifications-btn")) {
+      closeNotifications();
+    }
+  }
+  async function openNotification(notifId, taskId) {
+    closeNotifications();
+    await markNotificationRead(notifId, false);
+    openEditTaskModal(taskId);
+  }
+  async function openComputedNotification(taskId, type) {
+    closeNotifications();
+    var task = state.tasks.find(function(item) {
+      return Number(item.id) === Number(taskId);
+    });
+    if (!task || !state.currentUserEmail || isComputedAlertRead(taskId, type)) {
+      openEditTaskModal(taskId);
+      return;
+    }
+    var messagePrefix = type === "computed_overdue" ? currentLang === "fr" ? "T\xE2che en retard : " : "Overdue task: " : currentLang === "fr" ? "\xC9ch\xE9ance proche : " : "Upcoming deadline: ";
+    var record = {
+      Task_Id: taskId,
+      User_Email: state.currentUserEmail,
+      Type: type,
+      Message: messagePrefix + (task.Title || ""),
+      Is_Read: true,
+      Created_At: Math.floor(Date.now() / 1e3),
+      Rule_Id: getComputedAlertKey(task, type)
+    };
+    try {
+      var result = await grist.docApi.applyUserActions([["AddRecord", state.NOTIFICATIONS_TABLE, null, record]]);
+      record.id = result && result.retValues && result.retValues[0] || (state.pmNotifications.length ? Math.max.apply(null, state.pmNotifications.map(function(n) {
+        return n.id;
+      })) + 1 : 1);
+      state.pmNotifications.push(record);
+      updateNotificationBadge();
+    } catch (e) {
+      console.error("[GristPM] Error dismissing computed notification:", e);
+    }
+    openEditTaskModal(taskId);
+  }
+  async function markNotificationRead(notifId, reopenDropdown) {
+    try {
+      await grist.docApi.applyUserActions([["UpdateRecord", state.NOTIFICATIONS_TABLE, notifId, { Is_Read: true }]]);
+      var n = state.pmNotifications.find(function(x) {
+        return x.id === notifId;
+      });
+      if (n) n.Is_Read = true;
+      updateNotificationBadge();
+      if (reopenDropdown !== false) showNotifications();
+    } catch (e) {
+      console.error("[GristPM] Error marking notification read:", e);
+    }
+  }
+  async function markAllNotificationsRead() {
+    var myUnread = getMyNotifications().filter(function(n) {
+      return !n.Is_Read;
+    });
+    if (myUnread.length === 0) return;
+    try {
+      var ids = myUnread.map(function(n) {
+        return n.id;
+      });
+      var flags = ids.map(function() {
+        return true;
+      });
+      await grist.docApi.applyUserActions([["BulkUpdateRecord", state.NOTIFICATIONS_TABLE, ids, { Is_Read: flags }]]);
+      myUnread.forEach(function(n) {
+        n.Is_Read = true;
+      });
+      updateNotificationBadge();
+      showNotifications();
+    } catch (e) {
+      console.error("[GristPM] Error marking all read:", e);
+    }
+  }
+  async function createNotification(taskId, userEmail, type, message, ruleId) {
+    try {
+      var resolvedEmail = resolveUserEmail(userEmail);
+      if (!resolvedEmail || resolvedEmail.toLowerCase() === (state.currentUserEmail || "").toLowerCase().trim()) return;
+      var record = {
+        Task_Id: taskId,
+        User_Email: resolvedEmail,
+        Type: type,
+        Message: message,
+        Is_Read: false,
+        Created_At: Math.floor(Date.now() / 1e3),
+        Rule_Id: ruleId || ""
+      };
+      await grist.docApi.applyUserActions([["AddRecord", state.NOTIFICATIONS_TABLE, null, record]]);
+      record.id = state.pmNotifications.length > 0 ? Math.max.apply(null, state.pmNotifications.map(function(n) {
+        return n.id;
+      })) + 1 : 1;
+      state.pmNotifications.push(record);
+    } catch (e) {
+      console.error("[GristPM] Error creating notification:", e);
+    }
+  }
+  function splitRecipientValues(value) {
+    if (Array.isArray(value)) return value;
+    return String(value || "").split(",").map(function(item) {
+      return item.trim();
+    }).filter(Boolean);
+  }
+  function resolveUserEmail(value) {
+    var raw = String(value || "").trim();
+    if (!raw) return "";
+    var key = raw.toLowerCase();
+    var user = state.users.find(function(candidate) {
+      return String(candidate.Email || "").trim().toLowerCase() === key || String(candidate.Name || "").trim().toLowerCase() === key;
+    });
+    if (user && user.Email) return String(user.Email).trim();
+    return raw.indexOf("@") > 0 ? raw : "";
+  }
+  function getProjectLead(task) {
+    var projectId = Number(task && task.Project_Id || 0);
+    var project = state.projects.find(function(item) {
+      return Number(item.id) === projectId;
+    });
+    return project ? resolveUserEmail(project.Lead) : "";
+  }
+  async function notifyTaskCompleted(task) {
+    if (!task) return;
+    var lead = getProjectLead(task);
+    if (!lead) return;
+    await notifyConcernedUsers(task.id, [lead], "task_completed", task.Title || "");
+  }
+  async function notifyConcernedUsers(taskId, emails, eventType, title) {
+    if (!state.notifyConcernedEnabled) return;
+    var me = (state.currentUserEmail || "").toLowerCase().trim();
+    var seen = {}, recipients = [];
+    (emails || []).forEach(function(e) {
+      var v = resolveUserEmail(e);
+      var k = v.toLowerCase();
+      if (v && k !== me && !seen[k]) {
+        seen[k] = 1;
+        recipients.push(v);
+      }
+    });
+    if (!recipients.length) return;
+    var messages = {
+      task_assigned: currentLang === "fr" ? "Une t\xE2che vous a \xE9t\xE9 assign\xE9e : " : "A task was assigned to you: ",
+      task_completed: currentLang === "fr" ? "T\xE2che termin\xE9e : " : "Task completed: ",
+      task_updated: currentLang === "fr" ? "T\xE2che modifi\xE9e : " : "Task updated: "
+    };
+    var msg = (messages[eventType] || messages.task_updated) + title;
+    var now = Math.floor(Date.now() / 1e3);
+    var actions = recipients.map(function(email) {
+      return ["AddRecord", state.NOTIFICATIONS_TABLE, null, { Task_Id: taskId, User_Email: email, Type: eventType, Message: msg, Is_Read: false, Created_At: now, Rule_Id: "builtin" }];
+    });
+    try {
+      await grist.docApi.applyUserActions(actions);
+    } catch (e) {
+      console.error("[GristPM] notifyConcernedUsers", e);
+    }
+  }
+  function resolveRecipients(action, actionTarget, task) {
+    if (action === "notify_assignee") {
+      return splitRecipientValues(task.Assignee).map(resolveUserEmail).filter(Boolean);
+    }
+    if (action === "notify_project_lead") {
+      var lead = getProjectLead(task);
+      return lead ? [lead] : [];
+    }
+    if (action === "notify_specific" && actionTarget) {
+      return [actionTarget];
+    }
+    if (action === "notify_all") {
+      return state.users.map(function(u) {
+        return u.Email;
+      }).filter(Boolean);
+    }
+    return [];
+  }
+  function renderAutoMessage(template, task) {
+    var statusLabel2 = "";
+    var statuses = getKanbanStatuses();
+    for (var si = 0; si < statuses.length; si++) {
+      if (statuses[si].key === task.Status) {
+        statusLabel2 = currentLang === "fr" ? statuses[si].label_fr : statuses[si].label_en;
+        break;
+      }
+    }
+    return (template || "").replace(/\{title\}/g, task.Title || "").replace(/\{status\}/g, statusLabel2 || task.Status || "").replace(/\{priority\}/g, task.Priority || "").replace(/\{assignee\}/g, task.Assignee || "");
+  }
+  async function evaluateAutomationRules(task, changes) {
+    if (!state.automationRules || state.automationRules.length === 0) return;
+    for (var i = 0; i < state.automationRules.length; i++) {
+      var rule = state.automationRules[i];
+      if (!rule.enabled) continue;
+      var triggered = false;
+      if (rule.trigger === "status_change" && changes.status) {
+        var mf = !rule.condition || !rule.condition.from || rule.condition.from === changes.status.from;
+        var mt = !rule.condition || !rule.condition.to || rule.condition.to === changes.status.to;
+        triggered = mf && mt;
+      } else if (rule.trigger === "priority_change" && changes.priority) {
+        var mf2 = !rule.condition || !rule.condition.from || rule.condition.from === changes.priority.from;
+        var mt2 = !rule.condition || !rule.condition.to || rule.condition.to === changes.priority.to;
+        triggered = mf2 && mt2;
+      } else if (rule.trigger === "assignment_change" && changes.assignee) {
+        triggered = true;
+      }
+      if (triggered) {
+        var msgTpl = currentLang === "fr" ? rule.message_fr || rule.message_en || "" : rule.message_en || rule.message_fr || "";
+        var message = renderAutoMessage(msgTpl, task);
+        var recipients = resolveRecipients(rule.action, rule.action_target, task);
+        for (var r = 0; r < recipients.length; r++) {
+          await createNotification(task.id, recipients[r], rule.trigger, message, rule.id);
+        }
+      }
+    }
+    updateNotificationBadge();
+  }
+  async function checkTimeBasedAutomations() {
+    if (!state.automationRules || state.automationRules.length === 0) return;
+    var now = Math.floor(Date.now() / 1e3);
+    var todayStart = now - now % 86400;
+    var threeDays = now + 3 * 24 * 60 * 60;
+    for (var i = 0; i < state.automationRules.length; i++) {
+      var rule = state.automationRules[i];
+      if (!rule.enabled) continue;
+      if (rule.trigger !== "overdue" && rule.trigger !== "approaching_deadline") continue;
+      var matching = state.tasks.filter(function(t2) {
+        if (t2.Status === "done" || t2.Status === "archived" || !t2.Due_Date) return false;
+        if (rule.trigger === "overdue") return t2.Due_Date < now;
+        return t2.Due_Date >= now && t2.Due_Date <= threeDays;
+      });
+      for (var j = 0; j < matching.length; j++) {
+        var task = matching[j];
+        var recipients = resolveRecipients(rule.action, rule.action_target, task);
+        for (var r = 0; r < recipients.length; r++) {
+          var already = state.pmNotifications.some(function(n) {
+            return n.Rule_Id === rule.id && n.Task_Id === task.id && n.User_Email === recipients[r] && n.Created_At >= todayStart;
+          });
+          if (already) continue;
+          var msgTpl = currentLang === "fr" ? rule.message_fr || rule.message_en || "" : rule.message_en || rule.message_fr || "";
+          var message = renderAutoMessage(msgTpl, task);
+          await createNotification(task.id, recipients[r], rule.trigger, message, rule.id);
+        }
+      }
+    }
+    updateNotificationBadge();
+  }
+  async function cleanupOldNotifications() {
+    var now = Math.floor(Date.now() / 1e3);
+    var thirtyDays = 30 * 86400;
+    var ninetyDays = 90 * 86400;
+    var toDelete = state.pmNotifications.filter(function(n) {
+      var age = now - (n.Created_At || 0);
+      return n.Is_Read && age > thirtyDays || age > ninetyDays;
+    });
+    if (toDelete.length === 0) return;
+    try {
+      var ids = toDelete.map(function(n) {
+        return n.id;
+      });
+      var actions = ids.map(function(id) {
+        return ["RemoveRecord", state.NOTIFICATIONS_TABLE, id];
+      });
+      await grist.docApi.applyUserActions(actions);
+      state.pmNotifications = state.pmNotifications.filter(function(n) {
+        return ids.indexOf(n.id) === -1;
+      });
+    } catch (e) {
+      console.log("[GristPM] Notification cleanup skipped:", e.message);
+    }
+  }
+
+  // src/domains/task-modal.js
+  function getInputValue(id, fallback) {
+    var el = document.getElementById(id);
+    if (!el) return fallback || "";
+    return el.value;
+  }
+  function getEstimatedHoursInput() {
+    var raw = String(getInputValue("task-estimated-hours", "")).trim().replace(",", ".");
+    if (!raw) return 0;
+    var value = parseFloat(raw);
+    return isFinite(value) && value >= 0 ? value : 0;
+  }
+  function requireTaskTitle() {
+    var modal = document.getElementById("modal-container");
+    var titleEl = modal ? modal.querySelector("#task-title") : null;
+    var title = titleEl ? titleEl.value.trim() : "";
+    if (!title) {
+      showToast(currentLang === "fr" ? "Ajoutez un titre avant d\u2019enregistrer." : "Add a title before saving.", "error");
+      if (titleEl) titleEl.focus();
+      return "";
+    }
+    return title;
+  }
+  async function refreshTaskTableColumns() {
+    try {
+      var data = await grist.docApi.fetchTable(state.TASKS_TABLE);
+      state.taskTableColumns = data ? Object.keys(data) : null;
+    } catch (e) {
+      state.taskTableColumns = null;
+    }
+  }
+  async function keepExistingTaskColumns(record) {
+    if (!state.taskTableColumns) await refreshTaskTableColumns();
+    if (!state.taskTableColumns) return record;
+    var filtered = {};
+    Object.keys(record).forEach(function(key) {
+      if (state.taskTableColumns.indexOf(key) !== -1) filtered[key] = record[key];
+    });
+    return filtered;
+  }
+  async function removeCommentsForTask(taskId) {
+    var toRemove = state.comments.filter(function(c) {
+      return c.Task_Id === taskId;
+    });
+    if (!toRemove.length) return;
+    await grist.docApi.applyUserActions(toRemove.map(function(c) {
+      return ["RemoveRecord", state.COMMENTS_TABLE, c.id];
+    }));
+  }
+  async function removeSubtasksForTask(taskId) {
+    var toRemove = state.subtasks.filter(function(st) {
+      return st.Parent_Task_Id === taskId;
+    });
+    if (!toRemove.length) return;
+    await grist.docApi.applyUserActions(toRemove.map(function(st) {
+      return ["RemoveRecord", state.SUBTASKS_TABLE, st.id];
+    }));
+  }
+  async function removeAttachmentsForTask(taskId) {
+    var toRemove = state.attachments.filter(function(attachment) {
+      return attachment.Task_Id === taskId;
+    });
+    if (!toRemove.length) return;
+    await grist.docApi.applyUserActions(toRemove.map(function(attachment) {
+      return ["RemoveRecord", state.ATTACHMENTS_TABLE, attachment.id];
+    }));
+  }
+  async function removeTimeEntriesForTask(taskId) {
+    var toRemove = state.timeEntries.filter(function(entry) {
+      return entry.Task_Id === taskId;
+    });
+    if (!toRemove.length) return;
+    await grist.docApi.applyUserActions(toRemove.map(function(entry) {
+      return ["RemoveRecord", state.TIME_ENTRIES_TABLE, entry.id];
+    }));
+    delete state.activeTimers[taskId];
+  }
+  async function removeDraftChildren(taskId) {
+    await removeCommentsForTask(taskId);
+    await removeSubtasksForTask(taskId);
+    await removeAttachmentsForTask(taskId);
+    await removeTimeEntriesForTask(taskId);
+  }
+  async function saveTaskFormSilently(taskId) {
+    var title = requireTaskTitle();
+    if (!title) return false;
+    if (shouldLimitToMyProjects() && editAssignees.length === 0) {
+      var mine = myAssigneeValue();
+      if (mine) editAssignees = [mine];
+    }
+    var projectEl = document.getElementById("task-project");
+    var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
+    var record = {};
+    setField(record, "tasks", "title", title);
+    setField(record, "tasks", "description", getInputValue("task-desc").trim());
+    setField(record, "tasks", "status", getInputValue("task-status"));
+    setField(record, "tasks", "priority", getInputValue("task-priority"));
+    setField(record, "tasks", "assignee", editAssignees.join(", "));
+    setField(record, "tasks", "group", getInputValue("task-group"));
+    setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
+    setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
+    setField(record, "tasks", "category", getInputValue("task-category").trim());
+    setField(record, "tasks", "projectId", projectId);
+    setField(record, "tasks", "recurrence", getInputValue("task-recurrence", "none"));
+    setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
+    var tagEl = document.getElementById("task-tag");
+    if (tagEl) setField(record, "tasks", "tag", tagEl.value.trim());
+    if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
+      record.Accountable = editAccountable.join(", ");
+      record.Consulted = editConsulted.join(", ");
+      record.Informed = editInformed.join(", ");
+    }
+    record = await keepExistingTaskColumns(record);
+    await grist.docApi.applyUserActions([
+      ["UpdateRecord", state.TASKS_TABLE, taskId, record]
+    ]);
+    return true;
+  }
+  function captureTaskFormState() {
+    var autoExtendEl = document.getElementById("task-auto-extend");
+    return {
+      title: getInputValue("task-title"),
+      description: getInputValue("task-desc"),
+      status: getInputValue("task-status"),
+      priority: getInputValue("task-priority"),
+      group: getInputValue("task-group"),
+      start: getInputValue("task-start"),
+      due: getInputValue("task-due"),
+      category: getInputValue("task-category"),
+      project: getInputValue("task-project"),
+      tag: getInputValue("task-tag"),
+      recurrence: getInputValue("task-recurrence", "none"),
+      estimatedHours: getInputValue("task-estimated-hours"),
+      extensionDate: getInputValue("task-extension-date"),
+      autoExtend: autoExtendEl ? autoExtendEl.checked : null
+    };
+  }
+  function restoreTaskFormState(state2) {
+    if (!state2) return;
+    [
+      ["task-title", state2.title],
+      ["task-desc", state2.description],
+      ["task-status", state2.status],
+      ["task-priority", state2.priority],
+      ["task-group", state2.group],
+      ["task-start", state2.start],
+      ["task-due", state2.due],
+      ["task-category", state2.category],
+      ["task-project", state2.project],
+      ["task-tag", state2.tag],
+      ["task-recurrence", state2.recurrence],
+      ["task-estimated-hours", state2.estimatedHours],
+      ["task-extension-date", state2.extensionDate]
+    ].forEach(function(pair) {
+      var el = document.getElementById(pair[0]);
+      if (el && pair[1] !== void 0 && pair[1] !== null) el.value = pair[1];
+    });
+    var autoExtendEl = document.getElementById("task-auto-extend");
+    if (autoExtendEl && state2.autoExtend !== null) autoExtendEl.checked = state2.autoExtend;
+  }
+  function openNewTaskModal(defaultStatus) {
+    if (!canEditWorkItems()) {
+      showToast(currentLang === "fr" ? "Vous n\u2019avez pas les droits pour cr\xE9er une t\xE2che." : "You do not have permission to create a task.", "error");
+      return;
+    }
+    return startNewTask(defaultStatus);
+    editAssignees = [];
+    editAccountable = [];
+    editConsulted = [];
+    editInformed = [];
+    var groupOptions = '<option value="">--</option>';
+    for (var i = 0; i < state.groups.length; i++) {
+      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + "</option>";
+    }
+    var dotColor = "#f59e0b";
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal modal-detail" onclick="event.stopPropagation()">';
+    html += '<div class="modal-detail-top">';
+    html += '<span class="group-dot" style="background:' + dotColor + '"></span>';
+    html += '<span style="font-size:14px;font-weight:800;">' + t("modalNewTask") + "</span>";
+    html += '<div style="flex:1;"></div>';
+    html += '<button class="modal-close" onclick="closeModalForce()">\u2715</button>';
+    html += "</div>";
+    html += '<div class="modal-detail-content" style="grid-template-columns:1fr;">';
+    html += '<div class="modal-detail-left">';
+    html += '<input class="detail-title-input" type="text" id="task-title" placeholder="' + t("fieldTitle") + '" />';
+    html += '<div class="detail-field">';
+    html += '<div class="detail-field-value"><textarea id="task-desc" placeholder="' + t("fieldDescription") + '"></textarea></div>';
+    html += "</div>";
+    if (state.raciEnabled) {
+      html += renderRaciField("R", t("raciResponsible"), "assignee", "editAssignees");
+      html += renderRaciField("A", t("raciAccountable"), "accountable", "editAccountable");
+      html += renderRaciField("C", t("raciConsulted"), "consulted", "editConsulted");
+      html += renderRaciField("I", t("raciInformed"), "informed", "editInformed");
+    } else {
+      html += '<div class="detail-field">';
+      html += '<span class="detail-field-icon">\u{1F464}</span>';
+      html += '<span class="detail-field-label">' + t("fieldAssignee") + "</span>";
+      html += '<div class="detail-field-value">';
+      html += '<div class="assignee-chips" id="assignee-chips"></div>';
+      html += '<div class="assignee-add-row">';
+      html += '<select id="assignee-select">';
+      html += '<option value="">-- ' + t("searchAssignee") + " --</option>";
+      for (var i = 0; i < state.users.length; i++) {
+        html += '<option value="' + sanitize(state.users[i].Email || state.users[i].Name) + '">' + sanitize(state.users[i].Name || state.users[i].Email) + "</option>";
+      }
+      html += "</select>";
+      html += `<button class="assignee-add-btn" onclick="addRaciChip('editAssignees','assignee')">` + t("addAssignee") + "</button>";
+      html += "</div>";
+      html += "</div></div>";
+    }
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F4CA}</span>';
+    html += '<span class="detail-field-label">' + t("fieldStatus") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-status">';
+    var _statuses = getKanbanStatuses();
+    for (var _si = 0; _si < _statuses.length; _si++) {
+      var _s = _statuses[_si];
+      var _sl = currentLang === "fr" ? _s.label_fr : _s.label_en;
+      html += '<option value="' + _s.key + '"' + (defaultStatus === _s.key || !defaultStatus && _si === 0 ? " selected" : "") + ">" + _sl + "</option>";
+    }
+    html += "</select></div></div>";
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F525}</span>';
+    html += '<span class="detail-field-label">' + t("fieldPriority") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-priority">';
+    html += '<option value="medium">' + t("priorityMedium") + "</option>";
+    html += '<option value="high">' + t("priorityHigh") + "</option>";
+    html += '<option value="low">' + t("priorityLow") + "</option>";
+    html += "</select></div></div>";
+    html += "</div>";
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F465}</span>';
+    html += '<span class="detail-field-label">' + t("fieldGroup") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-group">' + groupOptions + "</select></div>";
+    html += "</div>";
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F4C5}</span>';
+    html += '<span class="detail-field-label">' + t("fieldStartDate") + "</span>";
+    html += '<div class="detail-field-value"><input type="date" id="task-start" /></div>';
+    html += "</div>";
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u23F0</span>';
+    html += '<span class="detail-field-label">' + t("fieldDueDate") + "</span>";
+    html += '<div class="detail-field-value"><input type="date" id="task-due" /></div>';
+    html += "</div>";
+    html += "</div>";
+    var projectOptions = '<option value="">' + t("noProject") + "</option>";
+    for (var pi = 0; pi < state.projects.length; pi++) {
+      var projSelected = state.currentProjectId === state.projects[pi].id ? " selected" : "";
+      projectOptions += '<option value="' + state.projects[pi].id + '"' + projSelected + ">" + sanitize(state.projects[pi].Name) + "</option>";
+    }
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F4C2}</span>';
+    html += '<span class="detail-field-label">' + t("project") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-project">' + projectOptions + "</select></div>";
+    html += "</div>";
+    var newCategoryOptions = '<option value="">--</option>';
+    for (var nci = 0; nci < state.categories.length; nci++) {
+      newCategoryOptions += '<option value="' + sanitize(state.categories[nci].Name) + '">' + sanitize(state.categories[nci].Name) + "</option>";
+    }
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F4C1}</span>';
+    html += '<span class="detail-field-label">' + t("fieldCategory") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-category">' + newCategoryOptions + "</select></div>";
+    html += "</div>";
+    var newTagOptions = '<option value="">--</option>';
+    for (var nti = 0; nti < state.tags.length; nti++) {
+      newTagOptions += '<option value="' + sanitize(state.tags[nti].Name) + '">' + sanitize(state.tags[nti].Name) + "</option>";
+    }
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F3F7}\uFE0F</span>';
+    html += '<span class="detail-field-label">' + t("tag") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-tag">' + newTagOptions + "</select></div>";
+    html += "</div>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-detail-footer">';
+    html += "<div></div>";
+    html += '<div style="display:flex;gap:8px;">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="createTask()">' + t("save") + "</button>";
+    html += "</div></div>";
+    html += "</div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  var editAssignees = [];
+  var editAccountable = [];
+  var editConsulted = [];
+  var editInformed = [];
+  var draftTaskId = null;
+  async function startNewTask(defaultStatus, dateStr, prefill) {
+    prefill = prefill || {};
+    var statuses = getKanbanStatuses();
+    if (shouldLimitToMyProjects() && editAssignees.length === 0) {
+      var mine = myAssigneeValue();
+      if (mine) editAssignees = [mine];
+    }
+    var record = {};
+    setField(record, "tasks", "title", prefill.title || "");
+    setField(record, "tasks", "status", defaultStatus || statuses[0] && statuses[0].key || "todo");
+    setField(record, "tasks", "priority", prefill.priority || "medium");
+    if (prefill.description) setField(record, "tasks", "description", prefill.description);
+    if (prefill.category) setField(record, "tasks", "category", prefill.category);
+    if (prefill.group) setField(record, "tasks", "group", prefill.group);
+    if (prefill.tag) setField(record, "tasks", "tag", prefill.tag);
+    if (prefill.recurrence && prefill.recurrence !== "none") setField(record, "tasks", "recurrence", prefill.recurrence);
+    if (prefill.estimatedHours) setField(record, "tasks", "estimatedHours", prefill.estimatedHours);
+    if (editAssignees.length > 0) setField(record, "tasks", "assignee", editAssignees.join(", "));
+    if (state.currentProjectId) setField(record, "tasks", "projectId", state.currentProjectId);
+    setField(record, "tasks", "createdAt", Math.floor(Date.now() / 1e3));
+    if (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
+    if (dateStr) {
+      setField(record, "tasks", "startDate", toEpoch(dateStr));
+      setField(record, "tasks", "dueDate", toEpoch(dateStr));
+    }
+    try {
+      record = await keepExistingTaskColumns(record);
+      var res = await grist.docApi.applyUserActions([["AddRecord", state.TASKS_TABLE, null, record]]);
+      var newId = res && res.retValues && res.retValues[0] || null;
+      if (!newId) {
+        showToast("Error", "error");
+        return;
+      }
+      draftTaskId = newId;
+      await loadAllData();
+      await removeDraftChildren(newId);
+      await loadAllData();
+      openEditTaskModal(newId);
+    } catch (e) {
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  function openEditTaskModal(taskId, preserveAssignees) {
+    var task = state.tasks.find(function(t2) {
+      return t2.id === taskId;
+    });
+    if (!task) return;
+    if (!preserveAssignees) {
+      editAssignees = task.Assignee ? task.Assignee.split(",").map(function(a) {
+        return a.trim();
+      }).filter(Boolean) : [];
+      editAccountable = task.Accountable ? task.Accountable.split(",").map(function(a) {
+        return a.trim();
+      }).filter(Boolean) : [];
+      editConsulted = task.Consulted ? task.Consulted.split(",").map(function(a) {
+        return a.trim();
+      }).filter(Boolean) : [];
+      editInformed = task.Informed ? task.Informed.split(",").map(function(a) {
+        return a.trim();
+      }).filter(Boolean) : [];
+    }
+    var groupOptions = '<option value="">--</option>';
+    for (var i = 0; i < state.groups.length; i++) {
+      var sel = state.groups[i].Name === task.Group_Name ? " selected" : "";
+      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + ">" + sanitize(state.groups[i].Name) + "</option>";
+    }
+    var startVal = task.Start_Date ? new Date(task.Start_Date * 1e3).toISOString().split("T")[0] : "";
+    var dueVal = task.Due_Date ? new Date(task.Due_Date * 1e3).toISOString().split("T")[0] : "";
+    var progressPct = getTaskProgress(task);
+    var barClass = progressPct === 100 ? "bar-done" : progressPct >= 50 ? "bar-progress" : "bar-todo";
+    var dotColor = task.Priority === "high" ? "#ef4444" : task.Priority === "medium" ? "#f59e0b" : "#22c55e";
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal modal-detail" onclick="event.stopPropagation()">';
+    html += '<div class="modal-detail-top">';
+    html += '<span class="group-dot" style="background:' + dotColor + '"></span>';
+    if (task.Group_Name) html += '<span style="font-size:12px;color:#64748b;">' + sanitize(task.Group_Name) + "</span>";
+    html += '<span class="status-badge status-' + task.Status + '">\u25CF ' + statusLabel(task.Status) + "</span>";
+    html += '<div style="flex:1;"></div>';
+    html += '<button type="button" id="task-save-top-' + task.id + '" class="btn btn-primary" onclick="event.preventDefault();event.stopPropagation();updateTask(' + task.id + ')" style="padding:6px 16px;font-size:12px;border-radius:8px;margin-right:8px;">\u{1F4BE} ' + t("save") + "</button>";
+    html += '<button class="modal-close" onclick="closeModalForce()">\u2715</button>';
+    html += "</div>";
+    html += '<div class="modal-detail-content">';
+    html += '<div class="modal-detail-left">';
+    html += '<input class="detail-title-input" type="text" id="task-title" value="' + sanitize(task.Title) + '" />';
+    html += '<div class="detail-field">';
+    html += '<div class="detail-field-value"><textarea id="task-desc" placeholder="' + t("fieldDescription") + '">' + sanitize(task.Description) + "</textarea></div>";
+    html += "</div>";
+    if (state.raciEnabled) {
+      html += renderRaciField("R", t("raciResponsible"), "assignee", "editAssignees");
+      html += renderRaciField("A", t("raciAccountable"), "accountable", "editAccountable");
+      html += renderRaciField("C", t("raciConsulted"), "consulted", "editConsulted");
+      html += renderRaciField("I", t("raciInformed"), "informed", "editInformed");
+    } else {
+      html += '<div class="detail-field">';
+      html += '<span class="detail-field-icon">\u{1F464}</span>';
+      html += '<span class="detail-field-label">' + t("fieldAssignee") + "</span>";
+      html += '<div class="detail-field-value">';
+      html += '<div class="assignee-chips" id="assignee-chips">';
+      html += renderRaciChips("editAssignees");
+      html += "</div>";
+      html += '<div class="assignee-add-row">';
+      html += '<select id="assignee-select">';
+      html += '<option value="">-- ' + t("searchAssignee") + " --</option>";
+      for (var i = 0; i < state.users.length; i++) {
+        html += '<option value="' + sanitize(state.users[i].Email || state.users[i].Name) + '">' + sanitize(state.users[i].Name || state.users[i].Email) + "</option>";
+      }
+      html += "</select>";
+      html += `<button class="assignee-add-btn" onclick="addRaciChip('editAssignees','assignee')">` + t("addAssignee") + "</button>";
+      html += "</div>";
+      html += "</div></div>";
+    }
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F4CA}</span>';
+    html += '<span class="detail-field-label">' + t("fieldStatus") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-status">';
+    var _statuses2 = getKanbanStatuses();
+    for (var _si2 = 0; _si2 < _statuses2.length; _si2++) {
+      var _s2 = _statuses2[_si2];
+      var _sl2 = currentLang === "fr" ? _s2.label_fr : _s2.label_en;
+      html += '<option value="' + _s2.key + '"' + (task.Status === _s2.key ? " selected" : "") + ">" + _sl2 + "</option>";
+    }
+    html += "</select></div></div>";
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F4C5}</span>';
+    html += '<span class="detail-field-label">' + t("fieldStartDate") + "</span>";
+    html += '<div class="detail-field-value"><input type="date" id="task-start" value="' + startVal + '" /></div>';
+    html += "</div>";
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u23F0</span>';
+    html += '<span class="detail-field-label">' + t("fieldDueDate") + "</span>";
+    html += '<div class="detail-field-value"><input type="date" id="task-due" value="' + dueVal + '" /></div>';
+    html += "</div>";
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F525}</span>';
+    html += '<span class="detail-field-label">' + t("fieldPriority") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-priority">';
+    html += '<option value="high"' + (task.Priority === "high" ? " selected" : "") + ">" + t("priorityHigh") + "</option>";
+    html += '<option value="medium"' + (task.Priority === "medium" ? " selected" : "") + ">" + t("priorityMedium") + "</option>";
+    html += '<option value="low"' + (task.Priority === "low" ? " selected" : "") + ">" + t("priorityLow") + "</option>";
+    html += "</select></div></div>";
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F465}</span>';
+    html += '<span class="detail-field-label">' + t("fieldGroup") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-group">' + groupOptions + "</select></div>";
+    html += "</div>";
+    var projectOptions = '<option value="">' + t("noProject") + "</option>";
+    for (var pi = 0; pi < state.projects.length; pi++) {
+      var projSel = state.projects[pi].id === task.Project_Id ? " selected" : "";
+      projectOptions += '<option value="' + state.projects[pi].id + '"' + projSel + ">" + sanitize(state.projects[pi].Name) + "</option>";
+    }
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F4C2}</span>';
+    html += '<span class="detail-field-label">' + t("project") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-project" onchange="refreshDependencyTaskOptions(' + task.id + ', true)">' + projectOptions + "</select></div>";
+    html += "</div>";
+    var categoryOptions = '<option value="">--</option>';
+    for (var ci = 0; ci < state.categories.length; ci++) {
+      var catSel = state.categories[ci].Name === task.Category ? " selected" : "";
+      categoryOptions += '<option value="' + sanitize(state.categories[ci].Name) + '"' + catSel + ">" + sanitize(state.categories[ci].Name) + "</option>";
+    }
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F4C1}</span>';
+    html += '<span class="detail-field-label">' + t("fieldCategory") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-category">' + categoryOptions + "</select></div>";
+    html += "</div>";
+    var tagOptions = '<option value="">--</option>';
+    for (var ti = 0; ti < state.tags.length; ti++) {
+      var tagSel = state.tags[ti].Name === task.Tag ? " selected" : "";
+      tagOptions += '<option value="' + sanitize(state.tags[ti].Name) + '"' + tagSel + ">" + sanitize(state.tags[ti].Name) + "</option>";
+    }
+    html += '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F3F7}\uFE0F</span>';
+    html += '<span class="detail-field-label">' + t("tag") + "</span>";
+    html += '<div class="detail-field-value"><select id="task-tag">' + tagOptions + "</select></div>";
+    html += "</div>";
+    var taskSubtasks = getTaskSubtasks(task.id);
+    html += '<div class="subtasks-section">';
+    html += '<div class="subtasks-header">';
+    html += '<span class="detail-field-icon">\u2611\uFE0F</span>';
+    html += '<span class="detail-field-label">' + t("subtasks") + "</span>";
+    html += '<span class="subtask-badge">' + taskSubtasks.filter(function(st2) {
+      return st2.Completed;
+    }).length + "/" + taskSubtasks.length + "</span>";
+    html += "</div>";
+    html += '<div class="subtasks-list" id="subtasks-list">';
+    if (taskSubtasks.length === 0) {
+      html += '<div class="subtasks-empty">' + t("noSubtasks") + "</div>";
+    } else {
+      for (var si = 0; si < taskSubtasks.length; si++) {
+        var st = taskSubtasks[si];
+        var stBlocked = isSubtaskBlocked(st);
+        var stBlocker = getSubtaskBlocker(st);
+        var stDueDateStr = st.Due_Date ? new Date(st.Due_Date * 1e3).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
+        var stDueClass = st.Due_Date && !st.Completed && st.Due_Date < Math.floor(Date.now() / 1e3) ? " st-overdue" : "";
+        html += '<div class="subtask-item' + (st.Completed ? " completed" : "") + (stBlocked ? " blocked" : "") + '" data-id="' + st.id + '" id="st-row-' + st.id + '">';
+        html += '<div class="subtask-view" id="st-view-' + st.id + '">';
+        html += '<input type="checkbox" class="subtask-checkbox" ' + (st.Completed ? "checked" : "") + (stBlocked ? " disabled" : "") + ' onchange="toggleSubtask(' + st.id + ', this.checked)" />';
+        html += '<span class="subtask-title">' + sanitize(st.Title) + "</span>";
+        if (stBlocked && stBlocker) {
+          html += '<span class="subtask-blocked-badge" title="' + t("blockedBy") + " " + sanitize(stBlocker.Title) + '">\u{1F512}</span>';
+        }
+        html += '<span class="subtask-meta">';
+        if (st.Status && st.Status !== "todo") {
+          var stStatusColor = st.Status === "done" ? "#22c55e" : "#f59e0b";
+          html += '<span class="subtask-assignee-badge" style="background:' + stStatusColor + "20;color:" + stStatusColor + ';">' + (st.Status === "done" ? "\u2705" : "\u{1F504}") + "</span>";
+        }
+        if (st.Priority && st.Priority !== "medium") {
+          var stPrioColor = st.Priority === "high" ? "#ef4444" : "#94a3b8";
+          html += '<span class="subtask-assignee-badge" style="background:' + stPrioColor + "20;color:" + stPrioColor + ';">' + (st.Priority === "high" ? "\u{1F534}" : "\u2B07\uFE0F") + "</span>";
+        }
+        if (st.Assignee) {
+          st.Assignee.split(",").map(function(a) {
+            return a.trim();
+          }).filter(Boolean).forEach(function(an) {
+            html += '<span class="subtask-assignee-badge">\u{1F464} ' + sanitize(an) + "</span>";
+          });
+        }
+        if (stDueDateStr) html += '<span class="subtask-due-badge' + stDueClass + '">\u{1F4C5} ' + stDueDateStr + "</span>";
+        if (st.Estimated_Hours) html += '<span class="subtask-assignee-badge">\u23F1 ' + st.Estimated_Hours + "h</span>";
+        if (st.Recurrence && st.Recurrence !== "none") {
+          var recSymbol = recurrenceSymbol(st.Recurrence);
+          html += '<span class="subtask-assignee-badge" title="' + t("recurrence") + '">' + recSymbol + "</span>";
+        }
+        html += "</span>";
+        if (st.Recurrence && st.Recurrence !== "none") {
+          html += '<button class="subtask-dep-btn" onclick="generateSubtaskOccurrences(' + st.id + ", " + task.id + ')" title="' + t("generateMonth") + '">\u{1F4C5}+</button>';
+        }
+        html += '<button class="subtask-edit-btn" onclick="startEditSubtask(' + st.id + ", " + task.id + ')" title="' + t("editSubtask") + '">\u270F\uFE0F</button>';
+        html += '<button class="subtask-dep-btn" onclick="openSubtaskDepModal(' + st.id + ", " + task.id + ')" title="' + t("dependencies") + '">\u{1F517}</button>';
+        html += '<button class="subtask-delete" onclick="deleteSubtask(' + st.id + ", " + task.id + ')" title="' + t("delete") + '">\u2715</button>';
+        html += "</div>";
+        var stAssignees = (st.Assignee || "").split(",").map(function(a) {
+          return a.trim();
+        }).filter(Boolean);
+        var assigneeListHtml = '<div class="st-assignee-list" id="st-assignee-' + st.id + '" style="display:flex;flex-wrap:wrap;gap:4px 10px;max-height:84px;overflow-y:auto;padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;">';
+        if (state.users.length === 0) {
+          assigneeListHtml += '<span style="font-size:11px;color:#94a3b8;">' + (currentLang === "fr" ? "Aucun membre" : "No members") + "</span>";
+        }
+        for (var ui = 0; ui < state.users.length; ui++) {
+          var uName = state.users[ui].Name;
+          var uChk = stAssignees.indexOf(uName) !== -1 ? " checked" : "";
+          assigneeListHtml += '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;white-space:nowrap;"><input type="checkbox" value="' + sanitize(uName) + '"' + uChk + "> " + sanitize(uName) + "</label>";
+        }
+        assigneeListHtml += "</div>";
+        var stDueDateInput = st.Due_Date ? new Date(st.Due_Date * 1e3).toISOString().split("T")[0] : "";
+        var stStatus = st.Status || "todo";
+        var stPriority = st.Priority || "medium";
+        var stLbl = { todo: t("statusTodo"), progress: t("statusProgress"), done: t("statusDone") };
+        var prLbl = { high: t("priorityHigh"), medium: t("priorityMedium"), low: t("priorityLow") };
+        html += '<div class="subtask-edit-form" id="st-edit-' + st.id + '">';
+        html += '<input type="text" class="subtask-edit-title" id="st-title-' + st.id + '" value="' + sanitize(st.Title) + '" placeholder="' + (currentLang === "fr" ? "Titre de la sous-t\xE2che..." : "Subtask title...") + '">';
+        html += '<textarea class="subtask-edit-title" id="st-desc-' + st.id + '" rows="2" placeholder="' + (currentLang === "fr" ? "Description (optionnel)..." : "Description (optional)...") + '" style="resize:vertical;">' + sanitize(st.Description || "") + "</textarea>";
+        var stType = st.Type || "subtask";
+        html += '<div><div class="st-pill-label">' + (currentLang === "fr" ? "Type" : "Type") + "</div>";
+        html += '<div class="st-pill-group">';
+        html += '<button type="button" class="st-pill' + (stType !== "milestone" ? " active-progress" : "") + '" onclick="setStType(' + st.id + `,'subtask',this)">` + (currentLang === "fr" ? "\u21B3 Sous-t\xE2che" : "\u21B3 Subtask") + "</button>";
+        html += '<button type="button" class="st-pill' + (stType === "milestone" ? " active-progress" : "") + '" onclick="setStType(' + st.id + `,'milestone',this)">` + (currentLang === "fr" ? "\u25C6 Jalon (1 date)" : "\u25C6 Milestone (1 date)") + "</button>";
+        html += "</div>";
+        html += '<input type="hidden" id="st-type-' + st.id + '" value="' + stType + '">';
+        html += "</div>";
+        html += "<div>";
+        html += '<div class="st-pill-label">' + (currentLang === "fr" ? "Statut" : "Status") + "</div>";
+        html += '<div class="st-pill-group" id="st-status-group-' + st.id + '">';
+        getKanbanStatuses().forEach(function(s) {
+          var sLbl = (s.emoji ? s.emoji + " " : "") + (currentLang === "fr" ? s.label_fr : s.label_en);
+          var sActiveStyle = stStatus === s.key ? "background:" + (s.color || "#3b82f6") + ";color:#fff;border-color:" + (s.color || "#3b82f6") + ";" : "";
+          html += '<button type="button" class="st-pill" style="' + sActiveStyle + '" onclick="setStStatus(' + st.id + ",'" + s.key + `',this)">` + sanitize(sLbl) + "</button>";
+        });
+        html += "</div>";
+        html += '<input type="hidden" id="st-status-' + st.id + '" value="' + stStatus + '">';
+        html += "</div>";
+        html += "<div>";
+        html += '<div class="st-pill-label">' + (currentLang === "fr" ? "Priorit\xE9" : "Priority") + "</div>";
+        html += '<div class="st-pill-group" id="st-priority-group-' + st.id + '">';
+        ["high", "medium", "low"].forEach(function(p) {
+          html += '<button type="button" class="st-pill' + (stPriority === p ? " active-" + p : "") + `" onclick="setStPill('priority',` + st.id + ",'" + p + `',this)">` + prLbl[p] + "</button>";
+        });
+        html += "</div>";
+        html += '<input type="hidden" id="st-priority-' + st.id + '" value="' + stPriority + '">';
+        html += "</div>";
+        html += "<div>";
+        html += '<div class="st-pill-label">' + t("subtaskAssignee") + (currentLang === "fr" ? " (plusieurs possibles)" : " (multiple)") + "</div>";
+        if (state.users.length > 1) {
+          html += '<input type="text" id="st-assignee-search-' + st.id + '" oninput="filterStAssignees(' + st.id + ', this.value)" placeholder="' + (currentLang === "fr" ? "\u{1F50D} Rechercher un membre..." : "\u{1F50D} Search a member...") + '" style="width:100%;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;margin-bottom:4px;" autocomplete="off">';
+        }
+        html += assigneeListHtml;
+        html += "</div>";
+        html += '<div class="st-meta-row">';
+        var stStartDateInput = st.Start_Date ? new Date(st.Start_Date * 1e3).toISOString().split("T")[0] : "";
+        html += '<input type="date" class="subtask-edit-date" id="st-start-' + st.id + '" value="' + stStartDateInput + '" title="' + (currentLang === "fr" ? "Date d\xE9but" : "Start date") + '">';
+        html += '<input type="date" class="subtask-edit-date" id="st-due-' + st.id + '" value="' + stDueDateInput + '" title="' + (currentLang === "fr" ? "\xC9ch\xE9ance" : "Due date") + '">';
+        html += '<input type="number" class="st-hours-input" id="st-hours-' + st.id + '" value="' + (st.Estimated_Hours || "") + '" placeholder="' + (currentLang === "fr" ? "Heures" : "Hours") + '" min="0" step="0.5">';
+        html += "</div>";
+        var stRecur = st.Recurrence || "none";
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">';
+        html += '<span style="font-size:11px;color:#64748b;">\u{1F504} ' + (currentLang === "fr" ? "R\xE9currence" : "Recurrence") + "</span>";
+        html += '<select id="st-recur-' + st.id + '" style="flex:1;font-size:12px;">';
+        html += '<option value="none"' + (stRecur === "none" ? " selected" : "") + ">" + t("recurrenceNone") + "</option>";
+        html += '<option value="daily"' + (stRecur === "daily" ? " selected" : "") + ">" + t("recurrenceDaily") + "</option>";
+        html += '<option value="weekly"' + (stRecur === "weekly" ? " selected" : "") + ">" + t("recurrenceWeekly") + "</option>";
+        html += '<option value="biweekly"' + (stRecur === "biweekly" ? " selected" : "") + ">" + t("recurrenceBiweekly") + "</option>";
+        html += '<option value="monthly"' + (stRecur === "monthly" ? " selected" : "") + ">" + t("recurrenceMonthly") + "</option>";
+        html += '<option value="quarterly"' + (stRecur === "quarterly" ? " selected" : "") + ">" + t("recurrenceQuarterly") + "</option>";
+        html += '<option value="yearly"' + (stRecur === "yearly" ? " selected" : "") + ">" + t("recurrenceYearly") + "</option>";
+        html += "</select>";
+        html += "</div>";
+        html += '<div class="st-form-actions">';
+        html += '<button type="button" class="subtask-cancel-btn" onclick="cancelEditSubtask(' + st.id + ')">' + (currentLang === "fr" ? "Annuler" : "Cancel") + "</button>";
+        html += '<button type="button" class="subtask-save-btn" onclick="saveEditSubtask(' + st.id + ", " + task.id + ')">\u2713 ' + (currentLang === "fr" ? "Enregistrer" : "Save") + "</button>";
+        html += "</div>";
+        html += "</div>";
+        html += "</div>";
+      }
+    }
+    html += "</div>";
+    html += '<div class="subtask-add-row">';
+    html += '<input type="text" id="new-subtask-input" class="subtask-input" placeholder="' + t("subtaskPlaceholder") + `" onkeypress="if(event.key==='Enter'){event.preventDefault();addSubtask(` + task.id + ');}" />';
+    html += '<button type="button" class="subtask-add-btn" onclick="event.preventDefault();addSubtask(' + task.id + ')">+</button>';
+    html += "</div>";
+    html += "</div>";
+    var taskDeps = getTaskDependencies(task.id);
+    var taskBlocks = getTasksDependingOn(task.id);
+    html += '<div class="dependencies-section">';
+    html += '<div class="dependencies-header">';
+    html += '<span class="detail-field-icon">\u{1F517}</span>';
+    html += '<span class="detail-field-label">' + t("dependencies") + "</span>";
+    html += "</div>";
+    html += '<div class="dep-subsection">';
+    html += '<div class="dep-label">' + t("blockedBy") + ":</div>";
+    if (taskDeps.length === 0) {
+      html += '<div class="dep-empty">' + t("noDependencies") + "</div>";
+    } else {
+      html += '<div class="dep-list">';
+      for (var di = 0; di < taskDeps.length; di++) {
+        var dep = taskDeps[di];
+        var depDone = dep.Status === "done";
+        html += '<div class="dep-item' + (depDone ? " dep-done" : "") + '">';
+        html += '<span class="dep-status">' + (depDone ? "\u2705" : "\u23F3") + "</span>";
+        html += '<span class="dep-title">' + sanitize(dep.Title) + "</span>";
+        html += '<button class="dep-remove" onclick="removeDependency(' + task.id + ", " + dep.id + ')">\u2715</button>';
+        html += "</div>";
+      }
+      html += "</div>";
+    }
+    html += "</div>";
+    if (taskBlocks.length > 0) {
+      html += '<div class="dep-subsection">';
+      html += '<div class="dep-label">' + t("blocks") + ":</div>";
+      html += '<div class="dep-list">';
+      for (var bi = 0; bi < taskBlocks.length; bi++) {
+        var blk = taskBlocks[bi];
+        html += '<div class="dep-item dep-blocks">';
+        html += '<span class="dep-title">' + sanitize(blk.Title) + "</span>";
+        html += "</div>";
+      }
+      html += "</div>";
+      html += "</div>";
+    }
+    html += '<div class="dep-add-row">';
+    html += '<div class="dep-combobox" id="dep-combobox">';
+    html += '<input type="search" id="dep-search" class="dep-search-input" role="combobox" aria-autocomplete="list" aria-controls="dep-options" aria-expanded="false" placeholder="' + (currentLang === "fr" ? "S\xE9lectionner ou rechercher une t\xE2che..." : "Select or search for a task...") + '" onfocus="openDependencyTaskOptions(' + task.id + ')" oninput="clearDependencyTaskSelection();openDependencyTaskOptions(' + task.id + `)" onkeydown="if(event.key==='Escape')closeDependencyTaskOptions()" autocomplete="off" />`;
+    html += '<input type="hidden" id="dep-select" value="" />';
+    html += '<button type="button" class="dep-toggle-btn" onclick="toggleDependencyTaskOptions(' + task.id + ')" title="' + (currentLang === "fr" ? "Afficher les t\xE2ches" : "Show tasks") + '">\u2304</button>';
+    html += '<div id="dep-options" class="dep-options" role="listbox"></div>';
+    html += "</div>";
+    html += '<button type="button" class="dep-add-btn" onclick="addDependency(' + task.id + ')">+</button>';
+    html += "</div>";
+    html += "</div>";
+    if (state.customFields.length > 0) {
+      html += '<div class="custom-fields-section">';
+      html += '<div class="custom-fields-header">';
+      html += '<span class="detail-field-icon">\u{1F4CB}</span>';
+      html += '<span class="detail-field-label">' + t("customFields") + "</span>";
+      if (state.isOwner) html += '<button class="cf-manage-btn" onclick="openCustomFieldsModal()">\u2699\uFE0F</button>';
+      html += "</div>";
+      html += '<div class="custom-fields-list">';
+      for (var cfi = 0; cfi < state.customFields.length; cfi++) {
+        var cf = state.customFields[cfi];
+        var cfValue = getTaskCustomFieldValue(task.id, cf.id);
+        html += '<div class="custom-field-item">';
+        html += '<label class="cf-label">' + sanitize(cf.Name) + "</label>";
+        html += renderCustomFieldInput(cf, task.id, cfValue);
+        html += "</div>";
+      }
+      html += "</div>";
+      html += "</div>";
+    } else if (state.isOwner) {
+      html += '<div class="custom-fields-section">';
+      html += '<div class="custom-fields-header">';
+      html += '<span class="detail-field-icon">\u{1F4CB}</span>';
+      html += '<span class="detail-field-label">' + t("customFields") + "</span>";
+      html += '<button class="cf-manage-btn" onclick="openCustomFieldsModal()">\u2699\uFE0F</button>';
+      html += "</div>";
+      html += '<div class="cf-empty">' + t("noCustomFields") + "</div>";
+      html += "</div>";
+    }
+    html += '<div class="attachments-section">';
+    html += '<div class="comments-header">';
+    html += '<span class="detail-field-icon">\u{1F4CE}</span>';
+    html += '<span class="detail-field-label">' + (currentLang === "fr" ? "Pi\xE8ces jointes" : "Attachments") + "</span>";
+    html += '<span class="comment-badge">' + getTaskAttachments(task.id).length + "</span>";
+    html += "</div>";
+    html += '<div class="attachments-list" id="attachments-list-' + task.id + '"></div>';
+    html += '<div class="attach-add-row">';
+    html += '<label class="attach-upload-btn">\u{1F4CE} ' + (currentLang === "fr" ? "Ajouter un fichier" : "Add file") + '<input type="file" multiple style="display:none;" onchange="uploadTaskAttachments(' + task.id + `, Array.from(this.files)); this.value='';"></label>`;
+    html += '<span class="attach-status" id="attach-status-' + task.id + '"></span>';
+    html += "</div>";
+    html += '<div class="attach-hint">' + (currentLang === "fr" ? "Tous formats \xB7 max 5 Mo par fichier (images compress\xE9es automatiquement)" : "All formats \xB7 max 5MB per file (images auto-compressed)") + "</div>";
+    html += "</div>";
+    var taskComments = getTaskComments(task.id);
+    html += '<div class="comments-section">';
+    html += '<div class="comments-header">';
+    html += '<span class="detail-field-icon">\u{1F4AC}</span>';
+    html += '<span class="detail-field-label">' + t("comments") + "</span>";
+    html += '<span class="comment-badge">' + taskComments.length + "</span>";
+    html += "</div>";
+    html += '<div class="comments-list" id="comments-list">';
+    if (taskComments.length === 0) {
+      html += '<div class="comments-empty">' + t("noComments") + "</div>";
+    } else {
+      for (var ci = 0; ci < taskComments.length; ci++) {
+        var cmt = taskComments[ci];
+        html += '<div class="comment-item">';
+        html += '<div class="comment-header">';
+        html += '<span class="comment-author">\u{1F464} ' + sanitize(cmt.Author || "Anonyme") + "</span>";
+        html += '<span class="comment-time">' + formatTimeAgo(cmt.Created_At) + "</span>";
+        if (state.isOwner) html += '<button class="comment-delete" onclick="deleteComment(' + cmt.id + ", " + task.id + ')">\u2715</button>';
+        html += "</div>";
+        html += '<div class="comment-content">' + sanitize(cmt.Content) + "</div>";
+        html += "</div>";
+      }
+    }
+    html += "</div>";
+    html += '<div class="comment-add-row">';
+    html += '<textarea id="new-comment-input" class="comment-input" placeholder="' + t("commentPlaceholder") + '" rows="2"></textarea>';
+    html += '<button type="button" class="comment-add-btn" onclick="event.preventDefault();addComment(' + task.id + ')">' + t("addComment") + "</button>";
+    html += "</div>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-detail-right">';
+    html += '<div class="detail-card">';
+    html += "<h4>\u23F3 " + t("progression") + "</h4>";
+    html += '<div class="detail-info-row"><span class="info-label">' + t("advancement") + '</span><span class="info-value">' + progressPct + "%</span></div>";
+    html += '<div class="progress-bar-bg"><div class="progress-bar-fill ' + barClass + '" style="width:' + progressPct + '%"></div></div>';
+    html += '<div class="detail-info-row"><span class="info-label">' + t("startLabel") + '</span><span class="info-value">' + (startVal ? formatDate(task.Start_Date) : "--") + "</span></div>";
+    html += '<div class="detail-info-row"><span class="info-label">' + t("dueLabel") + '</span><span class="info-value" style="' + (isOverdue(task) ? "color:#dc2626;" : "") + '">' + (dueVal ? formatDate(task.Due_Date) : "--") + (isOverdue(task) ? " \u26A0\uFE0F" : "") + "</span></div>";
+    html += "</div>";
+    html += '<div class="detail-card">';
+    html += "<h4>\u26A1 " + t("quickActions") + "</h4>";
+    if (task.Status === "done") {
+      html += '<button class="quick-action-btn" onclick="quickAction(' + task.id + `,'todo')">\u{1F504} ` + t("reopenTask") + "</button>";
+    } else if (task.Status === "todo") {
+      html += '<button class="quick-action-btn" onclick="quickAction(' + task.id + `,'progress')">\u25B6\uFE0F ` + t("startTask") + "</button>";
+      html += '<button class="quick-action-btn" onclick="quickAction(' + task.id + `,'done')">\u2705 ` + t("completeTask") + "</button>";
+    } else {
+      html += '<button class="quick-action-btn" onclick="quickAction(' + task.id + `,'done')">\u2705 ` + t("completeTask") + "</button>";
+      html += '<button class="quick-action-btn" onclick="quickAction(' + task.id + `,'todo')">\u23EA ` + t("reopenTask") + "</button>";
+    }
+    html += "</div>";
+    html += '<div class="detail-card">';
+    html += "<h4>\u{1F4CB} " + t("taskSummary") + "</h4>";
+    html += '<div class="detail-info-row"><span class="info-label">' + t("fieldStatus") + ' :</span><span class="info-value" style="color:' + (task.Status === "done" ? "#22c55e" : task.Status === "progress" ? "#3b82f6" : "#f59e0b") + '">' + statusLabel(task.Status) + "</span></div>";
+    html += '<div class="detail-info-row"><span class="info-label">' + t("fieldPriority") + ' :</span><span class="info-value" style="color:' + dotColor + '">' + priorityLabel(task.Priority) + "</span></div>";
+    html += '<div class="detail-info-row"><span class="info-label">' + t("fieldAssignee") + ' :</span><span class="info-value">' + editAssignees.length + "</span></div>";
+    html += "</div>";
+    var totalTime = getTaskTotalTime(task.id);
+    var isTimerRunning = !!state.activeTimers[task.id];
+    var taskTimeEntries = getTaskTimeEntries(task.id);
+    html += '<div class="detail-card time-card">';
+    html += "<h4>\u23F1\uFE0F " + t("timeTracking") + "</h4>";
+    html += '<label for="task-estimated-hours" style="display:block;font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;">' + t("estimatedTime") + " (h)</label>";
+    html += '<input type="number" id="task-estimated-hours" min="0" step="0.5" value="' + (task.Estimated_Hours || "") + '" placeholder="Ex. 8" class="form-input" style="width:100%;margin-bottom:10px;" />';
+    html += '<div class="timer-control">';
+    if (isTimerRunning) {
+      html += '<button class="timer-btn timer-stop" onclick="pauseTimer(' + task.id + ')">\u23F8\uFE0F Pause</button>';
+      html += '<span class="timer-status running">\u25CF ' + t("timerRunning") + "</span>";
+    } else {
+      html += '<button class="timer-btn timer-start" onclick="startTimer(' + task.id + ')">\u25B6\uFE0F ' + t("startTimer") + "</button>";
+    }
+    html += "</div>";
+    html += '<div class="manual-time-entry" style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">';
+    html += '<input type="number" id="manual-hours" min="0" max="99" placeholder="0" style="width:52px;" class="form-input" title="' + (currentLang === "fr" ? "Heures" : "Hours") + '"> h';
+    html += '<input type="number" id="manual-minutes" min="0" max="59" placeholder="0" style="width:52px;" class="form-input" title="' + (currentLang === "fr" ? "Minutes" : "Minutes") + '"> min';
+    html += '<button class="btn btn-secondary btn-sm" onclick="addManualTimeEntry(' + task.id + ')">+ ' + (currentLang === "fr" ? "Ajouter" : "Add") + "</button>";
+    html += "</div>";
+    html += '<div class="time-summary">';
+    html += '<div class="detail-info-row"><span class="info-label">' + t("totalTime") + ' :</span><span class="info-value time-value">' + formatDuration(totalTime) + "</span></div>";
+    if (task.Estimated_Hours) {
+      var estimatedSec = task.Estimated_Hours * 3600;
+      var pctUsed = Math.round(totalTime / estimatedSec * 100);
+      html += '<div class="detail-info-row"><span class="info-label">' + t("estimatedTime") + ' :</span><span class="info-value">' + task.Estimated_Hours + "h (" + pctUsed + "%)</span></div>";
+    }
+    html += "</div>";
+    if (taskTimeEntries.length > 0) {
+      html += '<div class="time-entries">';
+      html += '<div class="time-entries-label">' + t("timeEntries") + ":</div>";
+      html += '<div style="max-height:120px;overflow-y:auto;">';
+      for (var tei = 0; tei < taskTimeEntries.length; tei++) {
+        var te = taskTimeEntries[tei];
+        html += '<div class="time-entry-item">';
+        html += '<span class="te-duration">' + formatDurationShort(te.Duration) + "</span>";
+        html += '<span class="te-date">' + formatTimeAgo(te.Start_Time) + "</span>";
+        html += "</div>";
+      }
+      html += "</div>";
+      html += "</div>";
+    }
+    html += "</div>";
+    html += '<div class="detail-card">';
+    html += "<h4>\u{1F4CF} " + t("extensionDate") + "</h4>";
+    var extDateVal = task.Extension_Date ? fromEpoch(task.Extension_Date) : "";
+    html += '<div style="margin-bottom:10px;"><input type="date" id="task-extension-date" value="' + extDateVal + '" style="width:100%;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;" /></div>';
+    html += '<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">';
+    html += '<input type="checkbox" id="task-auto-extend" ' + (task.Auto_Extend ? "checked" : "") + ' style="width:16px;height:16px;accent-color:#3b82f6;flex-shrink:0;margin-top:2px;" />';
+    html += '<span style="font-size:11px;color:#64748b;line-height:1.3;">' + t("autoExtendHint") + "</span>";
+    html += "</label>";
+    html += "</div>";
+    var hasRecurrence = task.Recurrence && task.Recurrence !== "none";
+    html += '<div class="detail-card">';
+    html += "<h4>\u{1F504} " + t("recurrence") + "</h4>";
+    html += '<select id="task-recurrence" class="recurrence-select">';
+    html += '<option value="none"' + (!hasRecurrence ? " selected" : "") + ">" + t("recurrenceNone") + "</option>";
+    html += '<option value="daily"' + (task.Recurrence === "daily" ? " selected" : "") + ">" + t("recurrenceDaily") + "</option>";
+    html += '<option value="weekly"' + (task.Recurrence === "weekly" ? " selected" : "") + ">" + t("recurrenceWeekly") + "</option>";
+    html += '<option value="biweekly"' + (task.Recurrence === "biweekly" ? " selected" : "") + ">" + t("recurrenceBiweekly") + "</option>";
+    html += '<option value="monthly"' + (task.Recurrence === "monthly" ? " selected" : "") + ">" + t("recurrenceMonthly") + "</option>";
+    html += '<option value="quarterly"' + (task.Recurrence === "quarterly" ? " selected" : "") + ">" + t("recurrenceQuarterly") + "</option>";
+    html += '<option value="yearly"' + (task.Recurrence === "yearly" ? " selected" : "") + ">" + t("recurrenceYearly") + "</option>";
+    html += "</select>";
+    if (hasRecurrence) {
+      html += '<div class="recurrence-explain">\u2139\uFE0F ' + t("recurrenceExplain") + "</div>";
+      html += '<div class="recurrence-batch-btns">';
+      html += '<button class="btn btn-secondary btn-sm" onclick="generateOccurrences(' + task.id + `, 'month')">` + t("generateMonth") + "</button>";
+      html += '<button class="btn btn-secondary btn-sm" onclick="generateOccurrences(' + task.id + `, 'year')">` + t("generateYear") + "</button>";
+      html += "</div>";
+    }
+    html += "</div>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-detail-footer">';
+    if (state.isOwner) html += '<button class="btn-danger" onclick="deleteTask(' + task.id + ')">' + t("delete") + "</button>";
+    else html += "<div></div>";
+    html += '<div style="display:flex;gap:8px;">';
+    html += '<button type="button" class="btn btn-secondary" onclick="event.preventDefault();closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button type="button" class="btn btn-primary" onclick="saveTaskFromFooter(' + task.id + ', event)">' + t("save") + "</button>";
+    html += "</div></div>";
+    html += "</div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+    renderAttachmentsSection(task.id);
+    refreshDependencyTaskOptions(task.id);
+  }
+  function saveTaskFromFooter(taskId, event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    var topSaveButton = document.getElementById("task-save-top-" + taskId);
+    if (topSaveButton) {
+      topSaveButton.click();
+    } else {
+      updateTask(taskId);
+    }
+  }
+  function getRaciArray(varName) {
+    if (varName === "editAssignees") return editAssignees;
+    if (varName === "editAccountable") return editAccountable;
+    if (varName === "editConsulted") return editConsulted;
+    if (varName === "editInformed") return editInformed;
+    return [];
+  }
+  function renderRaciChips(varName) {
+    var arr = getRaciArray(varName);
+    var html = "";
+    for (var i = 0; i < arr.length; i++) {
+      var name = arr[i];
+      var displayName = name;
+      for (var j = 0; j < state.users.length; j++) {
+        if (state.users[j].Email === name || state.users[j].Name === name) {
+          displayName = state.users[j].Name || state.users[j].Email;
+          break;
+        }
+      }
+      html += '<span class="assignee-chip-tag">' + sanitize(displayName) + ` <span class="chip-remove" onclick="removeRaciChip('` + varName + "'," + i + ",'" + varName.replace("edit", "").toLowerCase() + `')">\u2715</span></span>`;
+    }
+    return html;
+  }
+  function renderRaciField(letter, label, selectSuffix, varName) {
+    var raciColors = { R: "#3b82f6", A: "#f59e0b", C: "#8b5cf6", I: "#64748b" };
+    var color = raciColors[letter] || "#94a3b8";
+    var html = '<div class="detail-field">';
+    html += '<span class="detail-field-icon" style="background:' + color + ';color:#fff;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">' + letter + "</span>";
+    html += '<span class="detail-field-label">' + label + "</span>";
+    html += '<div class="detail-field-value">';
+    html += '<div class="assignee-chips" id="' + selectSuffix + '-chips">';
+    html += renderRaciChips(varName);
+    html += "</div>";
+    html += '<div class="assignee-add-row">';
+    html += '<select id="' + selectSuffix + '-select">';
+    html += '<option value="">-- ' + t("searchAssignee") + " --</option>";
+    for (var i = 0; i < state.users.length; i++) {
+      html += '<option value="' + sanitize(state.users[i].Email || state.users[i].Name) + '">' + sanitize(state.users[i].Name || state.users[i].Email) + "</option>";
+    }
+    html += "</select>";
+    html += `<button class="assignee-add-btn" onclick="addRaciChip('` + varName + "','" + selectSuffix + `')">` + t("addAssignee") + "</button>";
+    html += "</div>";
+    html += "</div></div>";
+    return html;
+  }
+  function addRaciChip(varName, selectSuffix) {
+    var sel = document.getElementById(selectSuffix + "-select");
+    var arr = getRaciArray(varName);
+    var val = sel.value;
+    if (!val || arr.indexOf(val) !== -1) return;
+    arr.push(val);
+    var container = document.getElementById(selectSuffix + "-chips");
+    if (container) container.innerHTML = renderRaciChips(varName);
+    sel.value = "";
+  }
+  function removeRaciChip(varName, index, selectSuffix) {
+    var arr = getRaciArray(varName);
+    arr.splice(index, 1);
+    var container = document.getElementById(selectSuffix + "-chips") || document.getElementById(varName.replace("edit", "").toLowerCase() + "-chips");
+    if (container) container.innerHTML = renderRaciChips(varName);
+  }
+  async function quickAction(taskId, newStatus) {
+    var task = state.tasks.find(function(t2) {
+      return t2.id === taskId;
+    });
+    var wasNotDone = task && task.Status !== "done";
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.TASKS_TABLE, taskId, { Status: newStatus }]
+      ]);
+      for (var i = 0; i < state.tasks.length; i++) {
+        if (state.tasks[i].id === taskId) {
+          state.tasks[i].Status = newStatus;
+          break;
+        }
+      }
+      showToast(t("taskMoved"), "success");
+      if (newStatus === "done" && wasNotDone && task) {
+        await notifyTaskCompleted(Object.assign({}, task, { Status: newStatus }));
+      }
+      if (newStatus === "done" && wasNotDone && task && task.Recurrence && task.Recurrence !== "none") {
+        await createNextOccurrence(task);
+      }
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error quick action:", e);
+    }
+  }
+  async function addSubtask(parentTaskId) {
+    var input = document.getElementById("new-subtask-input");
+    var title = input.value.trim();
+    if (!title) return;
+    var formState = captureTaskFormState();
+    var savedAssignees = editAssignees.slice();
+    var savedAccountable = editAccountable.slice();
+    var savedConsulted = editConsulted.slice();
+    var savedInformed = editInformed.slice();
+    var scrollPos = getModalScrollTop();
+    var taskSubtasks = getTaskSubtasks(parentTaskId);
+    var maxOrder = taskSubtasks.length > 0 ? Math.max.apply(null, taskSubtasks.map(function(st) {
+      return st.Order || 0;
+    })) : 0;
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.SUBTASKS_TABLE, null, {
+          Parent_Task_Id: parentTaskId,
+          Title: title,
+          Status: "todo",
+          Priority: "medium",
+          Completed: false,
+          Order: maxOrder + 1,
+          Created_At: Math.floor(Date.now() / 1e3)
+        }]
+      ]);
+      input.value = "";
+      await loadAllData();
+      editAssignees = savedAssignees;
+      editAccountable = savedAccountable;
+      editConsulted = savedConsulted;
+      editInformed = savedInformed;
+      openEditTaskModal(parentTaskId, true);
+      restoreTaskFormState(formState);
+      restoreModalScrollTop(scrollPos);
+    } catch (e) {
+      console.error("Error adding subtask:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  function getModalScrollTop() {
+    var modal = document.querySelector("#modal-container .modal");
+    return modal ? modal.scrollTop : 0;
+  }
+  function restoreModalScrollTop(pos) {
+    setTimeout(function() {
+      var modal = document.querySelector("#modal-container .modal");
+      if (modal) modal.scrollTop = pos;
+    }, 50);
+  }
+  async function toggleSubtask(subtaskId, completed) {
+    var savedAssignees = editAssignees.slice();
+    var savedAccountable = editAccountable.slice();
+    var savedConsulted = editConsulted.slice();
+    var savedInformed = editInformed.slice();
+    var scrollPos = getModalScrollTop();
+    try {
+      var newStatus = completed ? "done" : "todo";
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, { Completed: completed, Status: newStatus }]
+      ]);
+      for (var i = 0; i < state.subtasks.length; i++) {
+        if (state.subtasks[i].id === subtaskId) {
+          state.subtasks[i].Completed = completed;
+          state.subtasks[i].Status = newStatus;
+          break;
+        }
+      }
+      showToast(t("subtaskCompleted"), "success");
+      var subtask = state.subtasks.find(function(st) {
+        return st.id === subtaskId;
+      });
+      if (subtask) {
+        editAssignees = savedAssignees;
+        editAccountable = savedAccountable;
+        editConsulted = savedConsulted;
+        editInformed = savedInformed;
+        openEditTaskModal(subtask.Parent_Task_Id, true);
+        restoreModalScrollTop(scrollPos);
+      }
+    } catch (e) {
+      console.error("Error toggling subtask:", e);
+    }
+  }
+  async function deleteSubtask(subtaskId, parentTaskId) {
+    var confirmed = await showConfirmModal(
+      currentLang === "fr" ? "Supprimer cette sous-t\xE2che ?" : "Delete this subtask?",
+      currentLang === "fr" ? "Supprimer la sous-t\xE2che" : "Delete subtask"
+    );
+    if (!confirmed) return;
+    var formState = captureTaskFormState();
+    var savedAssignees = editAssignees.slice();
+    var savedAccountable = editAccountable.slice();
+    var savedConsulted = editConsulted.slice();
+    var savedInformed = editInformed.slice();
+    var scrollPos = getModalScrollTop();
+    try {
+      var actions = state.subtasks.filter(function(st) {
+        return st.Blocked_By_Subtask_Id === subtaskId;
+      }).map(function(st) {
+        return ["UpdateRecord", state.SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }];
+      });
+      actions.push(["RemoveRecord", state.SUBTASKS_TABLE, subtaskId]);
+      await grist.docApi.applyUserActions(actions);
+      showToast(t("subtaskDeleted"), "info");
+      await loadAllData();
+      editAssignees = savedAssignees;
+      editAccountable = savedAccountable;
+      editConsulted = savedConsulted;
+      editInformed = savedInformed;
+      openEditTaskModal(parentTaskId, true);
+      restoreTaskFormState(formState);
+      restoreModalScrollTop(scrollPos);
+    } catch (e) {
+      console.error("Error deleting subtask:", e);
+    }
+  }
+  async function saveEditSubtask(subtaskId, parentTaskId) {
+    var titleInput = document.getElementById("st-title-" + subtaskId);
+    var descInput = document.getElementById("st-desc-" + subtaskId);
+    var statusSel = document.getElementById("st-status-" + subtaskId);
+    var prioritySel = document.getElementById("st-priority-" + subtaskId);
+    var assigneeBox = document.getElementById("st-assignee-" + subtaskId);
+    var startDateInput = document.getElementById("st-start-" + subtaskId);
+    var dueDateInput = document.getElementById("st-due-" + subtaskId);
+    var hoursInput = document.getElementById("st-hours-" + subtaskId);
+    var recurSel = document.getElementById("st-recur-" + subtaskId);
+    if (!titleInput) return;
+    var newTitle = titleInput.value.trim();
+    if (!newTitle) return;
+    var newAssignee = "";
+    if (assigneeBox) {
+      var checked = assigneeBox.querySelectorAll('input[type="checkbox"]:checked');
+      newAssignee = Array.prototype.map.call(checked, function(c) {
+        return c.value;
+      }).join(", ");
+    }
+    var newStartDate = startDateInput && startDateInput.value ? Math.floor(new Date(startDateInput.value).getTime() / 1e3) : null;
+    var newDueDate = dueDateInput && dueDateInput.value ? Math.floor(new Date(dueDateInput.value).getTime() / 1e3) : null;
+    var newStatus = statusSel ? statusSel.value : "todo";
+    var typeEl = document.getElementById("st-type-" + subtaskId);
+    var fields = {
+      Title: newTitle,
+      Description: descInput ? descInput.value : "",
+      Status: newStatus,
+      Completed: newStatus === "done",
+      Priority: prioritySel ? prioritySel.value : "medium",
+      Assignee: newAssignee,
+      Estimated_Hours: hoursInput && hoursInput.value ? parseFloat(hoursInput.value) : null,
+      Recurrence: recurSel ? recurSel.value : "none",
+      Type: typeEl ? typeEl.value : "subtask"
+    };
+    if (newStartDate) fields.Start_Date = newStartDate;
+    if (newDueDate) fields.Due_Date = newDueDate;
+    var savedAssignees = editAssignees.slice();
+    var savedAccountable = editAccountable.slice();
+    var savedConsulted = editConsulted.slice();
+    var savedInformed = editInformed.slice();
+    try {
+      await grist.docApi.applyUserActions([["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, fields]]);
+      showToast(t("subtaskSaved"), "success");
+      await loadAllData();
+      editAssignees = savedAssignees;
+      editAccountable = savedAccountable;
+      editConsulted = savedConsulted;
+      editInformed = savedInformed;
+      openEditTaskModal(parentTaskId, true);
+    } catch (e) {
+      console.error("Error saving subtask:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function generateSubtaskOccurrences(subtaskId, parentTaskId) {
+    var st = state.subtasks.find(function(s) {
+      return s.id === subtaskId;
+    });
+    if (!st || !st.Recurrence || st.Recurrence === "none") return;
+    var baseDate = st.Due_Date ? new Date(st.Due_Date * 1e3) : /* @__PURE__ */ new Date();
+    var actions = [];
+    var countMap = { daily: 7, weekly: 4, biweekly: 4, monthly: 3, quarterly: 4, yearly: 3 };
+    var count = countMap[st.Recurrence] || 3;
+    for (var i = 1; i <= count; i++) {
+      var d = new Date(baseDate);
+      if (st.Recurrence === "daily") d.setDate(d.getDate() + i);
+      else if (st.Recurrence === "weekly") d.setDate(d.getDate() + i * 7);
+      else if (st.Recurrence === "biweekly") d.setDate(d.getDate() + i * 14);
+      else if (st.Recurrence === "monthly") d.setMonth(d.getMonth() + i);
+      else if (st.Recurrence === "quarterly") d.setMonth(d.getMonth() + i * 3);
+      else if (st.Recurrence === "yearly") d.setFullYear(d.getFullYear() + i);
+      else d.setMonth(d.getMonth() + i);
+      actions.push(["AddRecord", state.SUBTASKS_TABLE, null, {
+        Parent_Task_Id: parentTaskId,
+        Title: st.Title,
+        Description: st.Description || "",
+        Status: "todo",
+        Priority: st.Priority || "medium",
+        Assignee: st.Assignee || "",
+        Due_Date: Math.floor(d.getTime() / 1e3),
+        Recurrence: st.Recurrence,
+        Completed: false,
+        Order: (st.Order || 0) + i
+      }]);
+    }
+    try {
+      await grist.docApi.applyUserActions(actions);
+      showToast(currentLang === "fr" ? count + " occurrence(s) cr\xE9\xE9e(s)" : count + " occurrence(s) created", "success");
+      var savedAssignees = editAssignees.slice();
+      var savedAccountable = editAccountable.slice();
+      var savedConsulted = editConsulted.slice();
+      var savedInformed = editInformed.slice();
+      await loadAllData();
+      editAssignees = savedAssignees;
+      editAccountable = savedAccountable;
+      editConsulted = savedConsulted;
+      editInformed = savedInformed;
+      openEditTaskModal(parentTaskId, true);
+    } catch (e) {
+      console.error("Error generating subtask occurrences:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function addDependency(taskId) {
+    var select = document.getElementById("dep-select");
+    var dependsOnId = parseInt(select.value);
+    if (!dependsOnId) return;
+    var projectEl = document.getElementById("task-project");
+    var selectedProjectId = normalizeDependencyProjectId(projectEl ? projectEl.value : 0);
+    var dependsOnTask = state.tasks.find(function(candidate) {
+      return candidate.id === dependsOnId;
+    });
+    if (!dependsOnTask || normalizeDependencyProjectId(dependsOnTask.Project_Id) !== selectedProjectId) {
+      showToast(currentLang === "fr" ? "La d\xE9pendance doit appartenir au m\xEAme projet." : "The dependency must belong to the same project.", "error");
+      refreshDependencyTaskOptions(taskId);
+      return;
+    }
+    var formState = captureTaskFormState();
+    var savedAssignees = editAssignees.slice();
+    var savedAccountable = editAccountable.slice();
+    var savedConsulted = editConsulted.slice();
+    var savedInformed = editInformed.slice();
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.DEPENDENCIES_TABLE, null, {
+          Task_Id: taskId,
+          Depends_On_Task_Id: dependsOnId,
+          Created_At: Math.floor(Date.now() / 1e3)
+        }]
+      ]);
+      showToast(t("dependencyAdded"), "success");
+      await loadAllData();
+      editAssignees = savedAssignees;
+      editAccountable = savedAccountable;
+      editConsulted = savedConsulted;
+      editInformed = savedInformed;
+      openEditTaskModal(taskId, true);
+      restoreTaskFormState(formState);
+      refreshDependencyTaskOptions(taskId);
+    } catch (e) {
+      console.error("Error adding dependency:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function removeDependency(taskId, dependsOnTaskId) {
+    var dep = state.dependencies.find(function(d) {
+      return d.Task_Id === taskId && d.Depends_On_Task_Id === dependsOnTaskId;
+    });
+    if (!dep) return;
+    var confirmed = await showConfirmModal(
+      currentLang === "fr" ? "Supprimer cette d\xE9pendance ?" : "Delete this dependency?",
+      currentLang === "fr" ? "Supprimer la d\xE9pendance" : "Delete dependency"
+    );
+    if (!confirmed) return;
+    var formState = captureTaskFormState();
+    var savedAssignees = editAssignees.slice();
+    var savedAccountable = editAccountable.slice();
+    var savedConsulted = editConsulted.slice();
+    var savedInformed = editInformed.slice();
+    try {
+      await grist.docApi.applyUserActions([
+        ["RemoveRecord", state.DEPENDENCIES_TABLE, dep.id]
+      ]);
+      showToast(t("dependencyRemoved"), "info");
+      await loadAllData();
+      editAssignees = savedAssignees;
+      editAccountable = savedAccountable;
+      editConsulted = savedConsulted;
+      editInformed = savedInformed;
+      openEditTaskModal(taskId, true);
+      restoreTaskFormState(formState);
+    } catch (e) {
+      console.error("Error removing dependency:", e);
+    }
+  }
+  async function addComment(taskId) {
+    var textarea = document.getElementById("new-comment-input");
+    var content = textarea.value.trim();
+    if (!content) return;
+    var formState = captureTaskFormState();
+    var savedAssignees = editAssignees.slice();
+    var savedAccountable = editAccountable.slice();
+    var savedConsulted = editConsulted.slice();
+    var savedInformed = editInformed.slice();
+    var scrollPos = getModalScrollTop();
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.COMMENTS_TABLE, null, {
+          Task_Id: taskId,
+          Author: state.currentUserEmail || "Utilisateur",
+          Content: content,
+          Created_At: Math.floor(Date.now() / 1e3)
+        }]
+      ]);
+      textarea.value = "";
+      showToast(t("commentAdded"), "success");
+      var commentTask = state.tasks.find(function(t2) {
+        return t2.id === taskId;
+      });
+      logActivity("comment_added", taskId, commentTask ? commentTask.Title : "", content.substring(0, 80));
+      await loadAllData();
+      editAssignees = savedAssignees;
+      editAccountable = savedAccountable;
+      editConsulted = savedConsulted;
+      editInformed = savedInformed;
+      openEditTaskModal(taskId, true);
+      restoreTaskFormState(formState);
+      restoreModalScrollTop(scrollPos);
+    } catch (e) {
+      console.error("Error adding comment:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function deleteComment(commentId, taskId) {
+    if (!state.isOwner) return;
+    var confirmed = await showConfirmModal(
+      currentLang === "fr" ? "Supprimer ce commentaire ?" : "Delete this comment?",
+      currentLang === "fr" ? "Supprimer le commentaire" : "Delete comment"
+    );
+    if (!confirmed) return;
+    var formState = captureTaskFormState();
+    var savedAssignees = editAssignees.slice();
+    var savedAccountable = editAccountable.slice();
+    var savedConsulted = editConsulted.slice();
+    var savedInformed = editInformed.slice();
+    try {
+      await grist.docApi.applyUserActions([
+        ["RemoveRecord", state.COMMENTS_TABLE, commentId]
+      ]);
+      showToast(t("commentDeleted"), "info");
+      await loadAllData();
+      editAssignees = savedAssignees;
+      editAccountable = savedAccountable;
+      editConsulted = savedConsulted;
+      editInformed = savedInformed;
+      openEditTaskModal(taskId, true);
+      restoreTaskFormState(formState);
+    } catch (e) {
+      console.error("Error deleting comment:", e);
+    }
+  }
+  function closeModal(e) {
+  }
+  function closeModalForce() {
+    if (draftTaskId != null) {
+      var did = draftTaskId;
+      draftTaskId = null;
+      var ti = document.getElementById("task-title");
+      var titleVal = ti ? ti.value.trim() : "";
+      if (titleVal) {
+        updateTask(did);
+        return;
+      }
+      removeDraftChildren(did).then(function() {
+        return grist.docApi.applyUserActions([["RemoveRecord", state.TASKS_TABLE, did]]);
+      }).then(function() {
+        return loadAllData();
+      }).then(function() {
+        refreshAllViews();
+      }).catch(function() {
+      });
+    }
+    document.getElementById("modal-container").innerHTML = "";
+  }
+  async function createTask() {
+    var title = requireTaskTitle();
+    if (!title) return;
+    if (shouldLimitToMyProjects() && editAssignees.length === 0) {
+      var mine = myAssigneeValue();
+      if (mine) editAssignees = [mine];
+    }
+    var projectEl = document.getElementById("task-project");
+    var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
+    var record = {};
+    setField(record, "tasks", "title", title);
+    setField(record, "tasks", "description", getInputValue("task-desc").trim());
+    setField(record, "tasks", "status", getInputValue("task-status"));
+    setField(record, "tasks", "priority", getInputValue("task-priority"));
+    setField(record, "tasks", "assignee", editAssignees.join(", "));
+    if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
+      record.Accountable = editAccountable.join(", ");
+      record.Consulted = editConsulted.join(", ");
+      record.Informed = editInformed.join(", ");
+    }
+    setField(record, "tasks", "group", getInputValue("task-group"));
+    setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
+    setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
+    setField(record, "tasks", "category", getInputValue("task-category").trim());
+    setField(record, "tasks", "projectId", projectId);
+    setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
+    setField(record, "tasks", "createdAt", Math.floor(Date.now() / 1e3));
+    if (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
+    var tagEl = document.getElementById("task-tag");
+    if (tagEl) {
+      setField(record, "tasks", "tag", tagEl.value.trim());
+    }
+    try {
+      record = await keepExistingTaskColumns(record);
+      var createResult = await grist.docApi.applyUserActions([
+        ["AddRecord", state.TASKS_TABLE, null, record]
+      ]);
+      var newTaskId = createResult && createResult.retValues && createResult.retValues[0] || null;
+      showToast(t("taskCreated"), "success");
+      logActivity("task_created", newTaskId, title, "");
+      if (newTaskId) {
+        await notifyConcernedUsers(newTaskId, editAssignees.slice(), "task_assigned", title);
+      }
+      closeModalForce();
+      await loadAllData();
+      if (newTaskId) {
+        openEditTaskModal(newTaskId);
+      }
+    } catch (e) {
+      console.error("Error creating task:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function updateTask(taskId) {
+    var title = requireTaskTitle();
+    if (!title) return;
+    if (shouldLimitToMyProjects() && editAssignees.length === 0) {
+      var mine = myAssigneeValue();
+      if (mine) editAssignees = [mine];
+    }
+    var wasDraft = draftTaskId === taskId;
+    var task = state.tasks.find(function(t2) {
+      return t2.id === taskId;
+    });
+    var wasNotDone = task && task.Status !== "done";
+    var newStatus = getInputValue("task-status");
+    if (newStatus === "done" && isTaskBlocked(taskId)) {
+      var blockers = getTaskDependencies(taskId).filter(function(b) {
+        return b && b.Status !== "done";
+      });
+      var blockerNames = blockers.map(function(b) {
+        return b.Title;
+      }).join(", ");
+      showToast((currentLang === "fr" ? "Impossible : t\xE2che bloqu\xE9e par " : "Cannot complete: blocked by ") + blockerNames, "error");
+      return;
+    }
+    var recurrenceEl = document.getElementById("task-recurrence");
+    var newRecurrence = recurrenceEl ? recurrenceEl.value : task ? task.Recurrence : "none";
+    var projectEl = document.getElementById("task-project");
+    var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
+    var record = {};
+    setField(record, "tasks", "title", title);
+    setField(record, "tasks", "description", getInputValue("task-desc").trim());
+    setField(record, "tasks", "status", newStatus);
+    setField(record, "tasks", "priority", getInputValue("task-priority"));
+    setField(record, "tasks", "assignee", editAssignees.join(", "));
+    if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
+      record.Accountable = editAccountable.join(", ");
+      record.Consulted = editConsulted.join(", ");
+      record.Informed = editInformed.join(", ");
+    }
+    setField(record, "tasks", "group", getInputValue("task-group"));
+    setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
+    setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
+    setField(record, "tasks", "category", getInputValue("task-category").trim());
+    setField(record, "tasks", "projectId", projectId);
+    setField(record, "tasks", "recurrence", newRecurrence);
+    setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
+    var tagEl = document.getElementById("task-tag");
+    if (tagEl) {
+      setField(record, "tasks", "tag", tagEl.value.trim());
+    }
+    var extDateEl = document.getElementById("task-extension-date");
+    if (extDateEl) record.Extension_Date = toEpoch(extDateEl.value);
+    var autoExtEl = document.getElementById("task-auto-extend");
+    if (autoExtEl) record.Auto_Extend = autoExtEl.checked;
+    if (newStatus === "done" && task && task.Auto_Extend && task.Status !== "done") {
+      record.Extension_Date = Math.floor(Date.now() / 1e3);
+      record.Auto_Extend = false;
+    }
+    try {
+      record = await keepExistingTaskColumns(record);
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.TASKS_TABLE, taskId, record]
+      ]);
+      if (wasDraft) draftTaskId = null;
+      showToast(t("taskUpdated"), "success");
+      var logDetails = [];
+      var autoChanges = {};
+      if (task) {
+        if (task.Status !== newStatus) {
+          autoChanges.status = { from: task.Status, to: newStatus };
+          logDetails.push(task.Status + " \u2192 " + newStatus);
+        }
+        var newPriority = document.getElementById("task-priority").value;
+        if (task.Priority !== newPriority) autoChanges.priority = { from: task.Priority, to: newPriority };
+        var newAssignee = editAssignees.join(", ");
+        if (task.Assignee !== newAssignee) autoChanges.assignee = { from: task.Assignee, to: newAssignee };
+      }
+      if (Object.keys(autoChanges).length > 0) {
+        await evaluateAutomationRules(Object.assign({}, task, record, { id: taskId }), autoChanges);
+      }
+      logActivity(autoChanges.status ? "status_changed" : "task_updated", taskId, title, logDetails.join(", "));
+      if (autoChanges.assignee) {
+        var previousAssignees = splitRecipientValues(task ? task.Assignee : "");
+        var previousKeys = {};
+        previousAssignees.forEach(function(value) {
+          var email = resolveUserEmail(value);
+          previousKeys[(email || value).toLowerCase()] = true;
+        });
+        var newlyAssigned = editAssignees.filter(function(value) {
+          var email = resolveUserEmail(value);
+          return !previousKeys[(email || String(value)).toLowerCase()];
+        });
+        await notifyConcernedUsers(taskId, newlyAssigned, "task_assigned", title);
+      }
+      if (newStatus === "done" && wasNotDone) {
+        await notifyTaskCompleted(Object.assign({}, task, record, { id: taskId, Project_Id: projectId, Title: title }));
+      }
+      if (newStatus === "done" && wasNotDone && newRecurrence && newRecurrence !== "none") {
+        var updatedTask = Object.assign({}, task, record);
+        await createNextOccurrence(updatedTask);
+      }
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error updating task:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function deleteTask(taskId) {
+    if (!state.isOwner) return;
+    var relatedSubtasks = state.subtasks.filter(function(st) {
+      return st.Parent_Task_Id === taskId;
+    });
+    var confirmationMessage = currentLang === "fr" ? "Supprimer cette t\xE2che et ses " + relatedSubtasks.length + " sous-t\xE2che(s) ? Cette action est irr\xE9versible." : "Delete this task and its " + relatedSubtasks.length + " subtask(s)? This action cannot be undone.";
+    var confirmed = await showConfirmModal(confirmationMessage, currentLang === "fr" ? "Supprimer la t\xE2che" : "Delete task");
+    if (!confirmed) return;
+    try {
+      var deletedTask = state.tasks.find(function(t2) {
+        return t2.id === taskId;
+      });
+      var deletedSubtaskIds = {};
+      var actions = [];
+      relatedSubtasks.forEach(function(st) {
+        deletedSubtaskIds[st.id] = true;
+      });
+      state.subtasks.forEach(function(st) {
+        if (st.Parent_Task_Id !== taskId && deletedSubtaskIds[st.Blocked_By_Subtask_Id]) {
+          actions.push(["UpdateRecord", state.SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }]);
+        }
+      });
+      state.dependencies.forEach(function(dep) {
+        if (dep.Task_Id === taskId || dep.Depends_On_Task_Id === taskId) actions.push(["RemoveRecord", state.DEPENDENCIES_TABLE, dep.id]);
+      });
+      state.comments.forEach(function(comment) {
+        if (comment.Task_Id === taskId) actions.push(["RemoveRecord", state.COMMENTS_TABLE, comment.id]);
+      });
+      state.timeEntries.forEach(function(entry) {
+        if (entry.Task_Id === taskId) actions.push(["RemoveRecord", state.TIME_ENTRIES_TABLE, entry.id]);
+      });
+      state.customFieldValues.forEach(function(value) {
+        if (value.Task_Id === taskId) actions.push(["RemoveRecord", state.CUSTOM_FIELD_VALUES_TABLE, value.id]);
+      });
+      state.attachments.forEach(function(attachment) {
+        if (attachment.Task_Id === taskId) actions.push(["RemoveRecord", state.ATTACHMENTS_TABLE, attachment.id]);
+      });
+      state.pmNotifications.forEach(function(notification) {
+        if (notification.Task_Id === taskId) actions.push(["RemoveRecord", state.NOTIFICATIONS_TABLE, notification.id]);
+      });
+      relatedSubtasks.forEach(function(st) {
+        actions.push(["RemoveRecord", state.SUBTASKS_TABLE, st.id]);
+      });
+      actions.push(["RemoveRecord", state.TASKS_TABLE, taskId]);
+      await grist.docApi.applyUserActions(actions);
+      if (draftTaskId === taskId) draftTaskId = null;
+      document.getElementById("modal-container").innerHTML = "";
+      showToast(t("taskDeleted"), "info");
+      logActivity("task_deleted", taskId, deletedTask ? deletedTask.Title : "", "");
+      await loadAllData();
+    } catch (e) {
+      console.error("Error deleting task:", e);
+    }
+  }
+
   // src/domains/custom-fields.js
   function getTaskCustomFieldValue(taskId, fieldId) {
     var cfv = state.customFieldValues.find(function(v) {
@@ -1912,797 +4370,6 @@
       var name = (lbl.textContent || "").toLowerCase();
       lbl.style.display = !q || name.indexOf(q) !== -1 ? "" : "none";
     });
-  }
-
-  // src/domains/dependencies.js
-  function getTaskDependencies(taskId) {
-    return state.dependencies.filter(function(d) {
-      return d.Task_Id === taskId;
-    }).map(function(d) {
-      return state.tasks.find(function(t2) {
-        return t2.id === d.Depends_On_Task_Id;
-      });
-    }).filter(Boolean);
-  }
-  function getTasksDependingOn(taskId) {
-    return state.dependencies.filter(function(d) {
-      return d.Depends_On_Task_Id === taskId;
-    }).map(function(d) {
-      return state.tasks.find(function(t2) {
-        return t2.id === d.Task_Id;
-      });
-    }).filter(Boolean);
-  }
-  function isTaskBlocked(taskId) {
-    var blockers = getTaskDependencies(taskId);
-    return blockers.some(function(blocker) {
-      return blocker && blocker.Status !== "done";
-    });
-  }
-  function ganttDepBadge(task) {
-    var deps = getTaskDependencies(task.id);
-    var blocks = getTasksDependingOn(task.id);
-    var html = "";
-    if (deps.length > 0) {
-      var dependsText = (currentLang === "fr" ? "Cette t\xE2che d\xE9pend de : " : "This task depends on: ") + deps.map(function(d) {
-        return d.Title;
-      }).join(", ") + ".";
-      html += ' <button type="button" class="gantt-dep-badge gantt-dep-depends" data-tooltip="' + sanitize(dependsText) + '" aria-label="' + sanitize(dependsText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">\u{1F517}' + deps.length + "</button>";
-    }
-    if (blocks.length > 0) {
-      var blocksText = (currentLang === "fr" ? "Cette t\xE2che bloque : " : "This task blocks: ") + blocks.map(function(d) {
-        return d.Title;
-      }).join(", ") + (currentLang === "fr" ? ". La t\xE2che indiqu\xE9e attend que celle-ci soit termin\xE9e." : ". The listed task is waiting for this one to be completed.");
-      html += ' <button type="button" class="gantt-dep-badge gantt-dep-blocks" data-tooltip="' + sanitize(blocksText) + '" aria-label="' + sanitize(blocksText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">\u23F3' + blocks.length + "</button>";
-    }
-    return html;
-  }
-  function showGanttDependencyTooltip(event) {
-    var target = event && event.currentTarget;
-    if (!target) return;
-    var message = target.getAttribute("data-tooltip");
-    if (!message) return;
-    var tooltip = document.getElementById("gantt-dependency-tooltip");
-    if (!tooltip) {
-      tooltip = document.createElement("div");
-      tooltip.id = "gantt-dependency-tooltip";
-      tooltip.setAttribute("role", "tooltip");
-      document.body.appendChild(tooltip);
-    }
-    tooltip.textContent = message;
-    tooltip.style.display = "block";
-    var rect = target.getBoundingClientRect();
-    var left = Math.min(Math.max(8, rect.left), window.innerWidth - tooltip.offsetWidth - 8);
-    var top = rect.bottom + 8;
-    if (top + tooltip.offsetHeight > window.innerHeight - 8) top = rect.top - tooltip.offsetHeight - 8;
-    tooltip.style.left = left + "px";
-    tooltip.style.top = Math.max(8, top) + "px";
-  }
-  function hideGanttDependencyTooltip() {
-    var tooltip = document.getElementById("gantt-dependency-tooltip");
-    if (tooltip) tooltip.style.display = "none";
-  }
-  function normalizeDependencyProjectId(value) {
-    var parsed = parseInt(value, 10);
-    return isNaN(parsed) ? 0 : parsed;
-  }
-  function getDependencyCandidates(taskId, projectId, query) {
-    var normalizedProjectId = normalizeDependencyProjectId(projectId);
-    if (!normalizedProjectId) return [];
-    var normalizedQuery = String(query || "").trim().toLowerCase();
-    var existingDependencyIds = {};
-    getTaskDependencies(taskId).forEach(function(dependency) {
-      existingDependencyIds[dependency.id] = true;
-    });
-    return state.tasks.filter(function(candidate) {
-      if (candidate.id === taskId || candidate.Status === "archived" || existingDependencyIds[candidate.id]) return false;
-      if (normalizeDependencyProjectId(candidate.Project_Id) !== normalizedProjectId) return false;
-      if (normalizedQuery && String(candidate.Title || "").toLowerCase().indexOf(normalizedQuery) === -1) return false;
-      if (shouldLimitToMyProjects()) {
-        var myIds = myProjectIdSet();
-        if (!(candidate.Project_Id && myIds[candidate.Project_Id] || taskConcernsCurrentUser(candidate))) return false;
-      }
-      return true;
-    }).sort(function(a, b) {
-      return String(a.Title || "").localeCompare(String(b.Title || ""));
-    });
-  }
-  function refreshDependencyTaskOptions(taskId, resetSelection) {
-    var selectedInput = document.getElementById("dep-select");
-    var optionsContainer = document.getElementById("dep-options");
-    if (!selectedInput || !optionsContainer) return;
-    var projectEl = document.getElementById("task-project");
-    var searchEl = document.getElementById("dep-search");
-    if (resetSelection) {
-      selectedInput.value = "";
-      if (searchEl) searchEl.value = "";
-    }
-    var candidates = getDependencyCandidates(taskId, projectEl ? projectEl.value : 0, searchEl ? searchEl.value : "");
-    optionsContainer.innerHTML = "";
-    if (!normalizeDependencyProjectId(projectEl ? projectEl.value : 0)) {
-      var noProject = document.createElement("div");
-      noProject.className = "dep-option-empty";
-      noProject.textContent = currentLang === "fr" ? "Choisissez d\u2019abord un projet." : "Choose a project first.";
-      optionsContainer.appendChild(noProject);
-      return;
-    }
-    if (!candidates.length) {
-      var empty = document.createElement("div");
-      empty.className = "dep-option-empty";
-      empty.textContent = currentLang === "fr" ? "Aucune t\xE2che correspondante." : "No matching task.";
-      optionsContainer.appendChild(empty);
-      return;
-    }
-    candidates.forEach(function(candidate) {
-      var option = document.createElement("button");
-      option.type = "button";
-      option.className = "dep-option";
-      option.setAttribute("role", "option");
-      option.textContent = candidate.Title || "";
-      option.onclick = function() {
-        selectDependencyTask(candidate.id);
-      };
-      optionsContainer.appendChild(option);
-    });
-  }
-  function clearDependencyTaskSelection() {
-    var selectedInput = document.getElementById("dep-select");
-    if (selectedInput) selectedInput.value = "";
-  }
-  function openDependencyTaskOptions(taskId) {
-    refreshDependencyTaskOptions(taskId);
-    var combobox = document.getElementById("dep-combobox");
-    var searchEl = document.getElementById("dep-search");
-    if (combobox) combobox.classList.add("open");
-    if (searchEl) searchEl.setAttribute("aria-expanded", "true");
-  }
-  function closeDependencyTaskOptions() {
-    var combobox = document.getElementById("dep-combobox");
-    var searchEl = document.getElementById("dep-search");
-    if (combobox) combobox.classList.remove("open");
-    if (searchEl) searchEl.setAttribute("aria-expanded", "false");
-  }
-  function toggleDependencyTaskOptions(taskId) {
-    var combobox = document.getElementById("dep-combobox");
-    if (combobox && combobox.classList.contains("open")) closeDependencyTaskOptions();
-    else openDependencyTaskOptions(taskId);
-  }
-  function selectDependencyTask(taskId) {
-    var selectedTask = state.tasks.find(function(candidate) {
-      return candidate.id === taskId;
-    });
-    var selectedInput = document.getElementById("dep-select");
-    var searchEl = document.getElementById("dep-search");
-    if (!selectedTask || !selectedInput || !searchEl) return;
-    selectedInput.value = String(selectedTask.id);
-    searchEl.value = selectedTask.Title || "";
-    closeDependencyTaskOptions();
-  }
-
-  // src/domains/time-tracking.js
-  function getTaskTimeEntries(taskId) {
-    return state.timeEntries.filter(function(te) {
-      return te.Task_Id === taskId;
-    }).sort(function(a, b) {
-      return (b.Start_Time || 0) - (a.Start_Time || 0);
-    });
-  }
-  function getTaskTotalTime(taskId) {
-    var entries = getTaskTimeEntries(taskId);
-    var total = 0;
-    for (var i = 0; i < entries.length; i++) {
-      total += entries[i].Duration || 0;
-    }
-    if (state.activeTimers[taskId]) {
-      total += Math.floor(Date.now() / 1e3) - state.activeTimers[taskId];
-    }
-    return total;
-  }
-  function formatDuration(seconds) {
-    if (!seconds || seconds < 0) return "0" + t("minutes");
-    var hours = Math.floor(seconds / 3600);
-    var mins = Math.floor(seconds % 3600 / 60);
-    if (hours > 0) {
-      return hours + t("hours") + " " + mins + t("minutes");
-    }
-    return mins + t("minutes");
-  }
-  function formatDurationShort(seconds) {
-    if (!seconds || seconds < 0) return "0m";
-    var hours = Math.floor(seconds / 3600);
-    var mins = Math.floor(seconds % 3600 / 60);
-    if (hours > 0) {
-      return hours + "h" + (mins > 0 ? mins + "m" : "");
-    }
-    return mins + "m";
-  }
-  async function startTimer(taskId) {
-    if (state.activeTimers[taskId]) return;
-    var now = Math.floor(Date.now() / 1e3);
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
-          Task_Id: taskId,
-          User: state.currentUserEmail || "Utilisateur",
-          Start_Time: now,
-          End_Time: null,
-          Duration: 0,
-          Description: currentLang === "fr" ? "Timer en cours" : "Running timer"
-        }]
-      ]);
-      state.activeTimers[taskId] = now;
-      await loadAllData();
-      openEditTaskModal(taskId);
-    } catch (e) {
-      console.error("Error starting timer:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function stopTimer(taskId) {
-    if (!state.activeTimers[taskId]) return;
-    var startTime = state.activeTimers[taskId];
-    var endTime = Math.floor(Date.now() / 1e3);
-    var duration = endTime - startTime;
-    var openEntry = state.timeEntries.find(function(te) {
-      return te.Task_Id === taskId && te.Start_Time === startTime && !te.End_Time;
-    });
-    try {
-      if (openEntry) {
-        await grist.docApi.applyUserActions([
-          ["UpdateRecord", state.TIME_ENTRIES_TABLE, openEntry.id, {
-            End_Time: endTime,
-            Duration: duration,
-            Description: ""
-          }]
-        ]);
-      } else {
-        await grist.docApi.applyUserActions([
-          ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
-            Task_Id: taskId,
-            User: state.currentUserEmail || "Utilisateur",
-            Start_Time: startTime,
-            End_Time: endTime,
-            Duration: duration,
-            Description: ""
-          }]
-        ]);
-      }
-      delete state.activeTimers[taskId];
-      showToast(t("timeEntryAdded"), "success");
-      await loadAllData();
-      openEditTaskModal(taskId);
-    } catch (e) {
-      console.error("Error stopping timer:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function pauseTimer(taskId) {
-    await stopTimer(taskId);
-  }
-  async function addManualTimeEntry(taskId) {
-    var hours = parseInt(document.getElementById("manual-hours").value) || 0;
-    var minutes = parseInt(document.getElementById("manual-minutes").value) || 0;
-    var duration = hours * 3600 + minutes * 60;
-    if (duration <= 0) {
-      showToast(currentLang === "fr" ? "Entrez une dur\xE9e valide" : "Enter a valid duration", "error");
-      return;
-    }
-    var now = Math.floor(Date.now() / 1e3);
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
-          Task_Id: taskId,
-          User: state.currentUserEmail || "Utilisateur",
-          Start_Time: now - duration,
-          End_Time: now,
-          Duration: duration,
-          Description: currentLang === "fr" ? "Saisie manuelle" : "Manual entry"
-        }]
-      ]);
-      showToast(t("timeEntryAdded"), "success");
-      await loadAllData();
-      openEditTaskModal(taskId);
-    } catch (e) {
-      console.error("Error adding manual time entry:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-
-  // src/domains/activity-log.js
-  async function logActivity(action, taskId, taskTitle, details) {
-    try {
-      var record = {
-        Timestamp: Math.floor(Date.now() / 1e3),
-        User_Email: state.currentUserEmail || "unknown",
-        Action: action,
-        Task_Id: taskId || 0,
-        Task_Title: taskTitle || "",
-        Details: details || ""
-      };
-      await grist.docApi.applyUserActions([["AddRecord", state.ACTIVITY_LOG_TABLE, null, record]]);
-      state.activityLog.push(record);
-    } catch (e) {
-      console.log("[GristPM] Activity log skipped:", e.message);
-    }
-  }
-  var _activityLogLimit = 20;
-  function renderActivityLog() {
-    var container = document.getElementById("activity-log-list");
-    if (!container) return;
-    var sorted = state.activityLog.slice().sort(function(a, b) {
-      return (b.Timestamp || 0) - (a.Timestamp || 0);
-    });
-    var shown = sorted.slice(0, _activityLogLimit);
-    if (shown.length === 0) {
-      container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + t("actNoActivity") + "</div>";
-      return;
-    }
-    var ACTION_ICONS = {
-      task_created: "\u{1F195}",
-      task_updated: "\u270F\uFE0F",
-      task_deleted: "\u{1F5D1}\uFE0F",
-      status_changed: "\u{1F504}",
-      task_archived: "\u{1F4E6}",
-      task_restored: "\u267B\uFE0F",
-      comment_added: "\u{1F4AC}"
-    };
-    var ACTION_I18N = {
-      task_created: "actTaskCreated",
-      task_updated: "actTaskUpdated",
-      task_deleted: "actTaskDeleted",
-      status_changed: "actStatusChanged",
-      task_archived: "actTaskArchived",
-      task_restored: "actTaskRestored",
-      comment_added: "actCommentAdded"
-    };
-    var html = "";
-    var lastDateStr = "";
-    for (var i = 0; i < shown.length; i++) {
-      var entry = shown[i];
-      var dateObj = entry.Timestamp ? new Date(entry.Timestamp * 1e3) : /* @__PURE__ */ new Date();
-      var dateStr = dateObj.toLocaleDateString(currentLang === "fr" ? "fr-FR" : "en-US", { weekday: "long", day: "numeric", month: "long" });
-      if (dateStr !== lastDateStr) {
-        html += '<div style="font-size:11px;font-weight:700;color:#94a3b8;padding:8px 0 4px;border-bottom:1px solid #f1f5f9;text-transform:capitalize;">' + dateStr + "</div>";
-        lastDateStr = dateStr;
-      }
-      var icon = ACTION_ICONS[entry.Action] || "\u{1F4CB}";
-      var actionText = t(ACTION_I18N[entry.Action] || entry.Action);
-      var userName = getUserDisplayName(entry.User_Email);
-      var timeStr = dateObj.toLocaleTimeString(currentLang === "fr" ? "fr-FR" : "en-US", { hour: "2-digit", minute: "2-digit" });
-      html += '<div class="activity-entry" style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f8fafc;"';
-      if (entry.Task_Id) html += ' onclick="openEditTaskModal(' + entry.Task_Id + ')" style="cursor:pointer;"';
-      html += ">";
-      html += '<span style="font-size:16px;flex-shrink:0;margin-top:2px;">' + icon + "</span>";
-      html += '<div style="flex:1;min-width:0;">';
-      html += '<div style="font-size:13px;"><strong>' + sanitize(userName) + "</strong> " + actionText;
-      if (entry.Task_Title) html += ' <span style="color:#3b82f6;font-weight:600;">' + sanitize(entry.Task_Title) + "</span>";
-      html += "</div>";
-      if (entry.Details) html += '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + sanitize(entry.Details) + "</div>";
-      html += "</div>";
-      html += '<span style="font-size:10px;color:#94a3b8;white-space:nowrap;margin-top:3px;">' + timeStr + "</span>";
-      html += "</div>";
-    }
-    if (sorted.length > _activityLogLimit) {
-      html += '<div style="text-align:center;padding:12px;"><button class="btn btn-secondary btn-sm" onclick="expandActivityLog()">' + t("actLoadMore") + "</button></div>";
-    }
-    container.innerHTML = html;
-  }
-  function expandActivityLog() {
-    _activityLogLimit += 20;
-    renderActivityLog();
-  }
-
-  // src/domains/notifications.js
-  function getOverdueTasks() {
-    var now = Math.floor(Date.now() / 1e3);
-    return getFilteredTasks().filter(function(t2) {
-      return t2.Due_Date && t2.Due_Date < now && t2.Status !== "done" && t2.Status !== "archived";
-    });
-  }
-  function getUpcomingTasks() {
-    var now = Math.floor(Date.now() / 1e3);
-    var threeDays = now + 3 * 24 * 60 * 60;
-    return getFilteredTasks().filter(function(t2) {
-      return t2.Due_Date && t2.Due_Date >= now && t2.Due_Date <= threeDays && t2.Status !== "done" && t2.Status !== "archived";
-    });
-  }
-  function getMyNotifications() {
-    var email = (state.currentUserEmail || "").toLowerCase().trim();
-    if (!email) return [];
-    return state.pmNotifications.filter(function(n) {
-      return (n.User_Email || "").toLowerCase().trim() === email;
-    }).sort(function(a, b) {
-      return (b.Created_At || 0) - (a.Created_At || 0);
-    });
-  }
-  function getUnreadCount() {
-    return getMyNotifications().filter(function(n) {
-      return !n.Is_Read;
-    }).length;
-  }
-  function getComputedAlertKey(task, type) {
-    return "computed:" + type + ":" + Number(task && task.Due_Date || 0);
-  }
-  function isComputedAlertRead(taskId, type) {
-    var email = (state.currentUserEmail || "").toLowerCase().trim();
-    var task = state.tasks.find(function(item) {
-      return Number(item.id) === Number(taskId);
-    });
-    var alertKey = getComputedAlertKey(task, type);
-    return state.pmNotifications.some(function(n) {
-      return Number(n.Task_Id) === Number(taskId) && n.Type === type && n.Is_Read && (n.User_Email || "").toLowerCase().trim() === email && n.Rule_Id === alertKey;
-    });
-  }
-  function getUnreadComputedTasks(tasksList, type) {
-    return tasksList.filter(function(task) {
-      return !isComputedAlertRead(task.id, type);
-    });
-  }
-  function updateNotificationBadge() {
-    var unread = getUnreadCount();
-    var hasOverdueRule = state.automationRules.some(function(r) {
-      return r.enabled && r.trigger === "overdue";
-    });
-    var hasApproachingRule = state.automationRules.some(function(r) {
-      return r.enabled && r.trigger === "approaching_deadline";
-    });
-    var computed = 0;
-    if (!hasOverdueRule) computed += getUnreadComputedTasks(getOverdueTasks(), "computed_overdue").length;
-    if (!hasApproachingRule) computed += getUnreadComputedTasks(getUpcomingTasks(), "computed_upcoming").length;
-    var total = unread + computed;
-    var badge = document.getElementById("notif-badge");
-    if (badge) {
-      badge.textContent = total;
-      badge.classList.toggle("show", total > 0);
-    }
-  }
-  function showNotifications() {
-    var myNotifs = getMyNotifications();
-    var unread = myNotifs.filter(function(n2) {
-      return !n2.Is_Read;
-    });
-    var readRecent = myNotifs.filter(function(n2) {
-      return n2.Is_Read;
-    }).slice(0, 10);
-    var hasOverdueRule = state.automationRules.some(function(r) {
-      return r.enabled && r.trigger === "overdue";
-    });
-    var hasApproachingRule = state.automationRules.some(function(r) {
-      return r.enabled && r.trigger === "approaching_deadline";
-    });
-    var overdue = !hasOverdueRule ? getUnreadComputedTasks(getOverdueTasks(), "computed_overdue") : [];
-    var upcoming = !hasApproachingRule ? getUnreadComputedTasks(getUpcomingTasks(), "computed_upcoming") : [];
-    var html = '<div class="notif-dropdown" id="notif-dropdown">';
-    html += '<div class="notif-header" style="display:flex;justify-content:space-between;align-items:center;">';
-    html += "<span>\u{1F514} " + t("notifications") + "</span>";
-    if (unread.length > 0) {
-      html += '<button onclick="event.stopPropagation();markAllNotificationsRead();" style="background:#3b82f6;color:white;border:none;border-radius:4px;font-size:10px;padding:3px 8px;cursor:pointer;">' + t("markAllRead") + "</button>";
-    }
-    html += "</div>";
-    if (unread.length > 0) {
-      html += '<div style="padding:6px 16px;font-size:10px;color:#3b82f6;font-weight:700;">\u{1F535} ' + unread.length + " " + t("notifUnread") + "</div>";
-      for (var ui = 0; ui < unread.length; ui++) {
-        var n = unread[ui];
-        html += '<div class="notif-item" style="display:flex;align-items:center;gap:6px;font-weight:600;" onclick="openNotification(' + n.id + ", " + n.Task_Id + ');">';
-        html += '<div style="flex:1;">';
-        html += '<div class="notif-item-title">' + sanitize(n.Message) + "</div>";
-        html += '<div class="notif-item-date">' + formatDate(n.Created_At) + "</div>";
-        html += "</div>";
-        html += '<button onclick="event.stopPropagation();markNotificationRead(' + n.id + ');" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:14px;" title="' + t("markAsRead") + '">\u2713</button>';
-        html += "</div>";
-      }
-    }
-    if (overdue.length > 0) {
-      html += '<div style="padding:6px 16px;font-size:10px;color:#ef4444;font-weight:700;">\u26A0\uFE0F ' + overdue.length + " " + t("overdueTasksAlert") + "</div>";
-      for (var oi = 0; oi < overdue.length; oi++) {
-        html += '<div class="notif-item overdue" onclick="openComputedNotification(' + overdue[oi].id + `, 'computed_overdue');">`;
-        html += '<div class="notif-item-title">' + sanitize(overdue[oi].Title) + "</div>";
-        html += '<div class="notif-item-date">\u{1F4C5} ' + formatDate(overdue[oi].Due_Date) + "</div>";
-        html += "</div>";
-      }
-    }
-    if (upcoming.length > 0) {
-      html += '<div style="padding:6px 16px;font-size:10px;color:#f59e0b;font-weight:700;">\u{1F4C5} ' + upcoming.length + " " + t("upcomingTasksAlert") + "</div>";
-      for (var upi = 0; upi < upcoming.length; upi++) {
-        html += '<div class="notif-item upcoming" onclick="openComputedNotification(' + upcoming[upi].id + `, 'computed_upcoming');">`;
-        html += '<div class="notif-item-title">' + sanitize(upcoming[upi].Title) + "</div>";
-        html += '<div class="notif-item-date">\u{1F4C5} ' + formatDate(upcoming[upi].Due_Date) + "</div>";
-        html += "</div>";
-      }
-    }
-    if (readRecent.length > 0) {
-      html += '<div style="padding:6px 16px;font-size:10px;color:#94a3b8;font-weight:700;border-top:1px solid #e2e8f0;">\u{1F4CB} ' + (currentLang === "fr" ? "Historique" : "History") + "</div>";
-      for (var ri = 0; ri < readRecent.length; ri++) {
-        var rn = readRecent[ri];
-        html += '<div class="notif-item" style="opacity:0.5;" onclick="openEditTaskModal(' + rn.Task_Id + '); closeNotifications();">';
-        html += '<div class="notif-item-title">' + sanitize(rn.Message) + "</div>";
-        html += '<div class="notif-item-date">' + formatDate(rn.Created_At) + "</div>";
-        html += "</div>";
-      }
-    }
-    if (unread.length === 0 && overdue.length === 0 && upcoming.length === 0 && readRecent.length === 0) {
-      html += '<div class="notif-empty">' + t("noAlerts") + "</div>";
-    }
-    html += "</div>";
-    closeNotifications();
-    var btn = document.getElementById("notifications-btn");
-    btn.style.position = "relative";
-    btn.insertAdjacentHTML("beforeend", html);
-    setTimeout(function() {
-      document.addEventListener("click", closeNotificationsOnOutsideClick);
-    }, 10);
-  }
-  function closeNotifications() {
-    var dropdown = document.getElementById("notif-dropdown");
-    if (dropdown) dropdown.remove();
-    document.removeEventListener("click", closeNotificationsOnOutsideClick);
-  }
-  function closeNotificationsOnOutsideClick(e) {
-    if (!e.target.closest("#notifications-btn")) {
-      closeNotifications();
-    }
-  }
-  async function openNotification(notifId, taskId) {
-    closeNotifications();
-    await markNotificationRead(notifId, false);
-    openEditTaskModal(taskId);
-  }
-  async function openComputedNotification(taskId, type) {
-    closeNotifications();
-    var task = state.tasks.find(function(item) {
-      return Number(item.id) === Number(taskId);
-    });
-    if (!task || !state.currentUserEmail || isComputedAlertRead(taskId, type)) {
-      openEditTaskModal(taskId);
-      return;
-    }
-    var messagePrefix = type === "computed_overdue" ? currentLang === "fr" ? "T\xE2che en retard : " : "Overdue task: " : currentLang === "fr" ? "\xC9ch\xE9ance proche : " : "Upcoming deadline: ";
-    var record = {
-      Task_Id: taskId,
-      User_Email: state.currentUserEmail,
-      Type: type,
-      Message: messagePrefix + (task.Title || ""),
-      Is_Read: true,
-      Created_At: Math.floor(Date.now() / 1e3),
-      Rule_Id: getComputedAlertKey(task, type)
-    };
-    try {
-      var result = await grist.docApi.applyUserActions([["AddRecord", state.NOTIFICATIONS_TABLE, null, record]]);
-      record.id = result && result.retValues && result.retValues[0] || (state.pmNotifications.length ? Math.max.apply(null, state.pmNotifications.map(function(n) {
-        return n.id;
-      })) + 1 : 1);
-      state.pmNotifications.push(record);
-      updateNotificationBadge();
-    } catch (e) {
-      console.error("[GristPM] Error dismissing computed notification:", e);
-    }
-    openEditTaskModal(taskId);
-  }
-  async function markNotificationRead(notifId, reopenDropdown) {
-    try {
-      await grist.docApi.applyUserActions([["UpdateRecord", state.NOTIFICATIONS_TABLE, notifId, { Is_Read: true }]]);
-      var n = state.pmNotifications.find(function(x) {
-        return x.id === notifId;
-      });
-      if (n) n.Is_Read = true;
-      updateNotificationBadge();
-      if (reopenDropdown !== false) showNotifications();
-    } catch (e) {
-      console.error("[GristPM] Error marking notification read:", e);
-    }
-  }
-  async function markAllNotificationsRead() {
-    var myUnread = getMyNotifications().filter(function(n) {
-      return !n.Is_Read;
-    });
-    if (myUnread.length === 0) return;
-    try {
-      var ids = myUnread.map(function(n) {
-        return n.id;
-      });
-      var flags = ids.map(function() {
-        return true;
-      });
-      await grist.docApi.applyUserActions([["BulkUpdateRecord", state.NOTIFICATIONS_TABLE, ids, { Is_Read: flags }]]);
-      myUnread.forEach(function(n) {
-        n.Is_Read = true;
-      });
-      updateNotificationBadge();
-      showNotifications();
-    } catch (e) {
-      console.error("[GristPM] Error marking all read:", e);
-    }
-  }
-  async function createNotification(taskId, userEmail, type, message, ruleId) {
-    try {
-      var resolvedEmail = resolveUserEmail(userEmail);
-      if (!resolvedEmail || resolvedEmail.toLowerCase() === (state.currentUserEmail || "").toLowerCase().trim()) return;
-      var record = {
-        Task_Id: taskId,
-        User_Email: resolvedEmail,
-        Type: type,
-        Message: message,
-        Is_Read: false,
-        Created_At: Math.floor(Date.now() / 1e3),
-        Rule_Id: ruleId || ""
-      };
-      await grist.docApi.applyUserActions([["AddRecord", state.NOTIFICATIONS_TABLE, null, record]]);
-      record.id = state.pmNotifications.length > 0 ? Math.max.apply(null, state.pmNotifications.map(function(n) {
-        return n.id;
-      })) + 1 : 1;
-      state.pmNotifications.push(record);
-    } catch (e) {
-      console.error("[GristPM] Error creating notification:", e);
-    }
-  }
-  function splitRecipientValues(value) {
-    if (Array.isArray(value)) return value;
-    return String(value || "").split(",").map(function(item) {
-      return item.trim();
-    }).filter(Boolean);
-  }
-  function resolveUserEmail(value) {
-    var raw = String(value || "").trim();
-    if (!raw) return "";
-    var key = raw.toLowerCase();
-    var user = state.users.find(function(candidate) {
-      return String(candidate.Email || "").trim().toLowerCase() === key || String(candidate.Name || "").trim().toLowerCase() === key;
-    });
-    if (user && user.Email) return String(user.Email).trim();
-    return raw.indexOf("@") > 0 ? raw : "";
-  }
-  function getProjectLead(task) {
-    var projectId = Number(task && task.Project_Id || 0);
-    var project = state.projects.find(function(item) {
-      return Number(item.id) === projectId;
-    });
-    return project ? resolveUserEmail(project.Lead) : "";
-  }
-  async function notifyTaskCompleted(task) {
-    if (!task) return;
-    var lead = getProjectLead(task);
-    if (!lead) return;
-    await notifyConcernedUsers(task.id, [lead], "task_completed", task.Title || "");
-  }
-  async function notifyConcernedUsers(taskId, emails, eventType, title) {
-    if (!state.notifyConcernedEnabled) return;
-    var me = (state.currentUserEmail || "").toLowerCase().trim();
-    var seen = {}, recipients = [];
-    (emails || []).forEach(function(e) {
-      var v = resolveUserEmail(e);
-      var k = v.toLowerCase();
-      if (v && k !== me && !seen[k]) {
-        seen[k] = 1;
-        recipients.push(v);
-      }
-    });
-    if (!recipients.length) return;
-    var messages = {
-      task_assigned: currentLang === "fr" ? "Une t\xE2che vous a \xE9t\xE9 assign\xE9e : " : "A task was assigned to you: ",
-      task_completed: currentLang === "fr" ? "T\xE2che termin\xE9e : " : "Task completed: ",
-      task_updated: currentLang === "fr" ? "T\xE2che modifi\xE9e : " : "Task updated: "
-    };
-    var msg = (messages[eventType] || messages.task_updated) + title;
-    var now = Math.floor(Date.now() / 1e3);
-    var actions = recipients.map(function(email) {
-      return ["AddRecord", state.NOTIFICATIONS_TABLE, null, { Task_Id: taskId, User_Email: email, Type: eventType, Message: msg, Is_Read: false, Created_At: now, Rule_Id: "builtin" }];
-    });
-    try {
-      await grist.docApi.applyUserActions(actions);
-    } catch (e) {
-      console.error("[GristPM] notifyConcernedUsers", e);
-    }
-  }
-  function resolveRecipients(action, actionTarget, task) {
-    if (action === "notify_assignee") {
-      return splitRecipientValues(task.Assignee).map(resolveUserEmail).filter(Boolean);
-    }
-    if (action === "notify_project_lead") {
-      var lead = getProjectLead(task);
-      return lead ? [lead] : [];
-    }
-    if (action === "notify_specific" && actionTarget) {
-      return [actionTarget];
-    }
-    if (action === "notify_all") {
-      return state.users.map(function(u) {
-        return u.Email;
-      }).filter(Boolean);
-    }
-    return [];
-  }
-  function renderAutoMessage(template, task) {
-    var statusLabel2 = "";
-    var statuses = getKanbanStatuses();
-    for (var si = 0; si < statuses.length; si++) {
-      if (statuses[si].key === task.Status) {
-        statusLabel2 = currentLang === "fr" ? statuses[si].label_fr : statuses[si].label_en;
-        break;
-      }
-    }
-    return (template || "").replace(/\{title\}/g, task.Title || "").replace(/\{status\}/g, statusLabel2 || task.Status || "").replace(/\{priority\}/g, task.Priority || "").replace(/\{assignee\}/g, task.Assignee || "");
-  }
-  async function evaluateAutomationRules(task, changes) {
-    if (!state.automationRules || state.automationRules.length === 0) return;
-    for (var i = 0; i < state.automationRules.length; i++) {
-      var rule = state.automationRules[i];
-      if (!rule.enabled) continue;
-      var triggered = false;
-      if (rule.trigger === "status_change" && changes.status) {
-        var mf = !rule.condition || !rule.condition.from || rule.condition.from === changes.status.from;
-        var mt = !rule.condition || !rule.condition.to || rule.condition.to === changes.status.to;
-        triggered = mf && mt;
-      } else if (rule.trigger === "priority_change" && changes.priority) {
-        var mf2 = !rule.condition || !rule.condition.from || rule.condition.from === changes.priority.from;
-        var mt2 = !rule.condition || !rule.condition.to || rule.condition.to === changes.priority.to;
-        triggered = mf2 && mt2;
-      } else if (rule.trigger === "assignment_change" && changes.assignee) {
-        triggered = true;
-      }
-      if (triggered) {
-        var msgTpl = currentLang === "fr" ? rule.message_fr || rule.message_en || "" : rule.message_en || rule.message_fr || "";
-        var message = renderAutoMessage(msgTpl, task);
-        var recipients = resolveRecipients(rule.action, rule.action_target, task);
-        for (var r = 0; r < recipients.length; r++) {
-          await createNotification(task.id, recipients[r], rule.trigger, message, rule.id);
-        }
-      }
-    }
-    updateNotificationBadge();
-  }
-  async function checkTimeBasedAutomations() {
-    if (!state.automationRules || state.automationRules.length === 0) return;
-    var now = Math.floor(Date.now() / 1e3);
-    var todayStart = now - now % 86400;
-    var threeDays = now + 3 * 24 * 60 * 60;
-    for (var i = 0; i < state.automationRules.length; i++) {
-      var rule = state.automationRules[i];
-      if (!rule.enabled) continue;
-      if (rule.trigger !== "overdue" && rule.trigger !== "approaching_deadline") continue;
-      var matching = state.tasks.filter(function(t2) {
-        if (t2.Status === "done" || t2.Status === "archived" || !t2.Due_Date) return false;
-        if (rule.trigger === "overdue") return t2.Due_Date < now;
-        return t2.Due_Date >= now && t2.Due_Date <= threeDays;
-      });
-      for (var j = 0; j < matching.length; j++) {
-        var task = matching[j];
-        var recipients = resolveRecipients(rule.action, rule.action_target, task);
-        for (var r = 0; r < recipients.length; r++) {
-          var already = state.pmNotifications.some(function(n) {
-            return n.Rule_Id === rule.id && n.Task_Id === task.id && n.User_Email === recipients[r] && n.Created_At >= todayStart;
-          });
-          if (already) continue;
-          var msgTpl = currentLang === "fr" ? rule.message_fr || rule.message_en || "" : rule.message_en || rule.message_fr || "";
-          var message = renderAutoMessage(msgTpl, task);
-          await createNotification(task.id, recipients[r], rule.trigger, message, rule.id);
-        }
-      }
-    }
-    updateNotificationBadge();
-  }
-  async function cleanupOldNotifications() {
-    var now = Math.floor(Date.now() / 1e3);
-    var thirtyDays = 30 * 86400;
-    var ninetyDays = 90 * 86400;
-    var toDelete = state.pmNotifications.filter(function(n) {
-      var age = now - (n.Created_At || 0);
-      return n.Is_Read && age > thirtyDays || age > ninetyDays;
-    });
-    if (toDelete.length === 0) return;
-    try {
-      var ids = toDelete.map(function(n) {
-        return n.id;
-      });
-      var actions = ids.map(function(id) {
-        return ["RemoveRecord", state.NOTIFICATIONS_TABLE, id];
-      });
-      await grist.docApi.applyUserActions(actions);
-      state.pmNotifications = state.pmNotifications.filter(function(n) {
-        return ids.indexOf(n.id) === -1;
-      });
-    } catch (e) {
-      console.log("[GristPM] Notification cleanup skipped:", e.message);
-    }
   }
 
   // src/domains/kanban.js
@@ -6094,131 +7761,6 @@
     }
   }
 
-  // src/domains/recurrence.js
-  async function generateOccurrences(taskId, period) {
-    var task = state.tasks.find(function(t2) {
-      return t2.id === taskId;
-    });
-    if (!task || !task.Recurrence || task.Recurrence === "none") return;
-    var now = Math.floor(Date.now() / 1e3);
-    var periodEnd;
-    if (period === "month") {
-      var endOfMonth = /* @__PURE__ */ new Date();
-      endOfMonth.setDate(1);
-      endOfMonth.setMonth(endOfMonth.getMonth() + 1);
-      endOfMonth.setDate(0);
-      endOfMonth.setHours(23, 59, 59);
-      periodEnd = Math.floor(endOfMonth.getTime() / 1e3);
-    } else {
-      var endOfYear = new Date((/* @__PURE__ */ new Date()).getFullYear(), 11, 31, 23, 59, 59);
-      periodEnd = Math.floor(endOfYear.getTime() / 1e3);
-    }
-    var stepSeconds = task.Recurrence === "daily" ? 86400 : task.Recurrence === "weekly" ? 604800 : 2592e3;
-    var existingDates = state.tasks.filter(function(t2) {
-      return t2.Title === task.Title && t2.Due_Date;
-    }).map(function(t2) {
-      return t2.Due_Date;
-    });
-    var cursor = existingDates.length > 0 ? Math.max.apply(null, existingDates) : task.Due_Date || now;
-    var actions = [];
-    var count = 0;
-    var safety = 0;
-    while (cursor + stepSeconds <= periodEnd && safety < 100) {
-      cursor += stepSeconds;
-      safety++;
-      var alreadyExists = state.tasks.some(function(t2) {
-        return t2.Title === task.Title && t2.Due_Date && Math.abs(t2.Due_Date - cursor) < 43200;
-      });
-      if (alreadyExists) continue;
-      var record = {};
-      setField(record, "tasks", "title", task.Title);
-      setField(record, "tasks", "description", task.Description);
-      setField(record, "tasks", "status", "todo");
-      setField(record, "tasks", "priority", task.Priority);
-      setField(record, "tasks", "assignee", task.Assignee);
-      setField(record, "tasks", "group", task.Group_Name);
-      var startOffset = task.Start_Date && task.Due_Date ? task.Due_Date - task.Start_Date : 0;
-      setField(record, "tasks", "startDate", cursor - startOffset);
-      setField(record, "tasks", "dueDate", cursor);
-      setField(record, "tasks", "category", task.Category);
-      setField(record, "tasks", "tag", task.Tag);
-      setField(record, "tasks", "recurrence", task.Recurrence);
-      setField(record, "tasks", "estimatedHours", task.Estimated_Hours);
-      setField(record, "tasks", "projectId", task.Project_Id);
-      setField(record, "tasks", "createdAt", now);
-      actions.push(["AddRecord", state.TASKS_TABLE, null, record]);
-      count++;
-    }
-    if (actions.length === 0) {
-      showToast("Aucune occurrence \xE0 g\xE9n\xE9rer pour cette p\xE9riode", "info");
-      return;
-    }
-    try {
-      await grist.docApi.applyUserActions(actions);
-      showToast(count + " " + t("occurrencesGenerated"), "success");
-      await loadAllData();
-      renderCurrentView();
-    } catch (e) {
-      console.error("Error generating occurrences:", e);
-      showToast("Erreur : " + e.message, "error");
-    }
-  }
-  function addRecurrenceToEpoch(epoch, rec) {
-    if (!epoch) return null;
-    var d = new Date(epoch * 1e3);
-    switch (rec) {
-      case "daily":
-        d.setDate(d.getDate() + 1);
-        break;
-      case "weekly":
-        d.setDate(d.getDate() + 7);
-        break;
-      case "biweekly":
-        d.setDate(d.getDate() + 14);
-        break;
-      case "monthly":
-        d.setMonth(d.getMonth() + 1);
-        break;
-      case "quarterly":
-        d.setMonth(d.getMonth() + 3);
-        break;
-      case "yearly":
-        d.setFullYear(d.getFullYear() + 1);
-        break;
-      default:
-        return epoch;
-    }
-    return Math.floor(d.getTime() / 1e3);
-  }
-  async function createNextOccurrence(task) {
-    if (!task.Recurrence || task.Recurrence === "none") return;
-    var newStartDate = addRecurrenceToEpoch(task.Start_Date, task.Recurrence);
-    var newDueDate = addRecurrenceToEpoch(task.Due_Date, task.Recurrence);
-    var now = Math.floor(Date.now() / 1e3);
-    try {
-      var record = {};
-      setField(record, "tasks", "title", task.Title);
-      setField(record, "tasks", "description", task.Description);
-      setField(record, "tasks", "status", "todo");
-      setField(record, "tasks", "priority", task.Priority);
-      setField(record, "tasks", "assignee", task.Assignee);
-      setField(record, "tasks", "group", task.Group_Name);
-      setField(record, "tasks", "startDate", newStartDate);
-      setField(record, "tasks", "dueDate", newDueDate);
-      setField(record, "tasks", "category", task.Category);
-      setField(record, "tasks", "tag", task.Tag);
-      setField(record, "tasks", "recurrence", task.Recurrence);
-      setField(record, "tasks", "estimatedHours", task.Estimated_Hours);
-      setField(record, "tasks", "createdAt", now);
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.TASKS_TABLE, null, record]
-      ]);
-      showToast(t("nextOccurrence"), "success");
-    } catch (e) {
-      console.error("Error creating next occurrence:", e);
-    }
-  }
-
   // src/domains/calendar.js
   var calendarYear = (/* @__PURE__ */ new Date()).getFullYear();
   var calendarMonth = (/* @__PURE__ */ new Date()).getMonth();
@@ -7667,165 +9209,6 @@
     if (columnName) {
       record[columnName] = value;
     }
-  }
-  function getInputValue(id, fallback) {
-    var el = document.getElementById(id);
-    if (!el) return fallback || "";
-    return el.value;
-  }
-  function getEstimatedHoursInput() {
-    var raw = String(getInputValue("task-estimated-hours", "")).trim().replace(",", ".");
-    if (!raw) return 0;
-    var value = parseFloat(raw);
-    return isFinite(value) && value >= 0 ? value : 0;
-  }
-  function requireTaskTitle() {
-    var modal = document.getElementById("modal-container");
-    var titleEl = modal ? modal.querySelector("#task-title") : null;
-    var title = titleEl ? titleEl.value.trim() : "";
-    if (!title) {
-      showToast(currentLang === "fr" ? "Ajoutez un titre avant d\u2019enregistrer." : "Add a title before saving.", "error");
-      if (titleEl) titleEl.focus();
-      return "";
-    }
-    return title;
-  }
-  async function refreshTaskTableColumns() {
-    try {
-      var data = await grist.docApi.fetchTable(state.TASKS_TABLE);
-      state.taskTableColumns = data ? Object.keys(data) : null;
-    } catch (e) {
-      state.taskTableColumns = null;
-    }
-  }
-  async function keepExistingTaskColumns(record) {
-    if (!state.taskTableColumns) await refreshTaskTableColumns();
-    if (!state.taskTableColumns) return record;
-    var filtered = {};
-    Object.keys(record).forEach(function(key) {
-      if (state.taskTableColumns.indexOf(key) !== -1) filtered[key] = record[key];
-    });
-    return filtered;
-  }
-  async function removeCommentsForTask(taskId) {
-    var toRemove = state.comments.filter(function(c) {
-      return c.Task_Id === taskId;
-    });
-    if (!toRemove.length) return;
-    await grist.docApi.applyUserActions(toRemove.map(function(c) {
-      return ["RemoveRecord", state.COMMENTS_TABLE, c.id];
-    }));
-  }
-  async function removeSubtasksForTask(taskId) {
-    var toRemove = state.subtasks.filter(function(st) {
-      return st.Parent_Task_Id === taskId;
-    });
-    if (!toRemove.length) return;
-    await grist.docApi.applyUserActions(toRemove.map(function(st) {
-      return ["RemoveRecord", state.SUBTASKS_TABLE, st.id];
-    }));
-  }
-  async function removeAttachmentsForTask(taskId) {
-    var toRemove = state.attachments.filter(function(attachment) {
-      return attachment.Task_Id === taskId;
-    });
-    if (!toRemove.length) return;
-    await grist.docApi.applyUserActions(toRemove.map(function(attachment) {
-      return ["RemoveRecord", state.ATTACHMENTS_TABLE, attachment.id];
-    }));
-  }
-  async function removeTimeEntriesForTask(taskId) {
-    var toRemove = state.timeEntries.filter(function(entry) {
-      return entry.Task_Id === taskId;
-    });
-    if (!toRemove.length) return;
-    await grist.docApi.applyUserActions(toRemove.map(function(entry) {
-      return ["RemoveRecord", state.TIME_ENTRIES_TABLE, entry.id];
-    }));
-    delete state.activeTimers[taskId];
-  }
-  async function removeDraftChildren(taskId) {
-    await removeCommentsForTask(taskId);
-    await removeSubtasksForTask(taskId);
-    await removeAttachmentsForTask(taskId);
-    await removeTimeEntriesForTask(taskId);
-  }
-  async function saveTaskFormSilently(taskId) {
-    var title = requireTaskTitle();
-    if (!title) return false;
-    if (shouldLimitToMyProjects() && editAssignees.length === 0) {
-      var mine = myAssigneeValue();
-      if (mine) editAssignees = [mine];
-    }
-    var projectEl = document.getElementById("task-project");
-    var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
-    var record = {};
-    setField(record, "tasks", "title", title);
-    setField(record, "tasks", "description", getInputValue("task-desc").trim());
-    setField(record, "tasks", "status", getInputValue("task-status"));
-    setField(record, "tasks", "priority", getInputValue("task-priority"));
-    setField(record, "tasks", "assignee", editAssignees.join(", "));
-    setField(record, "tasks", "group", getInputValue("task-group"));
-    setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
-    setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
-    setField(record, "tasks", "category", getInputValue("task-category").trim());
-    setField(record, "tasks", "projectId", projectId);
-    setField(record, "tasks", "recurrence", getInputValue("task-recurrence", "none"));
-    setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
-    var tagEl = document.getElementById("task-tag");
-    if (tagEl) setField(record, "tasks", "tag", tagEl.value.trim());
-    if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
-      record.Accountable = editAccountable.join(", ");
-      record.Consulted = editConsulted.join(", ");
-      record.Informed = editInformed.join(", ");
-    }
-    record = await keepExistingTaskColumns(record);
-    await grist.docApi.applyUserActions([
-      ["UpdateRecord", state.TASKS_TABLE, taskId, record]
-    ]);
-    return true;
-  }
-  function captureTaskFormState() {
-    var autoExtendEl = document.getElementById("task-auto-extend");
-    return {
-      title: getInputValue("task-title"),
-      description: getInputValue("task-desc"),
-      status: getInputValue("task-status"),
-      priority: getInputValue("task-priority"),
-      group: getInputValue("task-group"),
-      start: getInputValue("task-start"),
-      due: getInputValue("task-due"),
-      category: getInputValue("task-category"),
-      project: getInputValue("task-project"),
-      tag: getInputValue("task-tag"),
-      recurrence: getInputValue("task-recurrence", "none"),
-      estimatedHours: getInputValue("task-estimated-hours"),
-      extensionDate: getInputValue("task-extension-date"),
-      autoExtend: autoExtendEl ? autoExtendEl.checked : null
-    };
-  }
-  function restoreTaskFormState(state2) {
-    if (!state2) return;
-    [
-      ["task-title", state2.title],
-      ["task-desc", state2.description],
-      ["task-status", state2.status],
-      ["task-priority", state2.priority],
-      ["task-group", state2.group],
-      ["task-start", state2.start],
-      ["task-due", state2.due],
-      ["task-category", state2.category],
-      ["task-project", state2.project],
-      ["task-tag", state2.tag],
-      ["task-recurrence", state2.recurrence],
-      ["task-estimated-hours", state2.estimatedHours],
-      ["task-extension-date", state2.extensionDate]
-    ].forEach(function(pair) {
-      var el = document.getElementById(pair[0]);
-      if (el && pair[1] !== void 0 && pair[1] !== null) el.value = pair[1];
-    });
-    var autoExtendEl = document.getElementById("task-auto-extend");
-    if (autoExtendEl && state2.autoExtend !== null) autoExtendEl.checked = state2.autoExtend;
   }
   function getColumnName(entity, field) {
     if (!state.columnMapping[entity]) return field;
@@ -9510,1387 +10893,6 @@
       renderSettingsCategoriesList();
     } catch (e) {
       console.error("Error deleting category:", e);
-    }
-  }
-  function openNewTaskModal(defaultStatus) {
-    if (!canEditWorkItems()) {
-      showToast(currentLang === "fr" ? "Vous n\u2019avez pas les droits pour cr\xE9er une t\xE2che." : "You do not have permission to create a task.", "error");
-      return;
-    }
-    return startNewTask(defaultStatus);
-    editAssignees = [];
-    editAccountable = [];
-    editConsulted = [];
-    editInformed = [];
-    var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + "</option>";
-    }
-    var dotColor = "#f59e0b";
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal modal-detail" onclick="event.stopPropagation()">';
-    html += '<div class="modal-detail-top">';
-    html += '<span class="group-dot" style="background:' + dotColor + '"></span>';
-    html += '<span style="font-size:14px;font-weight:800;">' + t("modalNewTask") + "</span>";
-    html += '<div style="flex:1;"></div>';
-    html += '<button class="modal-close" onclick="closeModalForce()">\u2715</button>';
-    html += "</div>";
-    html += '<div class="modal-detail-content" style="grid-template-columns:1fr;">';
-    html += '<div class="modal-detail-left">';
-    html += '<input class="detail-title-input" type="text" id="task-title" placeholder="' + t("fieldTitle") + '" />';
-    html += '<div class="detail-field">';
-    html += '<div class="detail-field-value"><textarea id="task-desc" placeholder="' + t("fieldDescription") + '"></textarea></div>';
-    html += "</div>";
-    if (state.raciEnabled) {
-      html += renderRaciField("R", t("raciResponsible"), "assignee", "editAssignees");
-      html += renderRaciField("A", t("raciAccountable"), "accountable", "editAccountable");
-      html += renderRaciField("C", t("raciConsulted"), "consulted", "editConsulted");
-      html += renderRaciField("I", t("raciInformed"), "informed", "editInformed");
-    } else {
-      html += '<div class="detail-field">';
-      html += '<span class="detail-field-icon">\u{1F464}</span>';
-      html += '<span class="detail-field-label">' + t("fieldAssignee") + "</span>";
-      html += '<div class="detail-field-value">';
-      html += '<div class="assignee-chips" id="assignee-chips"></div>';
-      html += '<div class="assignee-add-row">';
-      html += '<select id="assignee-select">';
-      html += '<option value="">-- ' + t("searchAssignee") + " --</option>";
-      for (var i = 0; i < state.users.length; i++) {
-        html += '<option value="' + sanitize(state.users[i].Email || state.users[i].Name) + '">' + sanitize(state.users[i].Name || state.users[i].Email) + "</option>";
-      }
-      html += "</select>";
-      html += `<button class="assignee-add-btn" onclick="addRaciChip('editAssignees','assignee')">` + t("addAssignee") + "</button>";
-      html += "</div>";
-      html += "</div></div>";
-    }
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4CA}</span>';
-    html += '<span class="detail-field-label">' + t("fieldStatus") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-status">';
-    var _statuses = getKanbanStatuses();
-    for (var _si = 0; _si < _statuses.length; _si++) {
-      var _s = _statuses[_si];
-      var _sl = currentLang === "fr" ? _s.label_fr : _s.label_en;
-      html += '<option value="' + _s.key + '"' + (defaultStatus === _s.key || !defaultStatus && _si === 0 ? " selected" : "") + ">" + _sl + "</option>";
-    }
-    html += "</select></div></div>";
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F525}</span>';
-    html += '<span class="detail-field-label">' + t("fieldPriority") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-priority">';
-    html += '<option value="medium">' + t("priorityMedium") + "</option>";
-    html += '<option value="high">' + t("priorityHigh") + "</option>";
-    html += '<option value="low">' + t("priorityLow") + "</option>";
-    html += "</select></div></div>";
-    html += "</div>";
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F465}</span>';
-    html += '<span class="detail-field-label">' + t("fieldGroup") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-group">' + groupOptions + "</select></div>";
-    html += "</div>";
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4C5}</span>';
-    html += '<span class="detail-field-label">' + t("fieldStartDate") + "</span>";
-    html += '<div class="detail-field-value"><input type="date" id="task-start" /></div>';
-    html += "</div>";
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u23F0</span>';
-    html += '<span class="detail-field-label">' + t("fieldDueDate") + "</span>";
-    html += '<div class="detail-field-value"><input type="date" id="task-due" /></div>';
-    html += "</div>";
-    html += "</div>";
-    var projectOptions = '<option value="">' + t("noProject") + "</option>";
-    for (var pi = 0; pi < state.projects.length; pi++) {
-      var projSelected = state.currentProjectId === state.projects[pi].id ? " selected" : "";
-      projectOptions += '<option value="' + state.projects[pi].id + '"' + projSelected + ">" + sanitize(state.projects[pi].Name) + "</option>";
-    }
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4C2}</span>';
-    html += '<span class="detail-field-label">' + t("project") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-project">' + projectOptions + "</select></div>";
-    html += "</div>";
-    var newCategoryOptions = '<option value="">--</option>';
-    for (var nci = 0; nci < state.categories.length; nci++) {
-      newCategoryOptions += '<option value="' + sanitize(state.categories[nci].Name) + '">' + sanitize(state.categories[nci].Name) + "</option>";
-    }
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4C1}</span>';
-    html += '<span class="detail-field-label">' + t("fieldCategory") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-category">' + newCategoryOptions + "</select></div>";
-    html += "</div>";
-    var newTagOptions = '<option value="">--</option>';
-    for (var nti = 0; nti < state.tags.length; nti++) {
-      newTagOptions += '<option value="' + sanitize(state.tags[nti].Name) + '">' + sanitize(state.tags[nti].Name) + "</option>";
-    }
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F3F7}\uFE0F</span>';
-    html += '<span class="detail-field-label">' + t("tag") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-tag">' + newTagOptions + "</select></div>";
-    html += "</div>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-detail-footer">';
-    html += "<div></div>";
-    html += '<div style="display:flex;gap:8px;">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="createTask()">' + t("save") + "</button>";
-    html += "</div></div>";
-    html += "</div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  var editAssignees = [];
-  var editAccountable = [];
-  var editConsulted = [];
-  var editInformed = [];
-  var draftTaskId = null;
-  async function startNewTask(defaultStatus, dateStr, prefill) {
-    prefill = prefill || {};
-    var statuses = getKanbanStatuses();
-    if (shouldLimitToMyProjects() && editAssignees.length === 0) {
-      var mine = myAssigneeValue();
-      if (mine) editAssignees = [mine];
-    }
-    var record = {};
-    setField(record, "tasks", "title", prefill.title || "");
-    setField(record, "tasks", "status", defaultStatus || statuses[0] && statuses[0].key || "todo");
-    setField(record, "tasks", "priority", prefill.priority || "medium");
-    if (prefill.description) setField(record, "tasks", "description", prefill.description);
-    if (prefill.category) setField(record, "tasks", "category", prefill.category);
-    if (prefill.group) setField(record, "tasks", "group", prefill.group);
-    if (prefill.tag) setField(record, "tasks", "tag", prefill.tag);
-    if (prefill.recurrence && prefill.recurrence !== "none") setField(record, "tasks", "recurrence", prefill.recurrence);
-    if (prefill.estimatedHours) setField(record, "tasks", "estimatedHours", prefill.estimatedHours);
-    if (editAssignees.length > 0) setField(record, "tasks", "assignee", editAssignees.join(", "));
-    if (state.currentProjectId) setField(record, "tasks", "projectId", state.currentProjectId);
-    setField(record, "tasks", "createdAt", Math.floor(Date.now() / 1e3));
-    if (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
-    if (dateStr) {
-      setField(record, "tasks", "startDate", toEpoch(dateStr));
-      setField(record, "tasks", "dueDate", toEpoch(dateStr));
-    }
-    try {
-      record = await keepExistingTaskColumns(record);
-      var res = await grist.docApi.applyUserActions([["AddRecord", state.TASKS_TABLE, null, record]]);
-      var newId = res && res.retValues && res.retValues[0] || null;
-      if (!newId) {
-        showToast("Error", "error");
-        return;
-      }
-      draftTaskId = newId;
-      await loadAllData();
-      await removeDraftChildren(newId);
-      await loadAllData();
-      openEditTaskModal(newId);
-    } catch (e) {
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  function openEditTaskModal(taskId, preserveAssignees) {
-    var task = state.tasks.find(function(t2) {
-      return t2.id === taskId;
-    });
-    if (!task) return;
-    if (!preserveAssignees) {
-      editAssignees = task.Assignee ? task.Assignee.split(",").map(function(a) {
-        return a.trim();
-      }).filter(Boolean) : [];
-      editAccountable = task.Accountable ? task.Accountable.split(",").map(function(a) {
-        return a.trim();
-      }).filter(Boolean) : [];
-      editConsulted = task.Consulted ? task.Consulted.split(",").map(function(a) {
-        return a.trim();
-      }).filter(Boolean) : [];
-      editInformed = task.Informed ? task.Informed.split(",").map(function(a) {
-        return a.trim();
-      }).filter(Boolean) : [];
-    }
-    var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      var sel = state.groups[i].Name === task.Group_Name ? " selected" : "";
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + ">" + sanitize(state.groups[i].Name) + "</option>";
-    }
-    var startVal = task.Start_Date ? new Date(task.Start_Date * 1e3).toISOString().split("T")[0] : "";
-    var dueVal = task.Due_Date ? new Date(task.Due_Date * 1e3).toISOString().split("T")[0] : "";
-    var progressPct = getTaskProgress(task);
-    var barClass = progressPct === 100 ? "bar-done" : progressPct >= 50 ? "bar-progress" : "bar-todo";
-    var dotColor = task.Priority === "high" ? "#ef4444" : task.Priority === "medium" ? "#f59e0b" : "#22c55e";
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal modal-detail" onclick="event.stopPropagation()">';
-    html += '<div class="modal-detail-top">';
-    html += '<span class="group-dot" style="background:' + dotColor + '"></span>';
-    if (task.Group_Name) html += '<span style="font-size:12px;color:#64748b;">' + sanitize(task.Group_Name) + "</span>";
-    html += '<span class="status-badge status-' + task.Status + '">\u25CF ' + statusLabel(task.Status) + "</span>";
-    html += '<div style="flex:1;"></div>';
-    html += '<button type="button" id="task-save-top-' + task.id + '" class="btn btn-primary" onclick="event.preventDefault();event.stopPropagation();updateTask(' + task.id + ')" style="padding:6px 16px;font-size:12px;border-radius:8px;margin-right:8px;">\u{1F4BE} ' + t("save") + "</button>";
-    html += '<button class="modal-close" onclick="closeModalForce()">\u2715</button>';
-    html += "</div>";
-    html += '<div class="modal-detail-content">';
-    html += '<div class="modal-detail-left">';
-    html += '<input class="detail-title-input" type="text" id="task-title" value="' + sanitize(task.Title) + '" />';
-    html += '<div class="detail-field">';
-    html += '<div class="detail-field-value"><textarea id="task-desc" placeholder="' + t("fieldDescription") + '">' + sanitize(task.Description) + "</textarea></div>";
-    html += "</div>";
-    if (state.raciEnabled) {
-      html += renderRaciField("R", t("raciResponsible"), "assignee", "editAssignees");
-      html += renderRaciField("A", t("raciAccountable"), "accountable", "editAccountable");
-      html += renderRaciField("C", t("raciConsulted"), "consulted", "editConsulted");
-      html += renderRaciField("I", t("raciInformed"), "informed", "editInformed");
-    } else {
-      html += '<div class="detail-field">';
-      html += '<span class="detail-field-icon">\u{1F464}</span>';
-      html += '<span class="detail-field-label">' + t("fieldAssignee") + "</span>";
-      html += '<div class="detail-field-value">';
-      html += '<div class="assignee-chips" id="assignee-chips">';
-      html += renderRaciChips("editAssignees");
-      html += "</div>";
-      html += '<div class="assignee-add-row">';
-      html += '<select id="assignee-select">';
-      html += '<option value="">-- ' + t("searchAssignee") + " --</option>";
-      for (var i = 0; i < state.users.length; i++) {
-        html += '<option value="' + sanitize(state.users[i].Email || state.users[i].Name) + '">' + sanitize(state.users[i].Name || state.users[i].Email) + "</option>";
-      }
-      html += "</select>";
-      html += `<button class="assignee-add-btn" onclick="addRaciChip('editAssignees','assignee')">` + t("addAssignee") + "</button>";
-      html += "</div>";
-      html += "</div></div>";
-    }
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4CA}</span>';
-    html += '<span class="detail-field-label">' + t("fieldStatus") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-status">';
-    var _statuses2 = getKanbanStatuses();
-    for (var _si2 = 0; _si2 < _statuses2.length; _si2++) {
-      var _s2 = _statuses2[_si2];
-      var _sl2 = currentLang === "fr" ? _s2.label_fr : _s2.label_en;
-      html += '<option value="' + _s2.key + '"' + (task.Status === _s2.key ? " selected" : "") + ">" + _sl2 + "</option>";
-    }
-    html += "</select></div></div>";
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4C5}</span>';
-    html += '<span class="detail-field-label">' + t("fieldStartDate") + "</span>";
-    html += '<div class="detail-field-value"><input type="date" id="task-start" value="' + startVal + '" /></div>';
-    html += "</div>";
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u23F0</span>';
-    html += '<span class="detail-field-label">' + t("fieldDueDate") + "</span>";
-    html += '<div class="detail-field-value"><input type="date" id="task-due" value="' + dueVal + '" /></div>';
-    html += "</div>";
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F525}</span>';
-    html += '<span class="detail-field-label">' + t("fieldPriority") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-priority">';
-    html += '<option value="high"' + (task.Priority === "high" ? " selected" : "") + ">" + t("priorityHigh") + "</option>";
-    html += '<option value="medium"' + (task.Priority === "medium" ? " selected" : "") + ">" + t("priorityMedium") + "</option>";
-    html += '<option value="low"' + (task.Priority === "low" ? " selected" : "") + ">" + t("priorityLow") + "</option>";
-    html += "</select></div></div>";
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F465}</span>';
-    html += '<span class="detail-field-label">' + t("fieldGroup") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-group">' + groupOptions + "</select></div>";
-    html += "</div>";
-    var projectOptions = '<option value="">' + t("noProject") + "</option>";
-    for (var pi = 0; pi < state.projects.length; pi++) {
-      var projSel = state.projects[pi].id === task.Project_Id ? " selected" : "";
-      projectOptions += '<option value="' + state.projects[pi].id + '"' + projSel + ">" + sanitize(state.projects[pi].Name) + "</option>";
-    }
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4C2}</span>';
-    html += '<span class="detail-field-label">' + t("project") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-project" onchange="refreshDependencyTaskOptions(' + task.id + ', true)">' + projectOptions + "</select></div>";
-    html += "</div>";
-    var categoryOptions = '<option value="">--</option>';
-    for (var ci = 0; ci < state.categories.length; ci++) {
-      var catSel = state.categories[ci].Name === task.Category ? " selected" : "";
-      categoryOptions += '<option value="' + sanitize(state.categories[ci].Name) + '"' + catSel + ">" + sanitize(state.categories[ci].Name) + "</option>";
-    }
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4C1}</span>';
-    html += '<span class="detail-field-label">' + t("fieldCategory") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-category">' + categoryOptions + "</select></div>";
-    html += "</div>";
-    var tagOptions = '<option value="">--</option>';
-    for (var ti = 0; ti < state.tags.length; ti++) {
-      var tagSel = state.tags[ti].Name === task.Tag ? " selected" : "";
-      tagOptions += '<option value="' + sanitize(state.tags[ti].Name) + '"' + tagSel + ">" + sanitize(state.tags[ti].Name) + "</option>";
-    }
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F3F7}\uFE0F</span>';
-    html += '<span class="detail-field-label">' + t("tag") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-tag">' + tagOptions + "</select></div>";
-    html += "</div>";
-    var taskSubtasks = getTaskSubtasks(task.id);
-    html += '<div class="subtasks-section">';
-    html += '<div class="subtasks-header">';
-    html += '<span class="detail-field-icon">\u2611\uFE0F</span>';
-    html += '<span class="detail-field-label">' + t("subtasks") + "</span>";
-    html += '<span class="subtask-badge">' + taskSubtasks.filter(function(st2) {
-      return st2.Completed;
-    }).length + "/" + taskSubtasks.length + "</span>";
-    html += "</div>";
-    html += '<div class="subtasks-list" id="subtasks-list">';
-    if (taskSubtasks.length === 0) {
-      html += '<div class="subtasks-empty">' + t("noSubtasks") + "</div>";
-    } else {
-      for (var si = 0; si < taskSubtasks.length; si++) {
-        var st = taskSubtasks[si];
-        var stBlocked = isSubtaskBlocked(st);
-        var stBlocker = getSubtaskBlocker(st);
-        var stDueDateStr = st.Due_Date ? new Date(st.Due_Date * 1e3).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
-        var stDueClass = st.Due_Date && !st.Completed && st.Due_Date < Math.floor(Date.now() / 1e3) ? " st-overdue" : "";
-        html += '<div class="subtask-item' + (st.Completed ? " completed" : "") + (stBlocked ? " blocked" : "") + '" data-id="' + st.id + '" id="st-row-' + st.id + '">';
-        html += '<div class="subtask-view" id="st-view-' + st.id + '">';
-        html += '<input type="checkbox" class="subtask-checkbox" ' + (st.Completed ? "checked" : "") + (stBlocked ? " disabled" : "") + ' onchange="toggleSubtask(' + st.id + ', this.checked)" />';
-        html += '<span class="subtask-title">' + sanitize(st.Title) + "</span>";
-        if (stBlocked && stBlocker) {
-          html += '<span class="subtask-blocked-badge" title="' + t("blockedBy") + " " + sanitize(stBlocker.Title) + '">\u{1F512}</span>';
-        }
-        html += '<span class="subtask-meta">';
-        if (st.Status && st.Status !== "todo") {
-          var stStatusColor = st.Status === "done" ? "#22c55e" : "#f59e0b";
-          html += '<span class="subtask-assignee-badge" style="background:' + stStatusColor + "20;color:" + stStatusColor + ';">' + (st.Status === "done" ? "\u2705" : "\u{1F504}") + "</span>";
-        }
-        if (st.Priority && st.Priority !== "medium") {
-          var stPrioColor = st.Priority === "high" ? "#ef4444" : "#94a3b8";
-          html += '<span class="subtask-assignee-badge" style="background:' + stPrioColor + "20;color:" + stPrioColor + ';">' + (st.Priority === "high" ? "\u{1F534}" : "\u2B07\uFE0F") + "</span>";
-        }
-        if (st.Assignee) {
-          st.Assignee.split(",").map(function(a) {
-            return a.trim();
-          }).filter(Boolean).forEach(function(an) {
-            html += '<span class="subtask-assignee-badge">\u{1F464} ' + sanitize(an) + "</span>";
-          });
-        }
-        if (stDueDateStr) html += '<span class="subtask-due-badge' + stDueClass + '">\u{1F4C5} ' + stDueDateStr + "</span>";
-        if (st.Estimated_Hours) html += '<span class="subtask-assignee-badge">\u23F1 ' + st.Estimated_Hours + "h</span>";
-        if (st.Recurrence && st.Recurrence !== "none") {
-          var recSymbol = recurrenceSymbol(st.Recurrence);
-          html += '<span class="subtask-assignee-badge" title="' + t("recurrence") + '">' + recSymbol + "</span>";
-        }
-        html += "</span>";
-        if (st.Recurrence && st.Recurrence !== "none") {
-          html += '<button class="subtask-dep-btn" onclick="generateSubtaskOccurrences(' + st.id + ", " + task.id + ')" title="' + t("generateMonth") + '">\u{1F4C5}+</button>';
-        }
-        html += '<button class="subtask-edit-btn" onclick="startEditSubtask(' + st.id + ", " + task.id + ')" title="' + t("editSubtask") + '">\u270F\uFE0F</button>';
-        html += '<button class="subtask-dep-btn" onclick="openSubtaskDepModal(' + st.id + ", " + task.id + ')" title="' + t("dependencies") + '">\u{1F517}</button>';
-        html += '<button class="subtask-delete" onclick="deleteSubtask(' + st.id + ", " + task.id + ')" title="' + t("delete") + '">\u2715</button>';
-        html += "</div>";
-        var stAssignees = (st.Assignee || "").split(",").map(function(a) {
-          return a.trim();
-        }).filter(Boolean);
-        var assigneeListHtml = '<div class="st-assignee-list" id="st-assignee-' + st.id + '" style="display:flex;flex-wrap:wrap;gap:4px 10px;max-height:84px;overflow-y:auto;padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;">';
-        if (state.users.length === 0) {
-          assigneeListHtml += '<span style="font-size:11px;color:#94a3b8;">' + (currentLang === "fr" ? "Aucun membre" : "No members") + "</span>";
-        }
-        for (var ui = 0; ui < state.users.length; ui++) {
-          var uName = state.users[ui].Name;
-          var uChk = stAssignees.indexOf(uName) !== -1 ? " checked" : "";
-          assigneeListHtml += '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;white-space:nowrap;"><input type="checkbox" value="' + sanitize(uName) + '"' + uChk + "> " + sanitize(uName) + "</label>";
-        }
-        assigneeListHtml += "</div>";
-        var stDueDateInput = st.Due_Date ? new Date(st.Due_Date * 1e3).toISOString().split("T")[0] : "";
-        var stStatus = st.Status || "todo";
-        var stPriority = st.Priority || "medium";
-        var stLbl = { todo: t("statusTodo"), progress: t("statusProgress"), done: t("statusDone") };
-        var prLbl = { high: t("priorityHigh"), medium: t("priorityMedium"), low: t("priorityLow") };
-        html += '<div class="subtask-edit-form" id="st-edit-' + st.id + '">';
-        html += '<input type="text" class="subtask-edit-title" id="st-title-' + st.id + '" value="' + sanitize(st.Title) + '" placeholder="' + (currentLang === "fr" ? "Titre de la sous-t\xE2che..." : "Subtask title...") + '">';
-        html += '<textarea class="subtask-edit-title" id="st-desc-' + st.id + '" rows="2" placeholder="' + (currentLang === "fr" ? "Description (optionnel)..." : "Description (optional)...") + '" style="resize:vertical;">' + sanitize(st.Description || "") + "</textarea>";
-        var stType = st.Type || "subtask";
-        html += '<div><div class="st-pill-label">' + (currentLang === "fr" ? "Type" : "Type") + "</div>";
-        html += '<div class="st-pill-group">';
-        html += '<button type="button" class="st-pill' + (stType !== "milestone" ? " active-progress" : "") + '" onclick="setStType(' + st.id + `,'subtask',this)">` + (currentLang === "fr" ? "\u21B3 Sous-t\xE2che" : "\u21B3 Subtask") + "</button>";
-        html += '<button type="button" class="st-pill' + (stType === "milestone" ? " active-progress" : "") + '" onclick="setStType(' + st.id + `,'milestone',this)">` + (currentLang === "fr" ? "\u25C6 Jalon (1 date)" : "\u25C6 Milestone (1 date)") + "</button>";
-        html += "</div>";
-        html += '<input type="hidden" id="st-type-' + st.id + '" value="' + stType + '">';
-        html += "</div>";
-        html += "<div>";
-        html += '<div class="st-pill-label">' + (currentLang === "fr" ? "Statut" : "Status") + "</div>";
-        html += '<div class="st-pill-group" id="st-status-group-' + st.id + '">';
-        getKanbanStatuses().forEach(function(s) {
-          var sLbl = (s.emoji ? s.emoji + " " : "") + (currentLang === "fr" ? s.label_fr : s.label_en);
-          var sActiveStyle = stStatus === s.key ? "background:" + (s.color || "#3b82f6") + ";color:#fff;border-color:" + (s.color || "#3b82f6") + ";" : "";
-          html += '<button type="button" class="st-pill" style="' + sActiveStyle + '" onclick="setStStatus(' + st.id + ",'" + s.key + `',this)">` + sanitize(sLbl) + "</button>";
-        });
-        html += "</div>";
-        html += '<input type="hidden" id="st-status-' + st.id + '" value="' + stStatus + '">';
-        html += "</div>";
-        html += "<div>";
-        html += '<div class="st-pill-label">' + (currentLang === "fr" ? "Priorit\xE9" : "Priority") + "</div>";
-        html += '<div class="st-pill-group" id="st-priority-group-' + st.id + '">';
-        ["high", "medium", "low"].forEach(function(p) {
-          html += '<button type="button" class="st-pill' + (stPriority === p ? " active-" + p : "") + `" onclick="setStPill('priority',` + st.id + ",'" + p + `',this)">` + prLbl[p] + "</button>";
-        });
-        html += "</div>";
-        html += '<input type="hidden" id="st-priority-' + st.id + '" value="' + stPriority + '">';
-        html += "</div>";
-        html += "<div>";
-        html += '<div class="st-pill-label">' + t("subtaskAssignee") + (currentLang === "fr" ? " (plusieurs possibles)" : " (multiple)") + "</div>";
-        if (state.users.length > 1) {
-          html += '<input type="text" id="st-assignee-search-' + st.id + '" oninput="filterStAssignees(' + st.id + ', this.value)" placeholder="' + (currentLang === "fr" ? "\u{1F50D} Rechercher un membre..." : "\u{1F50D} Search a member...") + '" style="width:100%;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;margin-bottom:4px;" autocomplete="off">';
-        }
-        html += assigneeListHtml;
-        html += "</div>";
-        html += '<div class="st-meta-row">';
-        var stStartDateInput = st.Start_Date ? new Date(st.Start_Date * 1e3).toISOString().split("T")[0] : "";
-        html += '<input type="date" class="subtask-edit-date" id="st-start-' + st.id + '" value="' + stStartDateInput + '" title="' + (currentLang === "fr" ? "Date d\xE9but" : "Start date") + '">';
-        html += '<input type="date" class="subtask-edit-date" id="st-due-' + st.id + '" value="' + stDueDateInput + '" title="' + (currentLang === "fr" ? "\xC9ch\xE9ance" : "Due date") + '">';
-        html += '<input type="number" class="st-hours-input" id="st-hours-' + st.id + '" value="' + (st.Estimated_Hours || "") + '" placeholder="' + (currentLang === "fr" ? "Heures" : "Hours") + '" min="0" step="0.5">';
-        html += "</div>";
-        var stRecur = st.Recurrence || "none";
-        html += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">';
-        html += '<span style="font-size:11px;color:#64748b;">\u{1F504} ' + (currentLang === "fr" ? "R\xE9currence" : "Recurrence") + "</span>";
-        html += '<select id="st-recur-' + st.id + '" style="flex:1;font-size:12px;">';
-        html += '<option value="none"' + (stRecur === "none" ? " selected" : "") + ">" + t("recurrenceNone") + "</option>";
-        html += '<option value="daily"' + (stRecur === "daily" ? " selected" : "") + ">" + t("recurrenceDaily") + "</option>";
-        html += '<option value="weekly"' + (stRecur === "weekly" ? " selected" : "") + ">" + t("recurrenceWeekly") + "</option>";
-        html += '<option value="biweekly"' + (stRecur === "biweekly" ? " selected" : "") + ">" + t("recurrenceBiweekly") + "</option>";
-        html += '<option value="monthly"' + (stRecur === "monthly" ? " selected" : "") + ">" + t("recurrenceMonthly") + "</option>";
-        html += '<option value="quarterly"' + (stRecur === "quarterly" ? " selected" : "") + ">" + t("recurrenceQuarterly") + "</option>";
-        html += '<option value="yearly"' + (stRecur === "yearly" ? " selected" : "") + ">" + t("recurrenceYearly") + "</option>";
-        html += "</select>";
-        html += "</div>";
-        html += '<div class="st-form-actions">';
-        html += '<button type="button" class="subtask-cancel-btn" onclick="cancelEditSubtask(' + st.id + ')">' + (currentLang === "fr" ? "Annuler" : "Cancel") + "</button>";
-        html += '<button type="button" class="subtask-save-btn" onclick="saveEditSubtask(' + st.id + ", " + task.id + ')">\u2713 ' + (currentLang === "fr" ? "Enregistrer" : "Save") + "</button>";
-        html += "</div>";
-        html += "</div>";
-        html += "</div>";
-      }
-    }
-    html += "</div>";
-    html += '<div class="subtask-add-row">';
-    html += '<input type="text" id="new-subtask-input" class="subtask-input" placeholder="' + t("subtaskPlaceholder") + `" onkeypress="if(event.key==='Enter'){event.preventDefault();addSubtask(` + task.id + ');}" />';
-    html += '<button type="button" class="subtask-add-btn" onclick="event.preventDefault();addSubtask(' + task.id + ')">+</button>';
-    html += "</div>";
-    html += "</div>";
-    var taskDeps = getTaskDependencies(task.id);
-    var taskBlocks = getTasksDependingOn(task.id);
-    html += '<div class="dependencies-section">';
-    html += '<div class="dependencies-header">';
-    html += '<span class="detail-field-icon">\u{1F517}</span>';
-    html += '<span class="detail-field-label">' + t("dependencies") + "</span>";
-    html += "</div>";
-    html += '<div class="dep-subsection">';
-    html += '<div class="dep-label">' + t("blockedBy") + ":</div>";
-    if (taskDeps.length === 0) {
-      html += '<div class="dep-empty">' + t("noDependencies") + "</div>";
-    } else {
-      html += '<div class="dep-list">';
-      for (var di = 0; di < taskDeps.length; di++) {
-        var dep = taskDeps[di];
-        var depDone = dep.Status === "done";
-        html += '<div class="dep-item' + (depDone ? " dep-done" : "") + '">';
-        html += '<span class="dep-status">' + (depDone ? "\u2705" : "\u23F3") + "</span>";
-        html += '<span class="dep-title">' + sanitize(dep.Title) + "</span>";
-        html += '<button class="dep-remove" onclick="removeDependency(' + task.id + ", " + dep.id + ')">\u2715</button>';
-        html += "</div>";
-      }
-      html += "</div>";
-    }
-    html += "</div>";
-    if (taskBlocks.length > 0) {
-      html += '<div class="dep-subsection">';
-      html += '<div class="dep-label">' + t("blocks") + ":</div>";
-      html += '<div class="dep-list">';
-      for (var bi = 0; bi < taskBlocks.length; bi++) {
-        var blk = taskBlocks[bi];
-        html += '<div class="dep-item dep-blocks">';
-        html += '<span class="dep-title">' + sanitize(blk.Title) + "</span>";
-        html += "</div>";
-      }
-      html += "</div>";
-      html += "</div>";
-    }
-    html += '<div class="dep-add-row">';
-    html += '<div class="dep-combobox" id="dep-combobox">';
-    html += '<input type="search" id="dep-search" class="dep-search-input" role="combobox" aria-autocomplete="list" aria-controls="dep-options" aria-expanded="false" placeholder="' + (currentLang === "fr" ? "S\xE9lectionner ou rechercher une t\xE2che..." : "Select or search for a task...") + '" onfocus="openDependencyTaskOptions(' + task.id + ')" oninput="clearDependencyTaskSelection();openDependencyTaskOptions(' + task.id + `)" onkeydown="if(event.key==='Escape')closeDependencyTaskOptions()" autocomplete="off" />`;
-    html += '<input type="hidden" id="dep-select" value="" />';
-    html += '<button type="button" class="dep-toggle-btn" onclick="toggleDependencyTaskOptions(' + task.id + ')" title="' + (currentLang === "fr" ? "Afficher les t\xE2ches" : "Show tasks") + '">\u2304</button>';
-    html += '<div id="dep-options" class="dep-options" role="listbox"></div>';
-    html += "</div>";
-    html += '<button type="button" class="dep-add-btn" onclick="addDependency(' + task.id + ')">+</button>';
-    html += "</div>";
-    html += "</div>";
-    if (state.customFields.length > 0) {
-      html += '<div class="custom-fields-section">';
-      html += '<div class="custom-fields-header">';
-      html += '<span class="detail-field-icon">\u{1F4CB}</span>';
-      html += '<span class="detail-field-label">' + t("customFields") + "</span>";
-      if (state.isOwner) html += '<button class="cf-manage-btn" onclick="openCustomFieldsModal()">\u2699\uFE0F</button>';
-      html += "</div>";
-      html += '<div class="custom-fields-list">';
-      for (var cfi = 0; cfi < state.customFields.length; cfi++) {
-        var cf = state.customFields[cfi];
-        var cfValue = getTaskCustomFieldValue(task.id, cf.id);
-        html += '<div class="custom-field-item">';
-        html += '<label class="cf-label">' + sanitize(cf.Name) + "</label>";
-        html += renderCustomFieldInput(cf, task.id, cfValue);
-        html += "</div>";
-      }
-      html += "</div>";
-      html += "</div>";
-    } else if (state.isOwner) {
-      html += '<div class="custom-fields-section">';
-      html += '<div class="custom-fields-header">';
-      html += '<span class="detail-field-icon">\u{1F4CB}</span>';
-      html += '<span class="detail-field-label">' + t("customFields") + "</span>";
-      html += '<button class="cf-manage-btn" onclick="openCustomFieldsModal()">\u2699\uFE0F</button>';
-      html += "</div>";
-      html += '<div class="cf-empty">' + t("noCustomFields") + "</div>";
-      html += "</div>";
-    }
-    html += '<div class="attachments-section">';
-    html += '<div class="comments-header">';
-    html += '<span class="detail-field-icon">\u{1F4CE}</span>';
-    html += '<span class="detail-field-label">' + (currentLang === "fr" ? "Pi\xE8ces jointes" : "Attachments") + "</span>";
-    html += '<span class="comment-badge">' + getTaskAttachments(task.id).length + "</span>";
-    html += "</div>";
-    html += '<div class="attachments-list" id="attachments-list-' + task.id + '"></div>';
-    html += '<div class="attach-add-row">';
-    html += '<label class="attach-upload-btn">\u{1F4CE} ' + (currentLang === "fr" ? "Ajouter un fichier" : "Add file") + '<input type="file" multiple style="display:none;" onchange="uploadTaskAttachments(' + task.id + `, Array.from(this.files)); this.value='';"></label>`;
-    html += '<span class="attach-status" id="attach-status-' + task.id + '"></span>';
-    html += "</div>";
-    html += '<div class="attach-hint">' + (currentLang === "fr" ? "Tous formats \xB7 max 5 Mo par fichier (images compress\xE9es automatiquement)" : "All formats \xB7 max 5MB per file (images auto-compressed)") + "</div>";
-    html += "</div>";
-    var taskComments = getTaskComments(task.id);
-    html += '<div class="comments-section">';
-    html += '<div class="comments-header">';
-    html += '<span class="detail-field-icon">\u{1F4AC}</span>';
-    html += '<span class="detail-field-label">' + t("comments") + "</span>";
-    html += '<span class="comment-badge">' + taskComments.length + "</span>";
-    html += "</div>";
-    html += '<div class="comments-list" id="comments-list">';
-    if (taskComments.length === 0) {
-      html += '<div class="comments-empty">' + t("noComments") + "</div>";
-    } else {
-      for (var ci = 0; ci < taskComments.length; ci++) {
-        var cmt = taskComments[ci];
-        html += '<div class="comment-item">';
-        html += '<div class="comment-header">';
-        html += '<span class="comment-author">\u{1F464} ' + sanitize(cmt.Author || "Anonyme") + "</span>";
-        html += '<span class="comment-time">' + formatTimeAgo(cmt.Created_At) + "</span>";
-        if (state.isOwner) html += '<button class="comment-delete" onclick="deleteComment(' + cmt.id + ", " + task.id + ')">\u2715</button>';
-        html += "</div>";
-        html += '<div class="comment-content">' + sanitize(cmt.Content) + "</div>";
-        html += "</div>";
-      }
-    }
-    html += "</div>";
-    html += '<div class="comment-add-row">';
-    html += '<textarea id="new-comment-input" class="comment-input" placeholder="' + t("commentPlaceholder") + '" rows="2"></textarea>';
-    html += '<button type="button" class="comment-add-btn" onclick="event.preventDefault();addComment(' + task.id + ')">' + t("addComment") + "</button>";
-    html += "</div>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-detail-right">';
-    html += '<div class="detail-card">';
-    html += "<h4>\u23F3 " + t("progression") + "</h4>";
-    html += '<div class="detail-info-row"><span class="info-label">' + t("advancement") + '</span><span class="info-value">' + progressPct + "%</span></div>";
-    html += '<div class="progress-bar-bg"><div class="progress-bar-fill ' + barClass + '" style="width:' + progressPct + '%"></div></div>';
-    html += '<div class="detail-info-row"><span class="info-label">' + t("startLabel") + '</span><span class="info-value">' + (startVal ? formatDate(task.Start_Date) : "--") + "</span></div>";
-    html += '<div class="detail-info-row"><span class="info-label">' + t("dueLabel") + '</span><span class="info-value" style="' + (isOverdue(task) ? "color:#dc2626;" : "") + '">' + (dueVal ? formatDate(task.Due_Date) : "--") + (isOverdue(task) ? " \u26A0\uFE0F" : "") + "</span></div>";
-    html += "</div>";
-    html += '<div class="detail-card">';
-    html += "<h4>\u26A1 " + t("quickActions") + "</h4>";
-    if (task.Status === "done") {
-      html += '<button class="quick-action-btn" onclick="quickAction(' + task.id + `,'todo')">\u{1F504} ` + t("reopenTask") + "</button>";
-    } else if (task.Status === "todo") {
-      html += '<button class="quick-action-btn" onclick="quickAction(' + task.id + `,'progress')">\u25B6\uFE0F ` + t("startTask") + "</button>";
-      html += '<button class="quick-action-btn" onclick="quickAction(' + task.id + `,'done')">\u2705 ` + t("completeTask") + "</button>";
-    } else {
-      html += '<button class="quick-action-btn" onclick="quickAction(' + task.id + `,'done')">\u2705 ` + t("completeTask") + "</button>";
-      html += '<button class="quick-action-btn" onclick="quickAction(' + task.id + `,'todo')">\u23EA ` + t("reopenTask") + "</button>";
-    }
-    html += "</div>";
-    html += '<div class="detail-card">';
-    html += "<h4>\u{1F4CB} " + t("taskSummary") + "</h4>";
-    html += '<div class="detail-info-row"><span class="info-label">' + t("fieldStatus") + ' :</span><span class="info-value" style="color:' + (task.Status === "done" ? "#22c55e" : task.Status === "progress" ? "#3b82f6" : "#f59e0b") + '">' + statusLabel(task.Status) + "</span></div>";
-    html += '<div class="detail-info-row"><span class="info-label">' + t("fieldPriority") + ' :</span><span class="info-value" style="color:' + dotColor + '">' + priorityLabel(task.Priority) + "</span></div>";
-    html += '<div class="detail-info-row"><span class="info-label">' + t("fieldAssignee") + ' :</span><span class="info-value">' + editAssignees.length + "</span></div>";
-    html += "</div>";
-    var totalTime = getTaskTotalTime(task.id);
-    var isTimerRunning = !!state.activeTimers[task.id];
-    var taskTimeEntries = getTaskTimeEntries(task.id);
-    html += '<div class="detail-card time-card">';
-    html += "<h4>\u23F1\uFE0F " + t("timeTracking") + "</h4>";
-    html += '<label for="task-estimated-hours" style="display:block;font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;">' + t("estimatedTime") + " (h)</label>";
-    html += '<input type="number" id="task-estimated-hours" min="0" step="0.5" value="' + (task.Estimated_Hours || "") + '" placeholder="Ex. 8" class="form-input" style="width:100%;margin-bottom:10px;" />';
-    html += '<div class="timer-control">';
-    if (isTimerRunning) {
-      html += '<button class="timer-btn timer-stop" onclick="pauseTimer(' + task.id + ')">\u23F8\uFE0F Pause</button>';
-      html += '<span class="timer-status running">\u25CF ' + t("timerRunning") + "</span>";
-    } else {
-      html += '<button class="timer-btn timer-start" onclick="startTimer(' + task.id + ')">\u25B6\uFE0F ' + t("startTimer") + "</button>";
-    }
-    html += "</div>";
-    html += '<div class="manual-time-entry" style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">';
-    html += '<input type="number" id="manual-hours" min="0" max="99" placeholder="0" style="width:52px;" class="form-input" title="' + (currentLang === "fr" ? "Heures" : "Hours") + '"> h';
-    html += '<input type="number" id="manual-minutes" min="0" max="59" placeholder="0" style="width:52px;" class="form-input" title="' + (currentLang === "fr" ? "Minutes" : "Minutes") + '"> min';
-    html += '<button class="btn btn-secondary btn-sm" onclick="addManualTimeEntry(' + task.id + ')">+ ' + (currentLang === "fr" ? "Ajouter" : "Add") + "</button>";
-    html += "</div>";
-    html += '<div class="time-summary">';
-    html += '<div class="detail-info-row"><span class="info-label">' + t("totalTime") + ' :</span><span class="info-value time-value">' + formatDuration(totalTime) + "</span></div>";
-    if (task.Estimated_Hours) {
-      var estimatedSec = task.Estimated_Hours * 3600;
-      var pctUsed = Math.round(totalTime / estimatedSec * 100);
-      html += '<div class="detail-info-row"><span class="info-label">' + t("estimatedTime") + ' :</span><span class="info-value">' + task.Estimated_Hours + "h (" + pctUsed + "%)</span></div>";
-    }
-    html += "</div>";
-    if (taskTimeEntries.length > 0) {
-      html += '<div class="time-entries">';
-      html += '<div class="time-entries-label">' + t("timeEntries") + ":</div>";
-      html += '<div style="max-height:120px;overflow-y:auto;">';
-      for (var tei = 0; tei < taskTimeEntries.length; tei++) {
-        var te = taskTimeEntries[tei];
-        html += '<div class="time-entry-item">';
-        html += '<span class="te-duration">' + formatDurationShort(te.Duration) + "</span>";
-        html += '<span class="te-date">' + formatTimeAgo(te.Start_Time) + "</span>";
-        html += "</div>";
-      }
-      html += "</div>";
-      html += "</div>";
-    }
-    html += "</div>";
-    html += '<div class="detail-card">';
-    html += "<h4>\u{1F4CF} " + t("extensionDate") + "</h4>";
-    var extDateVal = task.Extension_Date ? fromEpoch(task.Extension_Date) : "";
-    html += '<div style="margin-bottom:10px;"><input type="date" id="task-extension-date" value="' + extDateVal + '" style="width:100%;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;" /></div>';
-    html += '<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">';
-    html += '<input type="checkbox" id="task-auto-extend" ' + (task.Auto_Extend ? "checked" : "") + ' style="width:16px;height:16px;accent-color:#3b82f6;flex-shrink:0;margin-top:2px;" />';
-    html += '<span style="font-size:11px;color:#64748b;line-height:1.3;">' + t("autoExtendHint") + "</span>";
-    html += "</label>";
-    html += "</div>";
-    var hasRecurrence = task.Recurrence && task.Recurrence !== "none";
-    html += '<div class="detail-card">';
-    html += "<h4>\u{1F504} " + t("recurrence") + "</h4>";
-    html += '<select id="task-recurrence" class="recurrence-select">';
-    html += '<option value="none"' + (!hasRecurrence ? " selected" : "") + ">" + t("recurrenceNone") + "</option>";
-    html += '<option value="daily"' + (task.Recurrence === "daily" ? " selected" : "") + ">" + t("recurrenceDaily") + "</option>";
-    html += '<option value="weekly"' + (task.Recurrence === "weekly" ? " selected" : "") + ">" + t("recurrenceWeekly") + "</option>";
-    html += '<option value="biweekly"' + (task.Recurrence === "biweekly" ? " selected" : "") + ">" + t("recurrenceBiweekly") + "</option>";
-    html += '<option value="monthly"' + (task.Recurrence === "monthly" ? " selected" : "") + ">" + t("recurrenceMonthly") + "</option>";
-    html += '<option value="quarterly"' + (task.Recurrence === "quarterly" ? " selected" : "") + ">" + t("recurrenceQuarterly") + "</option>";
-    html += '<option value="yearly"' + (task.Recurrence === "yearly" ? " selected" : "") + ">" + t("recurrenceYearly") + "</option>";
-    html += "</select>";
-    if (hasRecurrence) {
-      html += '<div class="recurrence-explain">\u2139\uFE0F ' + t("recurrenceExplain") + "</div>";
-      html += '<div class="recurrence-batch-btns">';
-      html += '<button class="btn btn-secondary btn-sm" onclick="generateOccurrences(' + task.id + `, 'month')">` + t("generateMonth") + "</button>";
-      html += '<button class="btn btn-secondary btn-sm" onclick="generateOccurrences(' + task.id + `, 'year')">` + t("generateYear") + "</button>";
-      html += "</div>";
-    }
-    html += "</div>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-detail-footer">';
-    if (state.isOwner) html += '<button class="btn-danger" onclick="deleteTask(' + task.id + ')">' + t("delete") + "</button>";
-    else html += "<div></div>";
-    html += '<div style="display:flex;gap:8px;">';
-    html += '<button type="button" class="btn btn-secondary" onclick="event.preventDefault();closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button type="button" class="btn btn-primary" onclick="saveTaskFromFooter(' + task.id + ', event)">' + t("save") + "</button>";
-    html += "</div></div>";
-    html += "</div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-    renderAttachmentsSection(task.id);
-    refreshDependencyTaskOptions(task.id);
-  }
-  function saveTaskFromFooter(taskId, event) {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-    var topSaveButton = document.getElementById("task-save-top-" + taskId);
-    if (topSaveButton) {
-      topSaveButton.click();
-    } else {
-      updateTask(taskId);
-    }
-  }
-  function getRaciArray(varName) {
-    if (varName === "editAssignees") return editAssignees;
-    if (varName === "editAccountable") return editAccountable;
-    if (varName === "editConsulted") return editConsulted;
-    if (varName === "editInformed") return editInformed;
-    return [];
-  }
-  function renderRaciChips(varName) {
-    var arr = getRaciArray(varName);
-    var html = "";
-    for (var i = 0; i < arr.length; i++) {
-      var name = arr[i];
-      var displayName = name;
-      for (var j = 0; j < state.users.length; j++) {
-        if (state.users[j].Email === name || state.users[j].Name === name) {
-          displayName = state.users[j].Name || state.users[j].Email;
-          break;
-        }
-      }
-      html += '<span class="assignee-chip-tag">' + sanitize(displayName) + ` <span class="chip-remove" onclick="removeRaciChip('` + varName + "'," + i + ",'" + varName.replace("edit", "").toLowerCase() + `')">\u2715</span></span>`;
-    }
-    return html;
-  }
-  function renderRaciField(letter, label, selectSuffix, varName) {
-    var raciColors = { R: "#3b82f6", A: "#f59e0b", C: "#8b5cf6", I: "#64748b" };
-    var color = raciColors[letter] || "#94a3b8";
-    var html = '<div class="detail-field">';
-    html += '<span class="detail-field-icon" style="background:' + color + ';color:#fff;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">' + letter + "</span>";
-    html += '<span class="detail-field-label">' + label + "</span>";
-    html += '<div class="detail-field-value">';
-    html += '<div class="assignee-chips" id="' + selectSuffix + '-chips">';
-    html += renderRaciChips(varName);
-    html += "</div>";
-    html += '<div class="assignee-add-row">';
-    html += '<select id="' + selectSuffix + '-select">';
-    html += '<option value="">-- ' + t("searchAssignee") + " --</option>";
-    for (var i = 0; i < state.users.length; i++) {
-      html += '<option value="' + sanitize(state.users[i].Email || state.users[i].Name) + '">' + sanitize(state.users[i].Name || state.users[i].Email) + "</option>";
-    }
-    html += "</select>";
-    html += `<button class="assignee-add-btn" onclick="addRaciChip('` + varName + "','" + selectSuffix + `')">` + t("addAssignee") + "</button>";
-    html += "</div>";
-    html += "</div></div>";
-    return html;
-  }
-  function addRaciChip(varName, selectSuffix) {
-    var sel = document.getElementById(selectSuffix + "-select");
-    var arr = getRaciArray(varName);
-    var val = sel.value;
-    if (!val || arr.indexOf(val) !== -1) return;
-    arr.push(val);
-    var container = document.getElementById(selectSuffix + "-chips");
-    if (container) container.innerHTML = renderRaciChips(varName);
-    sel.value = "";
-  }
-  function removeRaciChip(varName, index, selectSuffix) {
-    var arr = getRaciArray(varName);
-    arr.splice(index, 1);
-    var container = document.getElementById(selectSuffix + "-chips") || document.getElementById(varName.replace("edit", "").toLowerCase() + "-chips");
-    if (container) container.innerHTML = renderRaciChips(varName);
-  }
-  async function quickAction(taskId, newStatus) {
-    var task = state.tasks.find(function(t2) {
-      return t2.id === taskId;
-    });
-    var wasNotDone = task && task.Status !== "done";
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.TASKS_TABLE, taskId, { Status: newStatus }]
-      ]);
-      for (var i = 0; i < state.tasks.length; i++) {
-        if (state.tasks[i].id === taskId) {
-          state.tasks[i].Status = newStatus;
-          break;
-        }
-      }
-      showToast(t("taskMoved"), "success");
-      if (newStatus === "done" && wasNotDone && task) {
-        await notifyTaskCompleted(Object.assign({}, task, { Status: newStatus }));
-      }
-      if (newStatus === "done" && wasNotDone && task && task.Recurrence && task.Recurrence !== "none") {
-        await createNextOccurrence(task);
-      }
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error quick action:", e);
-    }
-  }
-  async function addSubtask(parentTaskId) {
-    var input = document.getElementById("new-subtask-input");
-    var title = input.value.trim();
-    if (!title) return;
-    var formState = captureTaskFormState();
-    var savedAssignees = editAssignees.slice();
-    var savedAccountable = editAccountable.slice();
-    var savedConsulted = editConsulted.slice();
-    var savedInformed = editInformed.slice();
-    var scrollPos = getModalScrollTop();
-    var taskSubtasks = getTaskSubtasks(parentTaskId);
-    var maxOrder = taskSubtasks.length > 0 ? Math.max.apply(null, taskSubtasks.map(function(st) {
-      return st.Order || 0;
-    })) : 0;
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.SUBTASKS_TABLE, null, {
-          Parent_Task_Id: parentTaskId,
-          Title: title,
-          Status: "todo",
-          Priority: "medium",
-          Completed: false,
-          Order: maxOrder + 1,
-          Created_At: Math.floor(Date.now() / 1e3)
-        }]
-      ]);
-      input.value = "";
-      await loadAllData();
-      editAssignees = savedAssignees;
-      editAccountable = savedAccountable;
-      editConsulted = savedConsulted;
-      editInformed = savedInformed;
-      openEditTaskModal(parentTaskId, true);
-      restoreTaskFormState(formState);
-      restoreModalScrollTop(scrollPos);
-    } catch (e) {
-      console.error("Error adding subtask:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  function getModalScrollTop() {
-    var modal = document.querySelector("#modal-container .modal");
-    return modal ? modal.scrollTop : 0;
-  }
-  function restoreModalScrollTop(pos) {
-    setTimeout(function() {
-      var modal = document.querySelector("#modal-container .modal");
-      if (modal) modal.scrollTop = pos;
-    }, 50);
-  }
-  async function toggleSubtask(subtaskId, completed) {
-    var savedAssignees = editAssignees.slice();
-    var savedAccountable = editAccountable.slice();
-    var savedConsulted = editConsulted.slice();
-    var savedInformed = editInformed.slice();
-    var scrollPos = getModalScrollTop();
-    try {
-      var newStatus = completed ? "done" : "todo";
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, { Completed: completed, Status: newStatus }]
-      ]);
-      for (var i = 0; i < state.subtasks.length; i++) {
-        if (state.subtasks[i].id === subtaskId) {
-          state.subtasks[i].Completed = completed;
-          state.subtasks[i].Status = newStatus;
-          break;
-        }
-      }
-      showToast(t("subtaskCompleted"), "success");
-      var subtask = state.subtasks.find(function(st) {
-        return st.id === subtaskId;
-      });
-      if (subtask) {
-        editAssignees = savedAssignees;
-        editAccountable = savedAccountable;
-        editConsulted = savedConsulted;
-        editInformed = savedInformed;
-        openEditTaskModal(subtask.Parent_Task_Id, true);
-        restoreModalScrollTop(scrollPos);
-      }
-    } catch (e) {
-      console.error("Error toggling subtask:", e);
-    }
-  }
-  async function deleteSubtask(subtaskId, parentTaskId) {
-    var confirmed = await showConfirmModal(
-      currentLang === "fr" ? "Supprimer cette sous-t\xE2che ?" : "Delete this subtask?",
-      currentLang === "fr" ? "Supprimer la sous-t\xE2che" : "Delete subtask"
-    );
-    if (!confirmed) return;
-    var formState = captureTaskFormState();
-    var savedAssignees = editAssignees.slice();
-    var savedAccountable = editAccountable.slice();
-    var savedConsulted = editConsulted.slice();
-    var savedInformed = editInformed.slice();
-    var scrollPos = getModalScrollTop();
-    try {
-      var actions = state.subtasks.filter(function(st) {
-        return st.Blocked_By_Subtask_Id === subtaskId;
-      }).map(function(st) {
-        return ["UpdateRecord", state.SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }];
-      });
-      actions.push(["RemoveRecord", state.SUBTASKS_TABLE, subtaskId]);
-      await grist.docApi.applyUserActions(actions);
-      showToast(t("subtaskDeleted"), "info");
-      await loadAllData();
-      editAssignees = savedAssignees;
-      editAccountable = savedAccountable;
-      editConsulted = savedConsulted;
-      editInformed = savedInformed;
-      openEditTaskModal(parentTaskId, true);
-      restoreTaskFormState(formState);
-      restoreModalScrollTop(scrollPos);
-    } catch (e) {
-      console.error("Error deleting subtask:", e);
-    }
-  }
-  async function saveEditSubtask(subtaskId, parentTaskId) {
-    var titleInput = document.getElementById("st-title-" + subtaskId);
-    var descInput = document.getElementById("st-desc-" + subtaskId);
-    var statusSel = document.getElementById("st-status-" + subtaskId);
-    var prioritySel = document.getElementById("st-priority-" + subtaskId);
-    var assigneeBox = document.getElementById("st-assignee-" + subtaskId);
-    var startDateInput = document.getElementById("st-start-" + subtaskId);
-    var dueDateInput = document.getElementById("st-due-" + subtaskId);
-    var hoursInput = document.getElementById("st-hours-" + subtaskId);
-    var recurSel = document.getElementById("st-recur-" + subtaskId);
-    if (!titleInput) return;
-    var newTitle = titleInput.value.trim();
-    if (!newTitle) return;
-    var newAssignee = "";
-    if (assigneeBox) {
-      var checked = assigneeBox.querySelectorAll('input[type="checkbox"]:checked');
-      newAssignee = Array.prototype.map.call(checked, function(c) {
-        return c.value;
-      }).join(", ");
-    }
-    var newStartDate = startDateInput && startDateInput.value ? Math.floor(new Date(startDateInput.value).getTime() / 1e3) : null;
-    var newDueDate = dueDateInput && dueDateInput.value ? Math.floor(new Date(dueDateInput.value).getTime() / 1e3) : null;
-    var newStatus = statusSel ? statusSel.value : "todo";
-    var typeEl = document.getElementById("st-type-" + subtaskId);
-    var fields = {
-      Title: newTitle,
-      Description: descInput ? descInput.value : "",
-      Status: newStatus,
-      Completed: newStatus === "done",
-      Priority: prioritySel ? prioritySel.value : "medium",
-      Assignee: newAssignee,
-      Estimated_Hours: hoursInput && hoursInput.value ? parseFloat(hoursInput.value) : null,
-      Recurrence: recurSel ? recurSel.value : "none",
-      Type: typeEl ? typeEl.value : "subtask"
-    };
-    if (newStartDate) fields.Start_Date = newStartDate;
-    if (newDueDate) fields.Due_Date = newDueDate;
-    var savedAssignees = editAssignees.slice();
-    var savedAccountable = editAccountable.slice();
-    var savedConsulted = editConsulted.slice();
-    var savedInformed = editInformed.slice();
-    try {
-      await grist.docApi.applyUserActions([["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, fields]]);
-      showToast(t("subtaskSaved"), "success");
-      await loadAllData();
-      editAssignees = savedAssignees;
-      editAccountable = savedAccountable;
-      editConsulted = savedConsulted;
-      editInformed = savedInformed;
-      openEditTaskModal(parentTaskId, true);
-    } catch (e) {
-      console.error("Error saving subtask:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function generateSubtaskOccurrences(subtaskId, parentTaskId) {
-    var st = state.subtasks.find(function(s) {
-      return s.id === subtaskId;
-    });
-    if (!st || !st.Recurrence || st.Recurrence === "none") return;
-    var baseDate = st.Due_Date ? new Date(st.Due_Date * 1e3) : /* @__PURE__ */ new Date();
-    var actions = [];
-    var countMap = { daily: 7, weekly: 4, biweekly: 4, monthly: 3, quarterly: 4, yearly: 3 };
-    var count = countMap[st.Recurrence] || 3;
-    for (var i = 1; i <= count; i++) {
-      var d = new Date(baseDate);
-      if (st.Recurrence === "daily") d.setDate(d.getDate() + i);
-      else if (st.Recurrence === "weekly") d.setDate(d.getDate() + i * 7);
-      else if (st.Recurrence === "biweekly") d.setDate(d.getDate() + i * 14);
-      else if (st.Recurrence === "monthly") d.setMonth(d.getMonth() + i);
-      else if (st.Recurrence === "quarterly") d.setMonth(d.getMonth() + i * 3);
-      else if (st.Recurrence === "yearly") d.setFullYear(d.getFullYear() + i);
-      else d.setMonth(d.getMonth() + i);
-      actions.push(["AddRecord", state.SUBTASKS_TABLE, null, {
-        Parent_Task_Id: parentTaskId,
-        Title: st.Title,
-        Description: st.Description || "",
-        Status: "todo",
-        Priority: st.Priority || "medium",
-        Assignee: st.Assignee || "",
-        Due_Date: Math.floor(d.getTime() / 1e3),
-        Recurrence: st.Recurrence,
-        Completed: false,
-        Order: (st.Order || 0) + i
-      }]);
-    }
-    try {
-      await grist.docApi.applyUserActions(actions);
-      showToast(currentLang === "fr" ? count + " occurrence(s) cr\xE9\xE9e(s)" : count + " occurrence(s) created", "success");
-      var savedAssignees = editAssignees.slice();
-      var savedAccountable = editAccountable.slice();
-      var savedConsulted = editConsulted.slice();
-      var savedInformed = editInformed.slice();
-      await loadAllData();
-      editAssignees = savedAssignees;
-      editAccountable = savedAccountable;
-      editConsulted = savedConsulted;
-      editInformed = savedInformed;
-      openEditTaskModal(parentTaskId, true);
-    } catch (e) {
-      console.error("Error generating subtask occurrences:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function addDependency(taskId) {
-    var select = document.getElementById("dep-select");
-    var dependsOnId = parseInt(select.value);
-    if (!dependsOnId) return;
-    var projectEl = document.getElementById("task-project");
-    var selectedProjectId = normalizeDependencyProjectId(projectEl ? projectEl.value : 0);
-    var dependsOnTask = state.tasks.find(function(candidate) {
-      return candidate.id === dependsOnId;
-    });
-    if (!dependsOnTask || normalizeDependencyProjectId(dependsOnTask.Project_Id) !== selectedProjectId) {
-      showToast(currentLang === "fr" ? "La d\xE9pendance doit appartenir au m\xEAme projet." : "The dependency must belong to the same project.", "error");
-      refreshDependencyTaskOptions(taskId);
-      return;
-    }
-    var formState = captureTaskFormState();
-    var savedAssignees = editAssignees.slice();
-    var savedAccountable = editAccountable.slice();
-    var savedConsulted = editConsulted.slice();
-    var savedInformed = editInformed.slice();
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.DEPENDENCIES_TABLE, null, {
-          Task_Id: taskId,
-          Depends_On_Task_Id: dependsOnId,
-          Created_At: Math.floor(Date.now() / 1e3)
-        }]
-      ]);
-      showToast(t("dependencyAdded"), "success");
-      await loadAllData();
-      editAssignees = savedAssignees;
-      editAccountable = savedAccountable;
-      editConsulted = savedConsulted;
-      editInformed = savedInformed;
-      openEditTaskModal(taskId, true);
-      restoreTaskFormState(formState);
-      refreshDependencyTaskOptions(taskId);
-    } catch (e) {
-      console.error("Error adding dependency:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function removeDependency(taskId, dependsOnTaskId) {
-    var dep = state.dependencies.find(function(d) {
-      return d.Task_Id === taskId && d.Depends_On_Task_Id === dependsOnTaskId;
-    });
-    if (!dep) return;
-    var confirmed = await showConfirmModal(
-      currentLang === "fr" ? "Supprimer cette d\xE9pendance ?" : "Delete this dependency?",
-      currentLang === "fr" ? "Supprimer la d\xE9pendance" : "Delete dependency"
-    );
-    if (!confirmed) return;
-    var formState = captureTaskFormState();
-    var savedAssignees = editAssignees.slice();
-    var savedAccountable = editAccountable.slice();
-    var savedConsulted = editConsulted.slice();
-    var savedInformed = editInformed.slice();
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.DEPENDENCIES_TABLE, dep.id]
-      ]);
-      showToast(t("dependencyRemoved"), "info");
-      await loadAllData();
-      editAssignees = savedAssignees;
-      editAccountable = savedAccountable;
-      editConsulted = savedConsulted;
-      editInformed = savedInformed;
-      openEditTaskModal(taskId, true);
-      restoreTaskFormState(formState);
-    } catch (e) {
-      console.error("Error removing dependency:", e);
-    }
-  }
-  async function addComment(taskId) {
-    var textarea = document.getElementById("new-comment-input");
-    var content = textarea.value.trim();
-    if (!content) return;
-    var formState = captureTaskFormState();
-    var savedAssignees = editAssignees.slice();
-    var savedAccountable = editAccountable.slice();
-    var savedConsulted = editConsulted.slice();
-    var savedInformed = editInformed.slice();
-    var scrollPos = getModalScrollTop();
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.COMMENTS_TABLE, null, {
-          Task_Id: taskId,
-          Author: state.currentUserEmail || "Utilisateur",
-          Content: content,
-          Created_At: Math.floor(Date.now() / 1e3)
-        }]
-      ]);
-      textarea.value = "";
-      showToast(t("commentAdded"), "success");
-      var commentTask = state.tasks.find(function(t2) {
-        return t2.id === taskId;
-      });
-      logActivity("comment_added", taskId, commentTask ? commentTask.Title : "", content.substring(0, 80));
-      await loadAllData();
-      editAssignees = savedAssignees;
-      editAccountable = savedAccountable;
-      editConsulted = savedConsulted;
-      editInformed = savedInformed;
-      openEditTaskModal(taskId, true);
-      restoreTaskFormState(formState);
-      restoreModalScrollTop(scrollPos);
-    } catch (e) {
-      console.error("Error adding comment:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function deleteComment(commentId, taskId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(
-      currentLang === "fr" ? "Supprimer ce commentaire ?" : "Delete this comment?",
-      currentLang === "fr" ? "Supprimer le commentaire" : "Delete comment"
-    );
-    if (!confirmed) return;
-    var formState = captureTaskFormState();
-    var savedAssignees = editAssignees.slice();
-    var savedAccountable = editAccountable.slice();
-    var savedConsulted = editConsulted.slice();
-    var savedInformed = editInformed.slice();
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.COMMENTS_TABLE, commentId]
-      ]);
-      showToast(t("commentDeleted"), "info");
-      await loadAllData();
-      editAssignees = savedAssignees;
-      editAccountable = savedAccountable;
-      editConsulted = savedConsulted;
-      editInformed = savedInformed;
-      openEditTaskModal(taskId, true);
-      restoreTaskFormState(formState);
-    } catch (e) {
-      console.error("Error deleting comment:", e);
-    }
-  }
-  function closeModal(e) {
-  }
-  function closeModalForce() {
-    if (draftTaskId != null) {
-      var did = draftTaskId;
-      draftTaskId = null;
-      var ti = document.getElementById("task-title");
-      var titleVal = ti ? ti.value.trim() : "";
-      if (titleVal) {
-        updateTask(did);
-        return;
-      }
-      removeDraftChildren(did).then(function() {
-        return grist.docApi.applyUserActions([["RemoveRecord", state.TASKS_TABLE, did]]);
-      }).then(function() {
-        return loadAllData();
-      }).then(function() {
-        refreshAllViews();
-      }).catch(function() {
-      });
-    }
-    document.getElementById("modal-container").innerHTML = "";
-  }
-  async function createTask() {
-    var title = requireTaskTitle();
-    if (!title) return;
-    if (shouldLimitToMyProjects() && editAssignees.length === 0) {
-      var mine = myAssigneeValue();
-      if (mine) editAssignees = [mine];
-    }
-    var projectEl = document.getElementById("task-project");
-    var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
-    var record = {};
-    setField(record, "tasks", "title", title);
-    setField(record, "tasks", "description", getInputValue("task-desc").trim());
-    setField(record, "tasks", "status", getInputValue("task-status"));
-    setField(record, "tasks", "priority", getInputValue("task-priority"));
-    setField(record, "tasks", "assignee", editAssignees.join(", "));
-    if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
-      record.Accountable = editAccountable.join(", ");
-      record.Consulted = editConsulted.join(", ");
-      record.Informed = editInformed.join(", ");
-    }
-    setField(record, "tasks", "group", getInputValue("task-group"));
-    setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
-    setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
-    setField(record, "tasks", "category", getInputValue("task-category").trim());
-    setField(record, "tasks", "projectId", projectId);
-    setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
-    setField(record, "tasks", "createdAt", Math.floor(Date.now() / 1e3));
-    if (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
-    var tagEl = document.getElementById("task-tag");
-    if (tagEl) {
-      setField(record, "tasks", "tag", tagEl.value.trim());
-    }
-    try {
-      record = await keepExistingTaskColumns(record);
-      var createResult = await grist.docApi.applyUserActions([
-        ["AddRecord", state.TASKS_TABLE, null, record]
-      ]);
-      var newTaskId = createResult && createResult.retValues && createResult.retValues[0] || null;
-      showToast(t("taskCreated"), "success");
-      logActivity("task_created", newTaskId, title, "");
-      if (newTaskId) {
-        await notifyConcernedUsers(newTaskId, editAssignees.slice(), "task_assigned", title);
-      }
-      closeModalForce();
-      await loadAllData();
-      if (newTaskId) {
-        openEditTaskModal(newTaskId);
-      }
-    } catch (e) {
-      console.error("Error creating task:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function updateTask(taskId) {
-    var title = requireTaskTitle();
-    if (!title) return;
-    if (shouldLimitToMyProjects() && editAssignees.length === 0) {
-      var mine = myAssigneeValue();
-      if (mine) editAssignees = [mine];
-    }
-    var wasDraft = draftTaskId === taskId;
-    var task = state.tasks.find(function(t2) {
-      return t2.id === taskId;
-    });
-    var wasNotDone = task && task.Status !== "done";
-    var newStatus = getInputValue("task-status");
-    if (newStatus === "done" && isTaskBlocked(taskId)) {
-      var blockers = getTaskDependencies(taskId).filter(function(b) {
-        return b && b.Status !== "done";
-      });
-      var blockerNames = blockers.map(function(b) {
-        return b.Title;
-      }).join(", ");
-      showToast((currentLang === "fr" ? "Impossible : t\xE2che bloqu\xE9e par " : "Cannot complete: blocked by ") + blockerNames, "error");
-      return;
-    }
-    var recurrenceEl = document.getElementById("task-recurrence");
-    var newRecurrence = recurrenceEl ? recurrenceEl.value : task ? task.Recurrence : "none";
-    var projectEl = document.getElementById("task-project");
-    var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
-    var record = {};
-    setField(record, "tasks", "title", title);
-    setField(record, "tasks", "description", getInputValue("task-desc").trim());
-    setField(record, "tasks", "status", newStatus);
-    setField(record, "tasks", "priority", getInputValue("task-priority"));
-    setField(record, "tasks", "assignee", editAssignees.join(", "));
-    if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
-      record.Accountable = editAccountable.join(", ");
-      record.Consulted = editConsulted.join(", ");
-      record.Informed = editInformed.join(", ");
-    }
-    setField(record, "tasks", "group", getInputValue("task-group"));
-    setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
-    setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
-    setField(record, "tasks", "category", getInputValue("task-category").trim());
-    setField(record, "tasks", "projectId", projectId);
-    setField(record, "tasks", "recurrence", newRecurrence);
-    setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
-    var tagEl = document.getElementById("task-tag");
-    if (tagEl) {
-      setField(record, "tasks", "tag", tagEl.value.trim());
-    }
-    var extDateEl = document.getElementById("task-extension-date");
-    if (extDateEl) record.Extension_Date = toEpoch(extDateEl.value);
-    var autoExtEl = document.getElementById("task-auto-extend");
-    if (autoExtEl) record.Auto_Extend = autoExtEl.checked;
-    if (newStatus === "done" && task && task.Auto_Extend && task.Status !== "done") {
-      record.Extension_Date = Math.floor(Date.now() / 1e3);
-      record.Auto_Extend = false;
-    }
-    try {
-      record = await keepExistingTaskColumns(record);
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.TASKS_TABLE, taskId, record]
-      ]);
-      if (wasDraft) draftTaskId = null;
-      showToast(t("taskUpdated"), "success");
-      var logDetails = [];
-      var autoChanges = {};
-      if (task) {
-        if (task.Status !== newStatus) {
-          autoChanges.status = { from: task.Status, to: newStatus };
-          logDetails.push(task.Status + " \u2192 " + newStatus);
-        }
-        var newPriority = document.getElementById("task-priority").value;
-        if (task.Priority !== newPriority) autoChanges.priority = { from: task.Priority, to: newPriority };
-        var newAssignee = editAssignees.join(", ");
-        if (task.Assignee !== newAssignee) autoChanges.assignee = { from: task.Assignee, to: newAssignee };
-      }
-      if (Object.keys(autoChanges).length > 0) {
-        await evaluateAutomationRules(Object.assign({}, task, record, { id: taskId }), autoChanges);
-      }
-      logActivity(autoChanges.status ? "status_changed" : "task_updated", taskId, title, logDetails.join(", "));
-      if (autoChanges.assignee) {
-        var previousAssignees = splitRecipientValues(task ? task.Assignee : "");
-        var previousKeys = {};
-        previousAssignees.forEach(function(value) {
-          var email = resolveUserEmail(value);
-          previousKeys[(email || value).toLowerCase()] = true;
-        });
-        var newlyAssigned = editAssignees.filter(function(value) {
-          var email = resolveUserEmail(value);
-          return !previousKeys[(email || String(value)).toLowerCase()];
-        });
-        await notifyConcernedUsers(taskId, newlyAssigned, "task_assigned", title);
-      }
-      if (newStatus === "done" && wasNotDone) {
-        await notifyTaskCompleted(Object.assign({}, task, record, { id: taskId, Project_Id: projectId, Title: title }));
-      }
-      if (newStatus === "done" && wasNotDone && newRecurrence && newRecurrence !== "none") {
-        var updatedTask = Object.assign({}, task, record);
-        await createNextOccurrence(updatedTask);
-      }
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error updating task:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function deleteTask(taskId) {
-    if (!state.isOwner) return;
-    var relatedSubtasks = state.subtasks.filter(function(st) {
-      return st.Parent_Task_Id === taskId;
-    });
-    var confirmationMessage = currentLang === "fr" ? "Supprimer cette t\xE2che et ses " + relatedSubtasks.length + " sous-t\xE2che(s) ? Cette action est irr\xE9versible." : "Delete this task and its " + relatedSubtasks.length + " subtask(s)? This action cannot be undone.";
-    var confirmed = await showConfirmModal(confirmationMessage, currentLang === "fr" ? "Supprimer la t\xE2che" : "Delete task");
-    if (!confirmed) return;
-    try {
-      var deletedTask = state.tasks.find(function(t2) {
-        return t2.id === taskId;
-      });
-      var deletedSubtaskIds = {};
-      var actions = [];
-      relatedSubtasks.forEach(function(st) {
-        deletedSubtaskIds[st.id] = true;
-      });
-      state.subtasks.forEach(function(st) {
-        if (st.Parent_Task_Id !== taskId && deletedSubtaskIds[st.Blocked_By_Subtask_Id]) {
-          actions.push(["UpdateRecord", state.SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }]);
-        }
-      });
-      state.dependencies.forEach(function(dep) {
-        if (dep.Task_Id === taskId || dep.Depends_On_Task_Id === taskId) actions.push(["RemoveRecord", state.DEPENDENCIES_TABLE, dep.id]);
-      });
-      state.comments.forEach(function(comment) {
-        if (comment.Task_Id === taskId) actions.push(["RemoveRecord", state.COMMENTS_TABLE, comment.id]);
-      });
-      state.timeEntries.forEach(function(entry) {
-        if (entry.Task_Id === taskId) actions.push(["RemoveRecord", state.TIME_ENTRIES_TABLE, entry.id]);
-      });
-      state.customFieldValues.forEach(function(value) {
-        if (value.Task_Id === taskId) actions.push(["RemoveRecord", state.CUSTOM_FIELD_VALUES_TABLE, value.id]);
-      });
-      state.attachments.forEach(function(attachment) {
-        if (attachment.Task_Id === taskId) actions.push(["RemoveRecord", state.ATTACHMENTS_TABLE, attachment.id]);
-      });
-      state.pmNotifications.forEach(function(notification) {
-        if (notification.Task_Id === taskId) actions.push(["RemoveRecord", state.NOTIFICATIONS_TABLE, notification.id]);
-      });
-      relatedSubtasks.forEach(function(st) {
-        actions.push(["RemoveRecord", state.SUBTASKS_TABLE, st.id]);
-      });
-      actions.push(["RemoveRecord", state.TASKS_TABLE, taskId]);
-      await grist.docApi.applyUserActions(actions);
-      if (draftTaskId === taskId) draftTaskId = null;
-      document.getElementById("modal-container").innerHTML = "";
-      showToast(t("taskDeleted"), "info");
-      logActivity("task_deleted", taskId, deletedTask ? deletedTask.Title : "", "");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error deleting task:", e);
     }
   }
   var _statusDragIndex = null;
