@@ -2,11 +2,11 @@ import { t, currentLang } from '../i18n.js';
 import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
 import { renderActivityLog } from './activity-log.js';
+import { getFilteredTasks, showArchivedTasks } from './filters.js';
 // Temporary backwards imports: none of these are extracted yet
-// (getFilteredTasks/getOverdueTasks -> tasks/notifications domains,
-// getKanbanStatuses -> kanban domain, getUserDisplayName -> team domain,
-// showArchivedTasks -> table-view domain).
-import { getFilteredTasks, getKanbanStatuses, getUserDisplayName, getOverdueTasks, showArchivedTasks } from '../main.js';
+// (getOverdueTasks -> notifications domain, getKanbanStatuses -> kanban domain,
+// getUserDisplayName -> team domain).
+import { getKanbanStatuses, getUserDisplayName, getOverdueTasks } from '../main.js';
 
 export function updateStats() {
   var container = document.getElementById('stats-row');

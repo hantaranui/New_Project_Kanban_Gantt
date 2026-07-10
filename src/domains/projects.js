@@ -3,12 +3,12 @@ import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
 import { showConfirmModal } from '../ui/confirm-modal.js';
+import { getFilteredTasks } from './filters.js';
 // Temporary backwards imports: none of these are extracted yet
-// (canEditWorkItems/setField -> config/permissions, getFilteredTasks/
-// getUserDisplayName -> tasks/team domains, closeModalForce -> task-modal,
-// loadAllData/refreshAllViews -> data loader / main orchestration).
+// (canEditWorkItems/setField -> config/permissions, getUserDisplayName -> team domain,
+// closeModalForce -> task-modal, loadAllData/refreshAllViews -> data loader / main orchestration).
 import {
-  canEditWorkItems, setField, getFilteredTasks, getUserDisplayName,
+  canEditWorkItems, setField, getUserDisplayName,
   closeModalForce, loadAllData, refreshAllViews
 } from '../main.js';
 

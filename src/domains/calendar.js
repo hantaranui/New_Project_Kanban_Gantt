@@ -3,10 +3,10 @@ import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
 import { getTaskSubtasks } from './subtasks.js';
+import { getFilteredTasks } from './filters.js';
 // Temporary backwards imports: none of these are extracted yet
-// (getFilteredTasks -> tasks, openEditTaskModal/startNewTask -> task-modal,
-// loadAllData -> data loader).
-import { getFilteredTasks, openEditTaskModal, startNewTask, loadAllData } from '../main.js';
+// (openEditTaskModal/startNewTask -> task-modal, loadAllData -> data loader).
+import { openEditTaskModal, startNewTask, loadAllData } from '../main.js';
 
 export let calendarYear = new Date().getFullYear();
 export let calendarMonth = new Date().getMonth();

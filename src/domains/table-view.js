@@ -5,12 +5,11 @@ import { formatDate } from '../utils/dates.js';
 import { state } from '../store.js';
 import { getTaskCustomFieldsText } from './custom-fields.js';
 import { getTaskSubtasks } from './subtasks.js';
+import { getFilteredTasks, getProjectName, getProjectColor } from './filters.js';
 // Temporary backwards imports: none of these are extracted yet
-// (getFilteredTasks/isOverdue/getProjectName/getProjectColor/statusLabel -> tasks,
-// getKanbanStatuses -> kanban, getUserDisplayName -> team).
+// (isOverdue/statusLabel -> tasks, getKanbanStatuses -> kanban, getUserDisplayName -> team).
 import {
-  getFilteredTasks, isOverdue, getProjectName, getProjectColor, statusLabel,
-  getKanbanStatuses, getUserDisplayName
+  isOverdue, statusLabel, getKanbanStatuses, getUserDisplayName
 } from '../main.js';
 
 // B2 : multi-filtres statut/priorité du tableau (tableau vide = tous)
