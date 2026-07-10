@@ -169,7 +169,7 @@ export function isTabAllowed(tabId) {
 }
 
 export function applyOwnerRestrictions() {
-  var allTabs = ['calendar', 'kanban', 'table', 'gantt', 'templates', 'stats', 'team', 'settings'];
+  var allTabs = ['calendar', 'kanban', 'table', 'gantt', 'stats', 'team', 'settings'];
   allTabs.forEach(function(tab) {
     var el = document.querySelector('[data-tab="' + tab + '"]');
     if (el) el.style.display = isTabAllowed(tab) ? '' : 'none';
@@ -189,7 +189,6 @@ export function getAclRules() {
     { tableId: state.CATEGORIES_TABLE,      ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
     { tableId: state.TAGS_TABLE,            ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
     { tableId: state.CONFIG_TABLE,          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: state.TEMPLATES_TABLE,       ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
     { tableId: state.TASKS_TABLE,           ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
     { tableId: state.SUBTASKS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
     { tableId: state.COMMENTS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },

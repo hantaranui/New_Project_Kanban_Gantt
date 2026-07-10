@@ -11,7 +11,6 @@
       tabKanban: "Kanban",
       tabTable: "Tableau",
       tabGantt: "Gantt",
-      tabTemplates: "Templates",
       newTask: "Nouvelle t\xE2che",
       newProject: "Nouveau projet",
       statTotal: "Total",
@@ -58,12 +57,8 @@
       ganttFullYear: "Ann\xE9e compl\xE8te",
       ganttNavInfo: "Navigation infinie vers autres ann\xE9es",
       ganttViewRange: "Vue :",
-      templatesTitle: "T\xE2ches Pr\xE9format\xE9es",
-      templatesSubtitle: "G\xE9rez les mod\xE8les de t\xE2ches disponibles pour tous les utilisateurs",
-      newTemplate: "Nouveau mod\xE8le",
       modalNewTask: "Nouvelle t\xE2che",
       modalEditTask: "Modifier la t\xE2che",
-      modalNewTemplate: "Nouveau mod\xE8le de t\xE2che",
       fieldTitle: "Titre *",
       fieldDescription: "Description",
       fieldStatus: "Statut",
@@ -84,13 +79,10 @@
       cancel: "Annuler",
       delete: "Supprimer",
       confirmDelete: "Supprimer cette t\xE2che ?",
-      confirmDeleteTemplate: "Supprimer ce mod\xE8le ?",
       taskCreated: "T\xE2che cr\xE9\xE9e !",
       taskUpdated: "T\xE2che mise \xE0 jour !",
       taskDeleted: "T\xE2che supprim\xE9e.",
       taskMoved: "T\xE2che d\xE9plac\xE9e.",
-      templateCreated: "Mod\xE8le cr\xE9\xE9 !",
-      templateDeleted: "Mod\xE8le supprim\xE9.",
       overdue: "En retard",
       noDate: "Aucune date",
       notDefined: "Non d\xE9finie",
@@ -168,9 +160,6 @@
       addCategory: "Ajouter",
       tagName: "Nom du tag",
       tagColor: "Couleur",
-      useTemplate: "Utiliser",
-      totalTemplates: "Total mod\xE8les",
-      totalUsages: "Utilisations totales",
       mostUsed: "Plus utilis\xE9",
       categories: "Cat\xE9gories",
       tabTeam: "\xC9quipe",
@@ -314,7 +303,6 @@
       tag: "Tag",
       globalSearchPlaceholder: "Rechercher...",
       taskSearchPlaceholder: "Rechercher une t\xE2che...",
-      templateSearchPlaceholder: "Rechercher un mod\xE8le...",
       calToday: "Aujourd'hui",
       calMonth: "Mois",
       calWeek: "Semaine",
@@ -340,10 +328,7 @@
       raciDisabled: "Mode RACI d\xE9sactiv\xE9",
       projectActive: "Actif",
       projectCompleted: "Termin\xE9",
-      projectArchived: "Archiv\xE9",
-      editTemplate: "Modifier le mod\xE8le",
-      modalEditTemplate: "Modifier le mod\xE8le de t\xE2che",
-      templateUpdated: "Mod\xE8le mis \xE0 jour !"
+      projectArchived: "Archiv\xE9"
     }
   };
   function t(key) {
@@ -418,7 +403,6 @@
     tasks: [],
     users: [],
     groups: [],
-    templates: [],
     subtasks: [],
     dependencies: [],
     comments: [],
@@ -443,7 +427,6 @@
     TASKS_TABLE: "PM_Tasks",
     USERS_TABLE: "PM_Users",
     GROUPS_TABLE: "PM_Groups",
-    TEMPLATES_TABLE: "PM_Templates",
     SUBTASKS_TABLE: "PM_Subtasks",
     DEPENDENCIES_TABLE: "PM_Dependencies",
     COMMENTS_TABLE: "PM_Comments",
@@ -518,7 +501,6 @@
     tasks: "Taches",
     users: "Utilisateurs",
     groups: "Equipes",
-    templates: "Modeles",
     subtasks: "Sous_taches",
     dependencies: "Dependances",
     comments: "Commentaires",
@@ -2736,192 +2718,6 @@
     }
   }
 
-  // src/domains/templates.js
-  function renderTemplatesView() {
-    var search = (document.getElementById("template-search").value || "").toLowerCase();
-    var filterPriority = document.getElementById("filter-template-priority").value;
-    var filtered = state.templates.filter(function(tpl2) {
-      if (filterPriority && tpl2.Priority !== filterPriority) return false;
-      if (search) {
-        var text = (tpl2.Title + " " + tpl2.Description + " " + tpl2.Category).toLowerCase();
-        if (text.indexOf(search) === -1) return false;
-      }
-      return true;
-    });
-    var html = "";
-    for (var i = 0; i < filtered.length; i++) {
-      var tpl = filtered[i];
-      var dotClass = tpl.Priority === "high" ? "dot-high" : tpl.Priority === "medium" ? "dot-medium" : "dot-low";
-      html += '<div class="template-card">';
-      html += '<div class="template-card-info">';
-      html += "<h4>" + sanitize(tpl.Title) + "</h4>";
-      html += '<div class="template-meta">';
-      if (tpl.Category) html += "\u{1F3F7}\uFE0F " + sanitize(tpl.Category);
-      html += ' <span class="priority-dot ' + dotClass + '"></span> ' + priorityLabel(tpl.Priority);
-      if (tpl.Estimated_Hours) html += " \u23F1\uFE0F " + tpl.Estimated_Hours + "h";
-      html += " \u{1F4CA} " + (tpl.Usage_Count || 0) + " " + (currentLang === "fr" ? "utilisations" : "uses");
-      if (tpl.Updated_At) html += " \u2022 " + (currentLang === "fr" ? "Mis \xE0 jour le " : "Updated ") + formatDate(tpl.Updated_At);
-      html += "</div></div>";
-      html += '<div style="display:flex;gap:4px;">';
-      html += '<button class="btn btn-primary btn-sm" onclick="useTemplate(' + tpl.id + ')">' + t("useTemplate") + "</button>";
-      if (state.isOwner) html += '<button class="btn-icon" onclick="openNewTemplateModal(' + tpl.id + ')" title="' + t("editTemplate") + '">\u270F\uFE0F</button>';
-      if (state.isOwner) html += '<button class="btn-icon" onclick="deleteTemplate(' + tpl.id + ')">\u{1F5D1}\uFE0F</button>';
-      html += "</div>";
-      html += "</div>";
-    }
-    if (filtered.length === 0) {
-      html = '<div style="text-align:center;padding:40px;color:#94a3b8;">' + t("noTasks") + "</div>";
-    }
-    document.getElementById("templates-list").innerHTML = html;
-  }
-  function openNewTemplateModal(tplId) {
-    var editing = tplId != null;
-    var tpl = editing ? state.templates.find(function(x) {
-      return x.id === tplId;
-    }) : null;
-    if (editing && !tpl) return;
-    var title = editing ? sanitize(tpl.Title || "") : "";
-    var desc = editing ? sanitize(tpl.Description || "") : "";
-    var priority = editing ? tpl.Priority || "medium" : "medium";
-    var category = editing ? tpl.Category || "" : "";
-    var hours = editing ? tpl.Estimated_Hours || "" : "";
-    var tplGroup = editing ? tpl.Group_Name || "" : "";
-    var tplTag = editing ? tpl.Tag || "" : "";
-    var tplRecur = editing ? tpl.Recurrence || "none" : "none";
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t(editing ? "modalEditTemplate" : "modalNewTemplate") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldTitle") + '</label><input type="text" id="tpl-title" value="' + title + '" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="tpl-desc">' + desc + "</textarea></div>";
-    html += '<div class="form-row">';
-    html += '<div class="form-group"><label>' + t("fieldPriority") + '</label><select id="tpl-priority">';
-    html += '<option value="medium"' + (priority === "medium" ? " selected" : "") + ">" + t("priorityMedium") + "</option>";
-    html += '<option value="high"' + (priority === "high" ? " selected" : "") + ">" + t("priorityHigh") + "</option>";
-    html += '<option value="low"' + (priority === "low" ? " selected" : "") + ">" + t("priorityLow") + "</option>";
-    html += "</select></div>";
-    var tplCatOptions = '<option value=""' + (!category ? " selected" : "") + ">--</option>";
-    for (var tci = 0; tci < state.categories.length; tci++) {
-      var catName = state.categories[tci].Name;
-      tplCatOptions += '<option value="' + sanitize(catName) + '"' + (catName === category ? " selected" : "") + ">" + sanitize(catName) + "</option>";
-    }
-    html += '<div class="form-group"><label>' + t("fieldCategory") + '</label><select id="tpl-category">' + tplCatOptions + "</select></div>";
-    html += "</div>";
-    html += '<div class="form-group"><label>' + t("fieldEstimatedTime") + '</label><input type="number" id="tpl-hours" step="0.5" min="0" value="' + hours + '" /></div>';
-    html += '<div class="form-row">';
-    var tplGroupOpts = '<option value="">--</option>';
-    for (var tgi = 0; tgi < state.groups.length; tgi++) tplGroupOpts += '<option value="' + sanitize(state.groups[tgi].Name) + '"' + (state.groups[tgi].Name === tplGroup ? " selected" : "") + ">" + sanitize(state.groups[tgi].Name) + "</option>";
-    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="tpl-group">' + tplGroupOpts + "</select></div>";
-    var tplTagOpts = '<option value="">--</option>';
-    for (var tti = 0; tti < state.tags.length; tti++) tplTagOpts += '<option value="' + sanitize(state.tags[tti].Name) + '"' + (state.tags[tti].Name === tplTag ? " selected" : "") + ">" + sanitize(state.tags[tti].Name) + "</option>";
-    html += '<div class="form-group"><label>' + t("tag") + '</label><select id="tpl-tag">' + tplTagOpts + "</select></div>";
-    html += "</div>";
-    var recurKeys = ["none", "daily", "weekly", "biweekly", "monthly", "quarterly", "yearly"];
-    var recurLabels = { none: "recurrenceNone", daily: "recurrenceDaily", weekly: "recurrenceWeekly", biweekly: "recurrenceBiweekly", monthly: "recurrenceMonthly", quarterly: "recurrenceQuarterly", yearly: "recurrenceYearly" };
-    var tplRecurOpts = recurKeys.map(function(k) {
-      return '<option value="' + k + '"' + (tplRecur === k ? " selected" : "") + ">" + t(recurLabels[k]) + "</option>";
-    }).join("");
-    html += '<div class="form-group"><label>\u{1F501} ' + (currentLang === "fr" ? "R\xE9currence" : "Recurrence") + '</label><select id="tpl-recurrence">' + tplRecurOpts + "</select></div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    if (editing) {
-      html += '<button class="btn btn-primary" onclick="updateTemplate(' + tplId + ')">' + t("save") + "</button>";
-    } else {
-      html += '<button class="btn btn-primary" onclick="createTemplate()">' + t("save") + "</button>";
-    }
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  async function createTemplate() {
-    var title = document.getElementById("tpl-title").value.trim();
-    if (!title) return;
-    var record = {
-      Title: title,
-      Description: document.getElementById("tpl-desc").value.trim(),
-      Priority: document.getElementById("tpl-priority").value,
-      Category: document.getElementById("tpl-category").value.trim(),
-      Estimated_Hours: parseFloat(document.getElementById("tpl-hours").value) || 0,
-      Group_Name: (document.getElementById("tpl-group") || {}).value || "",
-      Tag: (document.getElementById("tpl-tag") || {}).value || "",
-      Recurrence: (document.getElementById("tpl-recurrence") || {}).value || "none",
-      Usage_Count: 0,
-      Updated_At: Math.floor(Date.now() / 1e3)
-    };
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.TEMPLATES_TABLE, null, record]
-      ]);
-      showToast(t("templateCreated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error creating template:", e);
-    }
-  }
-  async function updateTemplate(tplId) {
-    var title = document.getElementById("tpl-title").value.trim();
-    if (!title) return;
-    var record = {
-      Title: title,
-      Description: document.getElementById("tpl-desc").value.trim(),
-      Priority: document.getElementById("tpl-priority").value,
-      Category: document.getElementById("tpl-category").value.trim(),
-      Estimated_Hours: parseFloat(document.getElementById("tpl-hours").value) || 0,
-      Group_Name: (document.getElementById("tpl-group") || {}).value || "",
-      Tag: (document.getElementById("tpl-tag") || {}).value || "",
-      Recurrence: (document.getElementById("tpl-recurrence") || {}).value || "none",
-      Updated_At: Math.floor(Date.now() / 1e3)
-    };
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.TEMPLATES_TABLE, tplId, record]
-      ]);
-      showToast(t("templateUpdated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error updating template:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function deleteTemplate(tplId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(t("confirmDeleteTemplate"), currentLang === "fr" ? "Supprimer le mod\xE8le" : "Delete template");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.TEMPLATES_TABLE, tplId]
-      ]);
-      showToast(t("templateDeleted"), "info");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error deleting template:", e);
-    }
-  }
-  async function useTemplate(tplId) {
-    var tpl = state.templates.find(function(t2) {
-      return t2.id === tplId;
-    });
-    if (!tpl) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.TEMPLATES_TABLE, tplId, { Usage_Count: (tpl.Usage_Count || 0) + 1 }]
-      ]);
-    } catch (e) {
-    }
-    startNewTask("todo", null, {
-      title: tpl.Title || "",
-      description: tpl.Description || "",
-      priority: tpl.Priority || "medium",
-      category: tpl.Category || "",
-      group: tpl.Group_Name || "",
-      tag: tpl.Tag || "",
-      recurrence: tpl.Recurrence || "none",
-      estimatedHours: tpl.Estimated_Hours || 0
-    });
-  }
-
   // src/domains/notifications.js
   function getOverdueTasks() {
     var now = Math.floor(Date.now() / 1e3);
@@ -3757,7 +3553,6 @@
     if (tabId === "kanban") renderKanbanView();
     if (tabId === "table") renderTableView();
     if (tabId === "gantt") renderGanttView();
-    if (tabId === "templates") renderTemplatesView();
     if (tabId === "stats") renderStatsView();
     if (tabId === "team") renderTeamView();
     if (tabId === "settings") renderSettingsView();
@@ -3782,7 +3577,6 @@
       if (tab === "kanban") renderKanbanView();
       if (tab === "table") renderTableView();
       if (tab === "gantt") renderGanttView();
-      if (tab === "templates") renderTemplatesView();
       if (tab === "stats") renderStatsView();
       if (tab === "team") renderTeamView();
     }
@@ -8285,7 +8079,7 @@
     return ["kanban", "gantt", "team", "settings"].indexOf(tabId) !== -1;
   }
   function applyOwnerRestrictions() {
-    var allTabs = ["calendar", "kanban", "table", "gantt", "templates", "stats", "team", "settings"];
+    var allTabs = ["calendar", "kanban", "table", "gantt", "stats", "team", "settings"];
     allTabs.forEach(function(tab) {
       var el = document.querySelector('[data-tab="' + tab + '"]');
       if (el) el.style.display = isTabAllowed(tab) ? "" : "none";
@@ -8301,7 +8095,6 @@
       { tableId: state.CATEGORIES_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
       { tableId: state.TAGS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
       { tableId: state.CONFIG_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
-      { tableId: state.TEMPLATES_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
       { tableId: state.TASKS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" },
       { tableId: state.SUBTASKS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" },
       { tableId: state.COMMENTS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" },
@@ -9082,29 +8875,6 @@
       state.groups = [];
     }
     try {
-      var tplData = await grist.docApi.fetchTable(state.TEMPLATES_TABLE);
-      state.templates = [];
-      if (tplData && tplData.id) {
-        for (var i = 0; i < tplData.id.length; i++) {
-          state.templates.push({
-            id: tplData.id[i],
-            Title: tplData.Title ? tplData.Title[i] : "",
-            Description: tplData.Description ? tplData.Description[i] : "",
-            Priority: tplData.Priority ? tplData.Priority[i] : "medium",
-            Category: tplData.Category ? tplData.Category[i] : "",
-            Estimated_Hours: tplData.Estimated_Hours ? tplData.Estimated_Hours[i] : 0,
-            Group_Name: tplData.Group_Name ? tplData.Group_Name[i] : "",
-            Tag: tplData.Tag ? tplData.Tag[i] : "",
-            Recurrence: tplData.Recurrence ? tplData.Recurrence[i] : "none",
-            Usage_Count: tplData.Usage_Count ? tplData.Usage_Count[i] : 0,
-            Updated_At: tplData.Updated_At ? tplData.Updated_At[i] : null
-          });
-        }
-      }
-    } catch (e) {
-      state.templates = [];
-    }
-    try {
       var subtaskData = await grist.docApi.fetchTable(state.SUBTASKS_TABLE);
       state.subtasks = [];
       if (subtaskData && subtaskData.id) {
@@ -9720,7 +9490,6 @@
     state.TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
     state.USERS_TABLE = CLIENT_TABLE_NAMES.users;
     state.GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
-    state.TEMPLATES_TABLE = CLIENT_TABLE_NAMES.templates;
     state.SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
     state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
     state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
@@ -10035,22 +9804,6 @@
           ]]
         ]);
       }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.TEMPLATES_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.TEMPLATES_TABLE, [
-            { id: "Title", type: "Text" },
-            { id: "Description", type: "Text" },
-            { id: "Priority", type: "Choice", widgetOptions: JSON.stringify({ choices: ["high", "medium", "low"] }) },
-            { id: "Category", type: "Text" },
-            { id: "Estimated_Hours", type: "Numeric" },
-            { id: "Group_Name", type: "Text" },
-            { id: "Tag", type: "Text" },
-            { id: "Recurrence", type: "Text" },
-            { id: "Usage_Count", type: "Int" },
-            { id: "Updated_At", type: "Date" }
-          ]]
-        ]);
-      }
       if (!skipAutoCreateWorkTables && existingTables.indexOf(state.SUBTASKS_TABLE) === -1) {
         await grist.docApi.applyUserActions([
           ["AddTable", state.SUBTASKS_TABLE, [
@@ -10186,19 +9939,6 @@
         }
       } catch (e) {
         console.log("[GristPM] Migration Project_Id ignor\xE9e :", e.message);
-      }
-      try {
-        var tplCols = Object.keys(await grist.docApi.fetchTable(state.TEMPLATES_TABLE));
-        var tplMig = [];
-        if (tplCols.indexOf("Group_Name") === -1) tplMig.push(["AddColumn", state.TEMPLATES_TABLE, "Group_Name", { type: "Text" }]);
-        if (tplCols.indexOf("Tag") === -1) tplMig.push(["AddColumn", state.TEMPLATES_TABLE, "Tag", { type: "Text" }]);
-        if (tplCols.indexOf("Recurrence") === -1) tplMig.push(["AddColumn", state.TEMPLATES_TABLE, "Recurrence", { type: "Text" }]);
-        if (tplMig.length) {
-          await grist.docApi.applyUserActions(tplMig);
-          console.log("[GristPM] Colonnes templates enrichies");
-        }
-      } catch (e) {
-        console.log("[GristPM] Migration templates ignor\xE9e :", e.message);
       }
       try {
         var projCols = Object.keys(await grist.docApi.fetchTable(state.PROJECTS_TABLE));
@@ -10693,7 +10433,6 @@
     collapseAllSubtasks,
     createGroup,
     createTask,
-    createTemplate,
     createUser,
     deleteAttachment,
     deleteAutomationRule,
@@ -10705,7 +10444,6 @@
     deleteSubtask,
     deleteTag,
     deleteTask,
-    deleteTemplate,
     deleteUser,
     detectProjectColumns,
     detectTaskColumns,
@@ -10759,7 +10497,6 @@
     openNewGroupModal,
     openNewTaskForDay,
     openNewTaskModal,
-    openNewTemplateModal,
     openNewUserModal,
     openNotification,
     openProjectModal,
@@ -10780,7 +10517,6 @@
     renderProjectList,
     renderSettingsProjectsList,
     renderTableView,
-    renderTemplatesView,
     renderTimelineChart,
     resetFilters,
     restoreTask,
@@ -10843,10 +10579,8 @@
     updateGroup,
     updateSubtaskDep,
     updateTask,
-    updateTemplate,
     updateUser,
     uploadTaskAttachments,
-    useTemplate,
     viewAttachment
   });
   var kanbanSort = "manual";

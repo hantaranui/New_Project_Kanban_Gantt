@@ -1604,14 +1604,7 @@
       justify-content: space-between;
     }
 
-    /* ========== TEMPLATES VIEW ========== */
-    .templates-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 14px;
-    }
-    .templates-header h2 { font-size: 18px; font-weight: 800; }
+    /* ========== CARD LIST (used by Team/Groups view) ========== */
     .template-card {
       background: white;
       border: 1px solid #e2e8f0;
@@ -5062,27 +5055,6 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- TAB: TEMPLATES -->
-    <div class="tab-content" id="tab-templates">
-      <div class="templates-header">
-        <div class="section-title">
-          <h2 data-i18n="templatesTitle">Tâches Préformatées</h2>
-          <p data-i18n="templatesSubtitle">Gérez les modèles de tâches disponibles pour tous les utilisateurs</p>
-        </div>
-        <button class="btn-new-task" onclick="openNewTemplateModal()">+ <span data-i18n="newTemplate">Nouveau modèle</span></button>
-      </div>
-      <div class="table-filters">
-        <input type="text" id="template-search" placeholder="Rechercher un modèle..." data-i18n-placeholder="templateSearchPlaceholder" oninput="renderTemplatesView()" />
-        <select id="filter-template-priority" onchange="renderTemplatesView()">
-          <option value="" data-i18n="allPriorities">Toutes priorités</option>
-          <option value="high" data-i18n="priorityHigh">Haute</option>
-          <option value="medium" data-i18n="priorityMedium">Moyenne</option>
-          <option value="low" data-i18n="priorityLow">Basse</option>
-        </select>
-      </div>
-      <div id="templates-list"></div>
     </div>
 
     <!-- TAB: TEAM -->

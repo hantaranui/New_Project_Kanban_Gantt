@@ -99,30 +99,6 @@ export async function loadAllData() {
   }
 
   try {
-    var tplData = await grist.docApi.fetchTable(state.TEMPLATES_TABLE);
-    state.templates = [];
-    if (tplData && tplData.id) {
-      for (var i = 0; i < tplData.id.length; i++) {
-        state.templates.push({
-          id: tplData.id[i],
-          Title: tplData.Title ? tplData.Title[i] : '',
-          Description: tplData.Description ? tplData.Description[i] : '',
-          Priority: tplData.Priority ? tplData.Priority[i] : 'medium',
-          Category: tplData.Category ? tplData.Category[i] : '',
-          Estimated_Hours: tplData.Estimated_Hours ? tplData.Estimated_Hours[i] : 0,
-          Group_Name: tplData.Group_Name ? tplData.Group_Name[i] : '',
-          Tag: tplData.Tag ? tplData.Tag[i] : '',
-          Recurrence: tplData.Recurrence ? tplData.Recurrence[i] : 'none',
-          Usage_Count: tplData.Usage_Count ? tplData.Usage_Count[i] : 0,
-          Updated_At: tplData.Updated_At ? tplData.Updated_At[i] : null
-        });
-      }
-    }
-  } catch (e) {
-    state.templates = [];
-  }
-
-  try {
     var subtaskData = await grist.docApi.fetchTable(state.SUBTASKS_TABLE);
     state.subtasks = [];
     if (subtaskData && subtaskData.id) {

@@ -19,9 +19,6 @@ import {
 } from './domains/attachments.js';
 import { logActivity, renderActivityLog, expandActivityLog } from './domains/activity-log.js';
 import {
-  renderTemplatesView, openNewTemplateModal, createTemplate, updateTemplate, deleteTemplate, useTemplate
-} from './domains/templates.js';
-import {
   updateStats, renderStatsView, renderWorkloadChart, renderTimelineChart, renderBurndownChart
 } from './domains/stats.js';
 import {
@@ -136,9 +133,9 @@ Object.assign(window, {
   addRaciChip, addRoleChoice, addSubtask, applySecurityRules, archiveTask, calendarNav,
   calendarToday, cancelEditSubtask, clearDependencyTaskSelection, clearMsFilter, closeAttachmentViewer, closeAutomationModal,
   closeConfirmModal, closeDependencyTaskOptions, closeModal, closeModalForce, closeNotifications, closeProjectModal, closePromptModal,
-  closeTagsModal, collapseAllSubtasks, createGroup, createTask, createTemplate, createUser,
+  closeTagsModal, collapseAllSubtasks, createGroup, createTask, createUser,
   deleteAttachment, deleteAutomationRule, deleteCategory, deleteComment, deleteCustomField, deleteGroup,
-  deleteProject, deleteSubtask, deleteTag, deleteTask, deleteTemplate, deleteUser,
+  deleteProject, deleteSubtask, deleteTag, deleteTask, deleteUser,
   detectProjectColumns, detectTaskColumns, detectUserColumns, downloadAttachment, editCategory, editKanbanStatus,
   editProject, editTag, expandActivityLog, expandAllSubtasks, exportGanttPdf, filterComboSearch, filterProjectDropdown,
   filterStAssignees, focusGanttTask, ganttCollapseAll, ganttExpandAll, ganttNav, ganttToday,
@@ -147,11 +144,11 @@ Object.assign(window, {
   onDragOver, onDragStart, onDrop, openAddAutomationRuleModal, openAttachmentInNewTab, openCardAttachmentsModal,
   openCardCommentsModal, openCardSubtasksModal, openCategoriesModal, openColumnMappingModal, openComputedNotification, openCustomFieldsModal,
   openDependencyTaskOptions, openEditAutomationRuleModal, openEditGroupModal, openEditTaskModal, openEditUserModal, openManageRolesModal,
-  openNewGroupModal, openNewTaskForDay, openNewTaskModal, openNewTemplateModal, openNewUserModal, openNotification,
+  openNewGroupModal, openNewTaskForDay, openNewTaskModal, openNewUserModal, openNotification,
   openProjectModal, openProjectModalForEdit, openSubtaskDepModal, openTagsModal, pauseTimer, quickAction,
   refreshDependencyTaskOptions, removeDependency, removeKanbanStatus, removeRaciChip, removeRoleChoice, removeSecurityRules,
   renderActivityLog, renderBurndownChart, renderEmojiPicker, renderProjectList, renderSettingsProjectsList, renderTableView,
-  renderTemplatesView, renderTimelineChart, resetFilters, restoreTask, runSetupDiagnostic, saveAutomationRuleFromModal,
+  renderTimelineChart, resetFilters, restoreTask, runSetupDiagnostic, saveAutomationRuleFromModal,
   saveCategory, saveColumnMapping, saveEditSubtask, saveInlineProjectEdit, saveProject, saveRoleChoices,
   saveTag, saveTaskFromFooter, saveUiLabelSettings, selectEmoji, selectFilterCombo, selectProjectOption,
   setCalendarMode, setGanttCustomRange, setGanttMode, setGanttSort, setGanttYear, setKanbanGroupBy,
@@ -161,8 +158,8 @@ Object.assign(window, {
   toggleDependencyTaskOptions, toggleEmojiPicker, toggleFilterCombo, toggleGanttFullscreen, toggleGanttSubtask, toggleKanbanCol,
   toggleKanbanFullscreen, toggleMsFilter, toggleMsOption, toggleMyProjects, toggleNotifyConcerned, toggleProjectDropdown,
   toggleRaci, toggleSubtask, toggleSubtaskFromCard, toggleSubtaskFromPopup, toggleSubtasks, updateCustomFieldValue,
-  updateGroup, updateSubtaskDep, updateTask, updateTemplate, updateUser, uploadTaskAttachments,
-  useTemplate, viewAttachment
+  updateGroup, updateSubtaskDep, updateTask, updateUser, uploadTaskAttachments,
+  viewAttachment
 });
 
 // =============================================================================

@@ -6,7 +6,6 @@ export const CLIENT_TABLE_NAMES = {
   tasks: 'Taches',
   users: 'Utilisateurs',
   groups: 'Equipes',
-  templates: 'Modeles',
   subtasks: 'Sous_taches',
   dependencies: 'Dependances',
   comments: 'Commentaires',

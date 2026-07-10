@@ -14,7 +14,6 @@ export function applyFrenchTableNames(updateDefaults) {
   state.TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
   state.USERS_TABLE = CLIENT_TABLE_NAMES.users;
   state.GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
-  state.TEMPLATES_TABLE = CLIENT_TABLE_NAMES.templates;
   state.SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
   state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
   state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
@@ -344,23 +343,6 @@ export async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.TEMPLATES_TABLE) === -1)) {
-      await grist.docApi.applyUserActions([
-        ['AddTable', state.TEMPLATES_TABLE, [
-          { id: 'Title', type: 'Text' },
-          { id: 'Description', type: 'Text' },
-          { id: 'Priority', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['high', 'medium', 'low'] }) },
-          { id: 'Category', type: 'Text' },
-          { id: 'Estimated_Hours', type: 'Numeric' },
-          { id: 'Group_Name', type: 'Text' },
-          { id: 'Tag', type: 'Text' },
-          { id: 'Recurrence', type: 'Text' },
-          { id: 'Usage_Count', type: 'Int' },
-          { id: 'Updated_At', type: 'Date' }
-        ]]
-      ]);
-    }
-
     if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.SUBTASKS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', state.SUBTASKS_TABLE, [
@@ -511,18 +493,6 @@ export async function ensureTables() {
       }
     } catch (e) {
       console.log('[GristPM] Migration Project_Id ignorée :', e.message);
-    }
-
-    // Migration Group_Name / Tag / Recurrence sur PM_Templates
-    try {
-      var tplCols = Object.keys(await grist.docApi.fetchTable(state.TEMPLATES_TABLE));
-      var tplMig = [];
-      if (tplCols.indexOf('Group_Name') === -1) tplMig.push(['AddColumn', state.TEMPLATES_TABLE, 'Group_Name', { type: 'Text' }]);
-      if (tplCols.indexOf('Tag') === -1) tplMig.push(['AddColumn', state.TEMPLATES_TABLE, 'Tag', { type: 'Text' }]);
-      if (tplCols.indexOf('Recurrence') === -1) tplMig.push(['AddColumn', state.TEMPLATES_TABLE, 'Recurrence', { type: 'Text' }]);
-      if (tplMig.length) { await grist.docApi.applyUserActions(tplMig); console.log('[GristPM] Colonnes templates enrichies'); }
-    } catch (e) {
-      console.log('[GristPM] Migration templates ignorée :', e.message);
     }
 
     // Migration CreatedBy / CreatedAt sur PM_Projects (créateur du projet)

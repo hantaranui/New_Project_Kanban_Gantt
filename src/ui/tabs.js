@@ -2,7 +2,6 @@ import { renderCalendarView } from '../domains/calendar.js';
 import { renderKanbanView } from '../domains/kanban.js';
 import { renderTableView } from '../domains/table-view.js';
 import { renderGanttView } from '../domains/gantt.js';
-import { renderTemplatesView } from '../domains/templates.js';
 import { updateStats, renderStatsView } from '../domains/stats.js';
 import { renderTeamView } from '../domains/team.js';
 import { renderSettingsView } from '../domains/settings.js';
@@ -23,7 +22,6 @@ export function switchTab(tabId) {
   if (tabId === 'kanban') renderKanbanView();
   if (tabId === 'table') renderTableView();
   if (tabId === 'gantt') renderGanttView();
-  if (tabId === 'templates') renderTemplatesView();
   if (tabId === 'stats') renderStatsView();
   if (tabId === 'team') renderTeamView();
   if (tabId === 'settings') renderSettingsView();
@@ -51,7 +49,6 @@ export function refreshAllViews() {
     if (tab === 'kanban') renderKanbanView();
     if (tab === 'table') renderTableView();
     if (tab === 'gantt') renderGanttView();
-    if (tab === 'templates') renderTemplatesView();
     if (tab === 'stats') renderStatsView();
     if (tab === 'team') renderTeamView();
   }
