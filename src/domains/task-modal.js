@@ -32,10 +32,10 @@ import {
 import { myAssigneeValue } from './filters.js';
 import { shouldLimitToMyProjects, canEditWorkItems } from './permissions.js';
 import { getKanbanStatuses } from './kanban.js';
+import { refreshAllViews } from '../ui/tabs.js';
 // Temporary backwards imports: none of these are extracted yet
-// (isOverdue/statusLabel -> tasks domain, setField -> config domain,
-// refreshAllViews -> main orchestration).
-import { isOverdue, statusLabel, setField, refreshAllViews } from '../main.js';
+// (isOverdue/statusLabel -> tasks domain, setField -> config domain).
+import { isOverdue, statusLabel, setField } from '../main.js';
 
 export function getInputValue(id, fallback) {
   var el = document.getElementById(id);

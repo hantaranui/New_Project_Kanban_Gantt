@@ -1,10 +1,8 @@
 import { state } from '../store.js';
 import { renderProjectSelector } from './filters.js';
-// Temporary backwards imports: none of these are extracted yet
-// (loadColumnMapping/getColumnName -> config, refreshAllViews stays in main.js -
-// it's the cross-view orchestrator, still needs renderKanbanView/renderGanttView/
-// renderTeamView, none extracted yet).
-import { loadColumnMapping, getColumnName, refreshAllViews } from '../main.js';
+import { refreshAllViews } from '../ui/tabs.js';
+// Temporary backwards import: loadColumnMapping/getColumnName -> config.
+import { loadColumnMapping, getColumnName } from '../main.js';
 
 export async function loadAllData() {
   // Load column mapping first

@@ -7,11 +7,11 @@ import { getFilteredTasks } from './filters.js';
 import { loadAllData } from './data-loader.js';
 import { canEditWorkItems } from './permissions.js';
 import { closeModalForce } from './task-modal.js';
+import { refreshAllViews } from '../ui/tabs.js';
 // Temporary backwards imports: none of these are extracted yet
-// (setField -> config domain, getUserDisplayName -> team domain,
-// refreshAllViews -> main orchestration).
+// (setField -> config domain, getUserDisplayName -> team domain).
 import {
-  setField, getUserDisplayName, refreshAllViews
+  setField, getUserDisplayName
 } from '../main.js';
 
 export function populateProjectLead(selectedValue) {

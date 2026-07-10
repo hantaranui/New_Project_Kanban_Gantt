@@ -2143,6 +2143,2369 @@
     }
   }
 
+  // src/domains/calendar.js
+  var calendarYear = (/* @__PURE__ */ new Date()).getFullYear();
+  var calendarMonth = (/* @__PURE__ */ new Date()).getMonth();
+  var calendarMode = "month";
+  var calendarWeekOffset = 0;
+  var calendarDayOffset = 0;
+  function renderCalendarView() {
+    document.querySelectorAll(".calendar-mode-btn").forEach(function(btn) {
+      btn.classList.toggle("active", btn.getAttribute("data-mode") === calendarMode);
+    });
+    applyCalendarResponsiveClasses();
+    attachCalendarResizeObserver();
+    if (window.innerWidth < 480 && calendarMode !== "day") {
+      renderCalendarMobileView();
+      return;
+    }
+    if (calendarMode === "week") {
+      renderCalendarWeekView();
+      return;
+    }
+    if (calendarMode === "day") {
+      renderCalendarDayView();
+      return;
+    }
+    var monthNames = currentLang === "fr" ? ["Janvier", "F\xE9vrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Ao\xFBt", "Septembre", "Octobre", "Novembre", "D\xE9cembre"] : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    var dayNames = currentLang === "fr" ? ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    document.getElementById("calendar-month-title").textContent = monthNames[calendarMonth] + " " + calendarYear;
+    var weekdaysHtml = "";
+    for (var d = 0; d < 7; d++) {
+      var isWeekend = d >= 5;
+      weekdaysHtml += '<div class="calendar-weekday' + (isWeekend ? " weekend" : "") + '">' + dayNames[d] + "</div>";
+    }
+    document.getElementById("calendar-weekdays").innerHTML = weekdaysHtml;
+    var firstDay = new Date(calendarYear, calendarMonth, 1);
+    var lastDay = new Date(calendarYear, calendarMonth + 1, 0);
+    var startDayOfWeek = (firstDay.getDay() + 6) % 7;
+    var daysInMonth = lastDay.getDate();
+    var today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    var daysHtml = "";
+    var dayIndex = 0;
+    var prevMonth = new Date(calendarYear, calendarMonth, 0);
+    var prevMonthDays = prevMonth.getDate();
+    for (var i = startDayOfWeek - 1; i >= 0; i--) {
+      var dayNum = prevMonthDays - i;
+      var prevDate = new Date(calendarYear, calendarMonth - 1, dayNum);
+      var prevTasks = getTasksForDate(prevDate);
+      daysHtml += renderCalendarDay(dayNum, prevDate, prevTasks, true, false, false);
+      dayIndex++;
+    }
+    for (var d = 1; d <= daysInMonth; d++) {
+      var currentDate = new Date(calendarYear, calendarMonth, d);
+      var isToday = currentDate.getTime() === today.getTime();
+      var dayTasks = getTasksForDate(currentDate);
+      daysHtml += renderCalendarDay(d, currentDate, dayTasks, false, isToday, false);
+      dayIndex++;
+    }
+    var remainingDays = 42 - dayIndex;
+    for (var i = 1; i <= remainingDays; i++) {
+      var nextDate = new Date(calendarYear, calendarMonth + 1, i);
+      var nextTasks = getTasksForDate(nextDate);
+      daysHtml += renderCalendarDay(i, nextDate, nextTasks, true, false);
+    }
+    var daysContainer = document.getElementById("calendar-days");
+    daysContainer.innerHTML = daysHtml;
+    daysContainer.className = "calendar-days";
+  }
+  function renderCalendarDay(dayNum, date, dayTasks, isOtherMonth, isToday, isWeekView) {
+    if (!date || isNaN(date.getTime())) {
+      console.error("Invalid date in renderCalendarDay:", date);
+      return "";
+    }
+    var dayOfWeek = (date.getDay() + 6) % 7;
+    var isWeekend = dayOfWeek >= 5;
+    var dateStr = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+    var classes = "calendar-day";
+    if (isOtherMonth) classes += " other-month";
+    if (isToday) classes += " today";
+    if (isWeekend) classes += " weekend";
+    var html = '<div class="' + classes + `" onclick="onCalendarDayClick('` + dateStr + `')" ondragover="onCalendarDragOver(event)" ondrop="onCalendarDrop(event, '` + dateStr + `')">`;
+    if (!isWeekView) {
+      html += '<div class="day-number">' + dayNum + "</div>";
+    }
+    html += '<div class="day-tasks">';
+    var maxTasks = isWeekView ? 20 : 3;
+    for (var i = 0; i < Math.min(dayTasks.length, maxTasks); i++) {
+      var task = dayTasks[i];
+      var statusClass = "status-" + task.Status;
+      var priorityClass = task.Priority === "high" ? " priority-high" : "";
+      html += '<div class="day-task ' + statusClass + priorityClass + '" draggable="true" ondragstart="onCalendarTaskDragStart(event, ' + task.id + ')" onclick="event.stopPropagation(); openEditTaskModal(' + task.id + ')" title="' + sanitize(task.Title) + '">';
+      html += sanitize(task.Title);
+      html += "</div>";
+    }
+    if (dayTasks.length > maxTasks) {
+      html += '<div class="day-more">+' + (dayTasks.length - maxTasks) + " " + (currentLang === "fr" ? "autres" : "more") + "</div>";
+    }
+    html += "</div></div>";
+    return html;
+  }
+  function onCalendarDayClick(dateStr) {
+    openNewTaskModalWithDate(dateStr);
+  }
+  var calendarDraggedTaskId = null;
+  function onCalendarTaskDragStart(event, taskId) {
+    calendarDraggedTaskId = taskId;
+    event.dataTransfer.effectAllowed = "move";
+    event.target.style.opacity = "0.5";
+  }
+  function onCalendarDragOver(event) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    event.currentTarget.classList.add("drag-over");
+  }
+  async function onCalendarDrop(event, dateStr) {
+    event.preventDefault();
+    event.currentTarget.classList.remove("drag-over");
+    if (!calendarDraggedTaskId) return;
+    var task = state.tasks.find(function(t2) {
+      return t2.id === calendarDraggedTaskId;
+    });
+    if (!task) return;
+    var parts = dateStr.split("-");
+    var newDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    var newTimestamp = Math.floor(newDate.getTime() / 1e3);
+    var duration = 0;
+    if (task.Start_Date && task.Due_Date) {
+      duration = task.Due_Date - task.Start_Date;
+    }
+    var updates = { Due_Date: newTimestamp };
+    if (task.Start_Date) {
+      updates.Start_Date = newTimestamp - duration;
+    }
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.TASKS_TABLE, calendarDraggedTaskId, updates]
+      ]);
+      showToast(t("taskMoved"), "success");
+      await loadAllData();
+    } catch (e) {
+      console.error("Error moving task:", e);
+    }
+    calendarDraggedTaskId = null;
+  }
+  function openNewTaskModalWithDate(dateStr) {
+    return startNewTask(null, dateStr);
+  }
+  function calendarToday() {
+    calendarYear = (/* @__PURE__ */ new Date()).getFullYear();
+    calendarMonth = (/* @__PURE__ */ new Date()).getMonth();
+    calendarWeekOffset = 0;
+    calendarDayOffset = 0;
+    renderCalendarView();
+  }
+  function setCalendarMode(mode) {
+    calendarMode = mode;
+    if (mode === "week") calendarWeekOffset = 0;
+    if (mode === "day") calendarDayOffset = 0;
+    renderCalendarView();
+  }
+  function getTasksForDate(date) {
+    var dateStart = new Date(date);
+    dateStart.setHours(0, 0, 0, 0);
+    var dateEnd = new Date(date);
+    dateEnd.setHours(23, 59, 59, 999);
+    var dateTs = dateStart.getTime() / 1e3;
+    var dateEndTs = dateEnd.getTime() / 1e3;
+    return getFilteredTasks().filter(function(task) {
+      var taskStart = task.Start_Date;
+      var taskEnd = task.Due_Date;
+      if (!taskStart && !taskEnd) return false;
+      if (taskStart && taskEnd) {
+        return taskStart <= dateEndTs && taskEnd >= dateTs;
+      }
+      if (taskStart) return taskStart >= dateTs && taskStart <= dateEndTs;
+      if (taskEnd) return taskEnd >= dateTs && taskEnd <= dateEndTs;
+      return false;
+    });
+  }
+  function renderCalendarWeekView() {
+    var now = /* @__PURE__ */ new Date();
+    var dayOfWeek = now.getDay();
+    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    var weekStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset + calendarWeekOffset * 7);
+    var monthNames = currentLang === "fr" ? ["Janvier", "F\xE9vrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Ao\xFBt", "Septembre", "Octobre", "Novembre", "D\xE9cembre"] : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    var dayNamesFull = currentLang === "fr" ? ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"] : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    var weekEndDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + 6);
+    var startMonth = monthNames[weekStartDate.getMonth()];
+    var endMonth = monthNames[weekEndDate.getMonth()];
+    var title = weekStartDate.getDate() + " " + startMonth;
+    if (startMonth !== endMonth) {
+      title += " - " + weekEndDate.getDate() + " " + endMonth;
+    } else {
+      title += " - " + weekEndDate.getDate() + " " + endMonth;
+    }
+    title += " " + weekStartDate.getFullYear();
+    document.getElementById("calendar-month-title").textContent = title;
+    var today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    var weekdaysHtml = "";
+    for (var d = 0; d < 7; d++) {
+      var dayDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + d);
+      var isWeekend = d >= 5;
+      var isToday = dayDate.getTime() === today.getTime();
+      weekdaysHtml += '<div class="calendar-weekday' + (isWeekend ? " weekend" : "") + (isToday ? " today" : "") + '">';
+      weekdaysHtml += dayNamesFull[d] + " <strong>" + dayDate.getDate() + "</strong>";
+      weekdaysHtml += "</div>";
+    }
+    document.getElementById("calendar-weekdays").innerHTML = weekdaysHtml;
+    var daysHtml = "";
+    for (var d = 0; d < 7; d++) {
+      var dayDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + d);
+      var isToday = dayDate.getTime() === today.getTime();
+      var dayTasks = getTasksForDate(dayDate);
+      daysHtml += renderCalendarDay(dayDate.getDate(), dayDate, dayTasks, false, isToday, true);
+    }
+    var daysContainer = document.getElementById("calendar-days");
+    daysContainer.innerHTML = daysHtml;
+    daysContainer.className = "calendar-days week-view";
+  }
+  function calendarNav(dir) {
+    if (window.innerWidth < 480 && calendarMode !== "day") {
+      calendarWeekOffset += dir;
+      renderCalendarView();
+      return;
+    }
+    if (calendarMode === "week") {
+      calendarWeekOffset += dir;
+    } else if (calendarMode === "day") {
+      calendarDayOffset += dir;
+    } else {
+      calendarMonth += dir;
+      if (calendarMonth > 11) {
+        calendarMonth = 0;
+        calendarYear++;
+      }
+      if (calendarMonth < 0) {
+        calendarMonth = 11;
+        calendarYear--;
+      }
+    }
+    renderCalendarView();
+  }
+  function renderCalendarMobileView() {
+    var now = /* @__PURE__ */ new Date();
+    var dayOfWeek = now.getDay();
+    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    var weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset + calendarWeekOffset * 7);
+    var weekEnd = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6);
+    var monthNames = currentLang === "fr" ? ["Jan", "F\xE9v", "Mar", "Avr", "Mai", "Juin", "Juil", "Ao\xFBt", "Sep", "Oct", "Nov", "D\xE9c"] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var dayNames = currentLang === "fr" ? ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"] : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    var titleStart = weekStart.getDate() + " " + monthNames[weekStart.getMonth()];
+    var titleEnd = weekEnd.getDate() + " " + monthNames[weekEnd.getMonth()] + " " + weekEnd.getFullYear();
+    document.getElementById("calendar-month-title").textContent = titleStart + " \u2013 " + titleEnd;
+    document.getElementById("calendar-weekdays").innerHTML = "";
+    var today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    var html = "";
+    for (var d = 0; d < 7; d++) {
+      var dayDate = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + d);
+      var isToday = dayDate.getTime() === today.getTime();
+      var isWeekend = d >= 5;
+      var dayTasks = getTasksForDate(dayDate);
+      var dateStr = dayDate.getFullYear() + "-" + String(dayDate.getMonth() + 1).padStart(2, "0") + "-" + String(dayDate.getDate()).padStart(2, "0");
+      var cls = "calendar-day" + (isToday ? " today" : "") + (isWeekend ? " weekend" : "");
+      html += '<div class="' + cls + `" onclick="onCalendarDayClick('` + dateStr + `')">`;
+      html += '<div class="mobile-day-label">';
+      html += '<span class="mobile-day-name">' + dayNames[dayDate.getDay()] + "</span>";
+      html += '<div class="day-number">' + dayDate.getDate() + "</div>";
+      html += "</div>";
+      html += '<div class="day-tasks">';
+      for (var i = 0; i < dayTasks.length; i++) {
+        var task = dayTasks[i];
+        html += '<div class="day-task status-' + task.Status + '" onclick="event.stopPropagation(); openEditTaskModal(' + task.id + ')" title="' + sanitize(task.Title) + '">' + sanitize(task.Title) + "</div>";
+      }
+      if (dayTasks.length === 0) {
+        html += '<span class="mobile-no-task">\u2014</span>';
+      }
+      html += "</div></div>";
+    }
+    var daysContainer = document.getElementById("calendar-days");
+    daysContainer.innerHTML = html;
+    daysContainer.className = "calendar-days calendar-mobile-list";
+  }
+  var _calResizeTimer;
+  var _calResizeObserver = null;
+  function applyCalendarResponsiveClasses() {
+    var calContainer = document.querySelector(".calendar-container");
+    if (!calContainer) return;
+    var w = calContainer.getBoundingClientRect().width || window.innerWidth;
+    calContainer.classList.toggle("cal-compact", w < 768 && w >= 480);
+    calContainer.classList.toggle("cal-mobile", w < 480);
+  }
+  function attachCalendarResizeObserver() {
+    var calContainer = document.querySelector(".calendar-container");
+    if (!calContainer || _calResizeObserver) return;
+    if (window.ResizeObserver) {
+      _calResizeObserver = new ResizeObserver(function() {
+        clearTimeout(_calResizeTimer);
+        _calResizeTimer = setTimeout(function() {
+          applyCalendarResponsiveClasses();
+          var calTab = document.getElementById("tab-calendar");
+          if (calTab && calTab.classList.contains("active")) renderCalendarView();
+        }, 150);
+      });
+      _calResizeObserver.observe(calContainer);
+    }
+  }
+  window.addEventListener("resize", function() {
+    clearTimeout(_calResizeTimer);
+    _calResizeTimer = setTimeout(function() {
+      applyCalendarResponsiveClasses();
+      var calTab = document.getElementById("tab-calendar");
+      if (calTab && calTab.classList.contains("active")) renderCalendarView();
+    }, 200);
+  });
+  function renderCalendarDayView() {
+    var today = /* @__PURE__ */ new Date();
+    var viewDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + calendarDayOffset);
+    var isToday = calendarDayOffset === 0;
+    var monthNames = currentLang === "fr" ? ["Janvier", "F\xE9vrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Ao\xFBt", "Septembre", "Octobre", "Novembre", "D\xE9cembre"] : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    var dayNamesFull = currentLang === "fr" ? ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"] : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    document.getElementById("calendar-month-title").textContent = dayNamesFull[viewDate.getDay()] + " " + viewDate.getDate() + " " + monthNames[viewDate.getMonth()] + " " + viewDate.getFullYear();
+    var dayStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), 0, 0, 0);
+    var dayEnd = new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), 23, 59, 59);
+    var dayStartTs = Math.floor(dayStart.getTime() / 1e3);
+    var dayEndTs = Math.floor(dayEnd.getTime() / 1e3);
+    var filteredTasks = getFilteredTasks();
+    var dayTasks = filteredTasks.filter(function(t2) {
+      var dueThisDay = t2.Due_Date && t2.Due_Date >= dayStartTs && t2.Due_Date <= dayEndTs;
+      var inProgressThisDay = t2.Status === "progress" && t2.Start_Date && t2.Due_Date && t2.Start_Date <= dayEndTs && t2.Due_Date >= dayStartTs;
+      var inProgressNoEnd = t2.Status === "progress" && t2.Start_Date && !t2.Due_Date && t2.Start_Date <= dayEndTs;
+      return dueThisDay || inProgressThisDay || inProgressNoEnd;
+    });
+    var statusColors = { todo: "#94a3b8", progress: "#3b82f6", done: "#22c55e" };
+    var priorityColors = { high: "#ef4444", medium: "#f59e0b", low: "#22c55e" };
+    var html = '<div class="calendar-day-view">';
+    html += '<div class="calendar-day-header' + (isToday ? " today" : "") + '">';
+    html += isToday ? "\u{1F4C5} " + (currentLang === "fr" ? "Aujourd'hui" : "Today") : "";
+    html += '<span class="day-task-count">' + dayTasks.length + " " + (currentLang === "fr" ? "t\xE2che(s)" : "task(s)") + "</span>";
+    html += "</div>";
+    if (dayTasks.length === 0) {
+      html += '<div class="day-empty">' + (currentLang === "fr" ? "Aucune t\xE2che ce jour" : "No tasks today") + "</div>";
+    } else {
+      dayTasks.forEach(function(task) {
+        var taskSubtasks = getTaskSubtasks(task.id);
+        var completedSt = taskSubtasks.filter(function(st) {
+          return st.Completed;
+        }).length;
+        var stColor = statusColors[task.Status] || "#94a3b8";
+        var dueThisDay = task.Due_Date && task.Due_Date >= dayStartTs && task.Due_Date <= dayEndTs;
+        var isOverdue2 = task.Due_Date && task.Due_Date < dayStartTs && task.Status !== "done";
+        var dueBadge = dueThisDay ? '<span class="day-due-badge">\u{1F4CC} ' + (currentLang === "fr" ? "\xC9ch\xE9ance" : "Due today") + "</span>" : isOverdue2 ? '<span class="day-due-badge overdue">\u26A0\uFE0F ' + (currentLang === "fr" ? "En retard" : "Overdue") + "</span>" : '<span class="day-due-badge ongoing">\u{1F504} ' + (currentLang === "fr" ? "En cours" : "In progress") + "</span>";
+        html += '<div class="day-task-row" onclick="openEditTaskModal(' + task.id + ')">';
+        html += '<div class="day-task-indicator" style="background:' + stColor + '"></div>';
+        html += '<div class="day-task-body">';
+        html += '<div class="day-task-title">' + sanitize(task.Title) + " " + dueBadge + "</div>";
+        html += '<div class="day-task-meta">';
+        if (task.Assignee) html += "<span>\u{1F464} " + sanitize(task.Assignee.split(",")[0].trim()) + "</span>";
+        html += '<span style="color:' + priorityColors[task.Priority] + ';">\u25B2 ' + task.Priority + "</span>";
+        if (taskSubtasks.length > 0) {
+          html += "<span>\u2611\uFE0F " + completedSt + "/" + taskSubtasks.length + "</span>";
+        }
+        html += "</div>";
+        if (taskSubtasks.length > 0) {
+          html += '<div class="day-subtasks">';
+          taskSubtasks.forEach(function(st) {
+            html += '<div class="day-subtask-item">';
+            html += '<input type="checkbox" ' + (st.Completed ? "checked" : "") + ' onclick="event.stopPropagation();toggleSubtask(' + st.id + ", " + !st.Completed + ')" />';
+            html += '<span class="' + (st.Completed ? "st-done" : "") + '">' + sanitize(st.Title) + "</span>";
+            if (st.Assignee) html += '<span class="day-st-assignee">\u{1F464} ' + sanitize(st.Assignee) + "</span>";
+            html += "</div>";
+          });
+          html += "</div>";
+        }
+        html += "</div>";
+        html += "</div>";
+      });
+    }
+    var dateStr = viewDate.getFullYear() + "-" + String(viewDate.getMonth() + 1).padStart(2, "0") + "-" + String(viewDate.getDate()).padStart(2, "0");
+    html += `<div class="day-add-task" onclick="openNewTaskForDay('` + dateStr + `')">`;
+    html += "+ " + (currentLang === "fr" ? "Ajouter une t\xE2che ce jour" : "Add a task for this day");
+    html += "</div>";
+    html += "</div>";
+    var weekdays = document.getElementById("calendar-weekdays");
+    var days = document.getElementById("calendar-days");
+    if (weekdays) weekdays.innerHTML = "";
+    if (days) {
+      days.innerHTML = html;
+      days.className = "calendar-days day-view";
+    }
+  }
+  function openNewTaskForDay(dateStr) {
+    openNewTaskModalWithDate(dateStr);
+  }
+
+  // src/domains/gantt.js
+  var ganttMode = "days";
+  var ganttSort = "default";
+  var ganttCustomStart = "";
+  var ganttCustomEnd = "";
+  var ganttYear = (/* @__PURE__ */ new Date()).getFullYear();
+  var ganttMonth = (/* @__PURE__ */ new Date()).getMonth();
+  var expandedGanttTasks = {};
+  var selectedGanttTaskId = null;
+  function getGanttSubtasks(taskId) {
+    return getTaskSubtasks(taskId);
+  }
+  function renderGanttSubtaskLabelCell(st, parentTaskId) {
+    var completedClass = st.Completed ? " completed" : "";
+    var html = '<td class="gantt-task-label gantt-subtask-cell' + completedClass + '">';
+    html += '<label class="gantt-subtask-label" onclick="event.stopPropagation()">';
+    html += '<span class="gantt-subtask-arrow">' + (isMilestone(st) ? "\u25C6" : "\u21B3") + "</span>";
+    html += '<input type="checkbox" class="gantt-subtask-checkbox" ' + (st.Completed ? "checked" : "") + ' onchange="toggleGanttSubtask(' + st.id + ', this.checked)">';
+    html += '<span class="gantt-subtask-title">' + sanitize(st.Title) + "</span>";
+    html += "</label>";
+    var stMeta = "";
+    var stBlocker = getSubtaskBlocker(st);
+    if (stBlocker) {
+      var depColor = stBlocker.Completed ? "#94a3b8" : "#ef4444";
+      stMeta += '<span style="color:' + depColor + ';" title="' + (currentLang === "fr" ? "D\xE9pend de" : "Depends on") + " : " + sanitize(stBlocker.Title) + '">\u{1F517} ' + sanitize(stBlocker.Title).substring(0, 14) + "</span>";
+    }
+    if (st.Due_Date) stMeta += "<span>\u{1F4C5} " + formatDate(st.Due_Date) + "</span>";
+    else stMeta += "<span>" + (currentLang === "fr" ? "sans date" : "no date") + "</span>";
+    if (st.Assignee) stMeta += "<span>\u{1F464} " + sanitize(st.Assignee).split(",")[0].trim().substring(0, 10) + "</span>";
+    if (stMeta) html += '<div class="gantt-subtask-meta">' + stMeta + "</div>";
+    html += "</td>";
+    return html;
+  }
+  async function toggleGanttSubtask(subtaskId, completed) {
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, { Completed: completed }]
+      ]);
+      for (var i = 0; i < state.subtasks.length; i++) {
+        if (state.subtasks[i].id === subtaskId) {
+          state.subtasks[i].Completed = completed;
+          break;
+        }
+      }
+      renderGanttView();
+    } catch (e) {
+      console.error("toggleGanttSubtask:", e);
+      showToast((currentLang === "fr" ? "Impossible de modifier la sous-t\xE2che : " : "Could not update subtask: ") + e.message, "error");
+    }
+  }
+  function ganttSubtaskBarClass(st, parentTask) {
+    var base;
+    if (st.Completed) base = "gantt-bar-done";
+    else if (parentTask.Status === "progress") base = "gantt-bar-progress";
+    else base = "gantt-bar-todo";
+    return base + (isMilestone(st) ? " gantt-bar-milestone" : "");
+  }
+  function getGanttSubtaskRange(st, parentTask) {
+    if (!st.Start_Date && !st.Due_Date) {
+      var far = /* @__PURE__ */ new Date(864e13);
+      return { start: far, end: far };
+    }
+    var stEnd = st.Due_Date ? new Date(st.Due_Date * 1e3) : parentTask.Due_Date ? new Date(parentTask.Due_Date * 1e3) : null;
+    if (!stEnd) {
+      var far2 = /* @__PURE__ */ new Date(864e13);
+      return { start: far2, end: far2 };
+    }
+    var stStart;
+    if (isMilestone(st)) {
+      stStart = new Date(stEnd);
+    } else {
+      stStart = st.Start_Date ? new Date(st.Start_Date * 1e3) : new Date(stEnd);
+      if (stStart > stEnd) stStart = new Date(stEnd);
+    }
+    stStart.setHours(0, 0, 0, 0);
+    stEnd.setHours(23, 59, 59, 999);
+    return { start: stStart, end: stEnd };
+  }
+  function getTaskExtensionEnd(task) {
+    if (task.Auto_Extend && task.Status !== "done" && task.Status !== "archived") {
+      var now = /* @__PURE__ */ new Date();
+      now.setHours(23, 59, 59, 999);
+      var dueDate = task.Due_Date ? new Date(task.Due_Date * 1e3) : null;
+      if (dueDate && now > dueDate) return now;
+    }
+    if (task.Extension_Date) {
+      var ext = new Date(task.Extension_Date * 1e3);
+      ext.setHours(23, 59, 59, 999);
+      return ext;
+    }
+    return null;
+  }
+  function getExtensionBarColor(task) {
+    var statuses = getKanbanStatuses();
+    for (var si = 0; si < statuses.length; si++) {
+      if (statuses[si].key === task.Status && statuses[si].color) return statuses[si].color;
+    }
+    if (task.Status === "done") return "#22c55e";
+    if (task.Status === "progress") return "#f59e0b";
+    return "#3b82f6";
+  }
+  function getGanttBarColor(task) {
+    var statuses = getKanbanStatuses();
+    for (var si = 0; si < statuses.length; si++) {
+      if (statuses[si].key === task.Status && statuses[si].color) return statuses[si].color;
+    }
+    return "";
+  }
+  function getGanttBarClass(task) {
+    if (isOverdue(task)) return "gantt-bar-overdue";
+    if (task.Status === "done") return "gantt-bar-done";
+    if (task.Status === "progress") return "gantt-bar-progress";
+    return "gantt-bar-todo";
+  }
+  function ganttPriorityClass(priority) {
+    if (priority === "high") return "gantt-priority-high";
+    if (priority === "low") return "gantt-priority-low";
+    return "gantt-priority-medium";
+  }
+  function ganttTaskRowStart(task) {
+    var selected = selectedGanttTaskId === task.id;
+    return '<tr class="gantt-task-row' + (selected ? " gantt-row-selected" : "") + '" data-gantt-task-id="' + task.id + '">';
+  }
+  function renderGanttTaskLabel(task) {
+    var dotClass = task.Priority === "high" ? "dot-high" : task.Priority === "medium" ? "dot-medium" : "dot-low";
+    var assigneeNames = task.Assignee ? task.Assignee.split(",").map(function(a) {
+      return getUserDisplayName(a.trim());
+    }).join(", ") : "";
+    var ganttProjColor = getProjectColor(task.Project_Id);
+    var ganttProjName = getProjectName(task.Project_Id);
+    var checked = selectedGanttTaskId === task.id ? " checked" : "";
+    var focusTitle = currentLang === "fr" ? "Afficher cette t\xE2che dans le Gantt" : "Show this task in the Gantt";
+    var openTitle = currentLang === "fr" ? "Ouvrir la fiche de la t\xE2che" : "Open task details";
+    var taskComments = getTaskComments(task.id);
+    var taskAttachments = getTaskAttachments(task.id);
+    var html = '<td class="gantt-task-label">';
+    html += '<div class="task-name">';
+    html += '<input type="checkbox" class="gantt-focus-checkbox"' + checked + ' title="' + focusTitle + '" onclick="event.stopPropagation()" onchange="focusGanttTask(' + task.id + ', this.checked)">';
+    html += '<span class="priority-dot ' + dotClass + '" title="' + priorityLabel(task.Priority) + '"></span>';
+    html += '<button type="button" class="gantt-task-title-btn" onclick="openEditTaskModal(' + task.id + ')" title="' + openTitle + '">' + sanitize(task.Title) + "</button>";
+    html += ganttDepBadge(task) + "</div>";
+    if (ganttProjName) {
+      html += '<div class="gantt-project-line" style="--project-color:' + ganttProjColor + ';">' + sanitize(ganttProjName) + "</div>";
+    }
+    html += '<div class="task-info">';
+    if (task.Priority) html += '<span class="gantt-priority-text ' + ganttPriorityClass(task.Priority) + '">' + priorityLabel(task.Priority) + "</span>";
+    if (assigneeNames) html += " \u{1F464} " + sanitize(assigneeNames);
+    if (task.Due_Date) html += " \u{1F4C5} " + formatDate(task.Due_Date);
+    if (taskComments.length > 0) html += ' <button class="gantt-mini-btn" onclick="event.stopPropagation();openCardCommentsModal(' + task.id + ')" title="' + t("comments") + '">\u{1F4AC} ' + taskComments.length + "</button>";
+    if (taskAttachments.length > 0) html += ' <button class="gantt-mini-btn" onclick="event.stopPropagation();openCardAttachmentsModal(' + task.id + ')" title="' + (currentLang === "fr" ? "Pi\xE8ces jointes" : "Attachments") + '">\u{1F4CE} ' + taskAttachments.length + "</button>";
+    html += "</div></td>";
+    return html;
+  }
+  function renderGanttView() {
+    var yearSelect = document.getElementById("gantt-year");
+    if (yearSelect.options.length === 0) {
+      for (var y = 2020; y <= 2050; y++) {
+        var opt = document.createElement("option");
+        opt.value = y;
+        opt.textContent = y;
+        yearSelect.appendChild(opt);
+      }
+    }
+    yearSelect.value = ganttYear;
+    document.querySelectorAll("[data-gantt-mode]").forEach(function(btn) {
+      btn.classList.toggle("active", btn.getAttribute("data-gantt-mode") === ganttMode);
+    });
+    var tasksWithDates = getFilteredTasks().filter(function(task2) {
+      return task2.Start_Date || task2.Due_Date;
+    });
+    var ganttSortSel = document.getElementById("gantt-sort");
+    if (ganttSortSel && ganttSortSel.value !== ganttSort) ganttSortSel.value = ganttSort;
+    if (ganttSort === "priority") {
+      var prioOrder = { high: 0, medium: 1, low: 2 };
+      tasksWithDates.sort(function(a, b) {
+        var pa = prioOrder[a.Priority] !== void 0 ? prioOrder[a.Priority] : 3;
+        var pb = prioOrder[b.Priority] !== void 0 ? prioOrder[b.Priority] : 3;
+        return pa - pb;
+      });
+    } else if (ganttSort === "alpha") {
+      tasksWithDates.sort(function(a, b) {
+        return (a.Title || "").localeCompare(b.Title || "");
+      });
+    } else if (ganttSort === "due") {
+      tasksWithDates.sort(function(a, b) {
+        var da = a.Due_Date || a.Start_Date || 0, db = b.Due_Date || b.Start_Date || 0;
+        return da - db;
+      });
+    }
+    document.getElementById("gantt-task-count").textContent = "(" + tasksWithDates.length + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks") + ")";
+    var today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    var dayNames = currentLang === "fr" ? ["DIM.", "LUN.", "MAR.", "MER.", "JEU.", "VEN.", "SAM."] : ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+    var monthNamesShort = currentLang === "fr" ? ["janv.", "f\xE9vr.", "mars", "avr.", "mai", "juin", "juil.", "ao\xFBt", "sept.", "oct.", "nov.", "d\xE9c."] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var monthNames = currentLang === "fr" ? ["janvier", "f\xE9vrier", "mars", "avril", "mai", "juin", "juillet", "ao\xFBt", "septembre", "octobre", "novembre", "d\xE9cembre"] : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    var html = '<div class="gantt-container"><table class="gantt-table">';
+    if (ganttMode === "weeks") {
+      var weekAnchor = ganttYear === today.getFullYear() && ganttMonth === today.getMonth() ? new Date(today) : new Date(ganttYear, ganttMonth, 1);
+      var startWeek = getISOWeek(weekAnchor);
+      var numWeeks = 24;
+      var weeks = [];
+      for (var w = 0; w < numWeeks; w++) {
+        var wn = startWeek + w;
+        var yr = ganttYear;
+        if (wn > 52) {
+          wn -= 52;
+          yr++;
+        }
+        var ws = getWeekStart(yr, wn);
+        var we = new Date(ws);
+        we.setDate(we.getDate() + 6);
+        weeks.push({ num: wn, year: yr, start: ws, end: we });
+      }
+      html += '<thead><tr><th class="gantt-task-label" style="text-align:left;">' + t("colTaskName") + "</th>";
+      for (var wi = 0; wi < weeks.length; wi++) {
+        var wk = weeks[wi];
+        var isCurrentWeek = getISOWeek(today) === wk.num && today.getFullYear() === wk.year;
+        html += '<th style="min-width:80px;' + (isCurrentWeek ? "background:#fef2f2;color:#ef4444;" : "") + '">';
+        html += '<div style="font-size:11px;font-weight:800;">S' + wk.num + "</div>";
+        html += '<div style="font-size:9px;font-weight:400;color:#94a3b8;">' + monthNamesShort[wk.start.getMonth()] + " " + String(wk.start.getFullYear()).substring(2) + "</div>";
+        html += "</th>";
+      }
+      html += "</tr></thead><tbody>";
+      for (var ti = 0; ti < tasksWithDates.length; ti++) {
+        var task = tasksWithDates[ti];
+        var barClass = getGanttBarClass(task);
+        var barCustomColor = getGanttBarColor(task);
+        var barCustomStyle = barCustomColor ? "background:" + barCustomColor + ";color:white;" : "";
+        html += ganttTaskRowStart(task);
+        html += renderGanttTaskLabel(task);
+        var tStart = task.Start_Date ? new Date(task.Start_Date * 1e3) : null;
+        var tEnd = task.Due_Date ? new Date(task.Due_Date * 1e3) : null;
+        if (!tStart && tEnd) tStart = tEnd;
+        if (!tEnd && tStart) tEnd = tStart;
+        if (tStart) tStart.setHours(0, 0, 0, 0);
+        if (tEnd) tEnd.setHours(23, 59, 59, 999);
+        var barStartIdx = -1, barEndIdx = -1;
+        for (var wi = 0; wi < weeks.length; wi++) {
+          var wk = weeks[wi];
+          if (tStart && tEnd && tStart <= wk.end && tEnd >= wk.start) {
+            if (barStartIdx === -1) barStartIdx = wi;
+            barEndIdx = wi;
+          }
+        }
+        var extEnd = getTaskExtensionEnd(task);
+        var extStartIdx = -1, extEndIdx = -1;
+        if (extEnd && tEnd && extEnd > tEnd) {
+          for (var ewi = 0; ewi < weeks.length; ewi++) {
+            if (tEnd <= weeks[ewi].end && extEnd >= weeks[ewi].start) {
+              if (extStartIdx === -1) extStartIdx = ewi;
+              extEndIdx = ewi;
+            }
+          }
+        }
+        var extColor = getExtensionBarColor(task);
+        for (var wi = 0; wi < weeks.length; wi++) {
+          var isCurrentWeek = getISOWeek(today) === weeks[wi].num && today.getFullYear() === weeks[wi].year;
+          html += '<td class="gantt-cell" style="position:relative;' + (isCurrentWeek ? "background:#fef2f2;" : "") + '">';
+          if (wi === barStartIdx) {
+            var spanCols = barEndIdx - barStartIdx + 1;
+            var widthPx = spanCols * 80;
+            html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + widthPx + "px;cursor:pointer;" + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + "</div>";
+          }
+          if (wi === extStartIdx && extStartIdx >= 0) {
+            var extSpan = extEndIdx - extStartIdx + 1;
+            var extW = extSpan * 80;
+            html += '<div class="gantt-bar-extension" title="' + t("extensionTooltip") + " \u2014 " + sanitize(task.Title) + '" style="left:2px;width:' + extW + "px;border-color:" + extColor + ";background:" + extColor + '20;"></div>';
+          }
+          html += "</td>";
+        }
+        html += "</tr>";
+        if (expandedGanttTasks[task.id]) {
+          var sts = getGanttSubtasks(task.id);
+          for (var sti = 0; sti < sts.length; sti++) {
+            var st = sts[sti];
+            var stRange = getGanttSubtaskRange(st, task);
+            var stBarClass = ganttSubtaskBarClass(st, task);
+            html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
+            var stStartIdx = -1, stEndIdx = -1;
+            for (var wi2 = 0; wi2 < weeks.length; wi2++) {
+              if (stRange.start <= weeks[wi2].end && stRange.end >= weeks[wi2].start) {
+                if (stStartIdx === -1) stStartIdx = wi2;
+                stEndIdx = wi2;
+              }
+            }
+            for (var wi2 = 0; wi2 < weeks.length; wi2++) {
+              var isCW = getISOWeek(today) === weeks[wi2].num && today.getFullYear() === weeks[wi2].year;
+              html += '<td class="gantt-cell" style="position:relative;' + (isCW ? "background:#fef2f2;" : "") + '">';
+              if (wi2 === stStartIdx) {
+                var stSpan = stEndIdx - stStartIdx + 1;
+                var stWidth = stSpan * 80;
+                html += '<div class="gantt-bar gantt-bar-subtask ' + stBarClass + '" style="left:2px;width:' + stWidth + 'px;cursor:pointer;" title="' + sanitize(st.Title) + '" onclick="openEditTaskModal(' + task.id + ')"></div>';
+              }
+              html += "</td>";
+            }
+            html += "</tr>";
+          }
+        }
+      }
+      var viewStartMonth = monthNames[weeks[0].start.getMonth()];
+      var viewEndMonth = monthNames[weeks[weeks.length - 1].start.getMonth()];
+      html += "</tbody></table>";
+      html += '<div class="gantt-footer">';
+      html += "<span>\u{1F31F} " + t("ganttFullYear") + " \u2022 " + t("ganttNavInfo") + " \u2022 " + tasksWithDates.length + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks") + "</span>";
+      html += "<span>" + t("ganttViewRange") + " " + viewStartMonth + " - " + viewEndMonth + " " + ganttYear + "</span>";
+      html += "</div></div>";
+      document.getElementById("gantt-view").innerHTML = html;
+      initGanttDragScroll();
+      return;
+    }
+    if (ganttMode === "year" || ganttMode === "twoyears") {
+      var numYears = ganttMode === "twoyears" ? 2 : 1;
+      var totalMonths = numYears * 12;
+      var startYr = ganttYear;
+      var colWidth = ganttMode === "twoyears" ? 50 : 70;
+      var todayMonth = today.getMonth();
+      var todayYear = today.getFullYear();
+      html += "<thead>";
+      if (ganttMode === "twoyears") {
+        html += '<tr><th class="gantt-task-label" style="text-align:left;" rowspan="2">' + t("colTaskName") + "</th>";
+        html += '<th colspan="12" style="font-size:12px;font-weight:800;background:#f8fafc;">' + startYr + "</th>";
+        html += '<th colspan="12" style="font-size:12px;font-weight:800;background:#f8fafc;">' + (startYr + 1) + "</th>";
+        html += "</tr><tr>";
+      } else {
+        html += '<tr><th class="gantt-task-label" style="text-align:left;">' + t("colTaskName") + "</th>";
+      }
+      for (var ym = 0; ym < totalMonths; ym++) {
+        var yr = startYr + Math.floor(ym / 12);
+        var mo = ym % 12;
+        var isCurrent = yr === todayYear && mo === todayMonth;
+        html += '<th style="min-width:' + colWidth + "px;" + (isCurrent ? "background:#fef2f2;color:#ef4444;" : "") + '">' + monthNamesShort[mo].substring(0, 3) + "</th>";
+      }
+      html += "</tr></thead><tbody>";
+      for (var ti = 0; ti < tasksWithDates.length; ti++) {
+        var task = tasksWithDates[ti];
+        var barClass = getGanttBarClass(task);
+        html += ganttTaskRowStart(task) + renderGanttTaskLabel(task);
+        var yTStart = task.Start_Date ? new Date(task.Start_Date * 1e3) : null;
+        var yTEnd = task.Due_Date ? new Date(task.Due_Date * 1e3) : null;
+        if (!yTStart && yTEnd) yTStart = new Date(yTEnd);
+        if (!yTEnd && yTStart) yTEnd = new Date(yTStart);
+        if (yTStart) yTStart.setHours(0, 0, 0, 0);
+        if (yTEnd) yTEnd.setHours(23, 59, 59, 999);
+        var yBarStart = -1, yBarEnd = -1;
+        for (var ym = 0; ym < totalMonths; ym++) {
+          var yr = startYr + Math.floor(ym / 12);
+          var mo = ym % 12;
+          var ms = new Date(yr, mo, 1);
+          var me = new Date(yr, mo + 1, 0, 23, 59, 59, 999);
+          if (yTStart && yTEnd && yTStart <= me && yTEnd >= ms) {
+            if (yBarStart === -1) yBarStart = ym;
+            yBarEnd = ym;
+          }
+        }
+        var yExtEnd = getTaskExtensionEnd(task);
+        var yExtStart = -1, yExtEndIdx = -1;
+        if (yExtEnd && yTEnd && yExtEnd > yTEnd) {
+          for (var yme = 0; yme < totalMonths; yme++) {
+            var yre = startYr + Math.floor(yme / 12);
+            var moe = yme % 12;
+            var mse = new Date(yre, moe, 1);
+            var mee = new Date(yre, moe + 1, 0, 23, 59, 59, 999);
+            if (mse > yTEnd && yExtEnd >= mse) {
+              if (yExtStart === -1) yExtStart = yme;
+              yExtEndIdx = yme;
+            }
+          }
+        }
+        var yExtColor = getExtensionBarColor(task);
+        for (var ym = 0; ym < totalMonths; ym++) {
+          var yr2 = startYr + Math.floor(ym / 12);
+          var mo2 = ym % 12;
+          var isCurrent2 = yr2 === todayYear && mo2 === todayMonth;
+          html += '<td class="gantt-cell" style="position:relative;min-width:' + colWidth + "px;" + (isCurrent2 ? "background:#fef2f2;" : "") + '">';
+          if (ym === yBarStart) {
+            var yBarW = (yBarEnd - yBarStart + 1) * colWidth;
+            html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + yBarW + "px;cursor:pointer;" + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + "</div>";
+          }
+          if (ym === yExtStart && yExtStart >= 0) {
+            var yExtW = (yExtEndIdx - yExtStart + 1) * colWidth;
+            html += '<div class="gantt-bar-extension" title="' + t("extensionTooltip") + " \u2014 " + sanitize(task.Title) + '" style="left:2px;width:' + yExtW + "px;border-color:" + yExtColor + ";background:" + yExtColor + '20;"></div>';
+          }
+          html += "</td>";
+        }
+        html += "</tr>";
+        if (expandedGanttTasks[task.id]) {
+          var sts = getGanttSubtasks(task.id);
+          for (var sti = 0; sti < sts.length; sti++) {
+            var st = sts[sti];
+            var stRange = getGanttSubtaskRange(st, task);
+            var stBarClass = ganttSubtaskBarClass(st, task);
+            html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
+            var stYStart = -1, stYEnd = -1;
+            for (var ym3 = 0; ym3 < totalMonths; ym3++) {
+              var yr3 = startYr + Math.floor(ym3 / 12);
+              var mo3 = ym3 % 12;
+              var ms3 = new Date(yr3, mo3, 1);
+              var me3 = new Date(yr3, mo3 + 1, 0, 23, 59, 59, 999);
+              if (stRange.start <= me3 && stRange.end >= ms3) {
+                if (stYStart === -1) stYStart = ym3;
+                stYEnd = ym3;
+              }
+            }
+            for (var ym3 = 0; ym3 < totalMonths; ym3++) {
+              html += '<td class="gantt-cell" style="position:relative;min-width:' + colWidth + 'px;">';
+              if (ym3 === stYStart) {
+                var stYW = (stYEnd - stYStart + 1) * colWidth;
+                html += '<div class="gantt-bar gantt-bar-subtask ' + stBarClass + '" style="left:2px;width:' + stYW + 'px;cursor:pointer;" title="' + sanitize(st.Title) + '" onclick="openEditTaskModal(' + task.id + ')"></div>';
+              }
+              html += "</td>";
+            }
+            html += "</tr>";
+          }
+        }
+      }
+      html += "</tbody></table>";
+      html += '<div class="gantt-footer">';
+      var rangeLabel = ganttMode === "twoyears" ? startYr + " - " + (startYr + 1) : String(startYr);
+      html += "<span>\u{1F31F} " + t("ganttFullYear") + " \u2022 " + tasksWithDates.length + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks") + "</span>";
+      html += "<span>" + t("ganttViewRange") + " " + rangeLabel + "</span>";
+      html += "</div></div>";
+      document.getElementById("gantt-view").innerHTML = html;
+      initGanttDragScroll();
+      return;
+    }
+    if (ganttMode === "months") {
+      var startDate = new Date(ganttYear, 0, 1);
+      var endDate = new Date(ganttYear, 11, 31);
+      var todayMonth = today.getMonth();
+      var todayYear = today.getFullYear();
+      var todayDayPct = todayYear === ganttYear && todayMonth >= 0 && todayMonth < 12 ? Math.round((today.getDate() - 1) / new Date(ganttYear, todayMonth + 1, 0).getDate() * 100) : -1;
+      html += '<thead><tr><th class="gantt-task-label" style="text-align:left;">' + t("colTaskName") + "</th>";
+      for (var m = 0; m < 12; m++) {
+        var isCurrentMonth = ganttYear === todayYear && m === todayMonth;
+        html += '<th colspan="1" style="' + (isCurrentMonth ? "background:#fef2f2;color:#ef4444;" : "") + '">' + monthNames[m].substring(0, 3).toUpperCase() + "</th>";
+      }
+      html += "</tr></thead><tbody>";
+      for (var ti = 0; ti < tasksWithDates.length; ti++) {
+        var task = tasksWithDates[ti];
+        var barClass = getGanttBarClass(task);
+        var barCustomColor = getGanttBarColor(task);
+        var barCustomStyle = barCustomColor ? "background:" + barCustomColor + ";color:white;" : "";
+        html += ganttTaskRowStart(task);
+        html += renderGanttTaskLabel(task);
+        var mTStart = task.Start_Date ? new Date(task.Start_Date * 1e3) : null;
+        var mTEnd = task.Due_Date ? new Date(task.Due_Date * 1e3) : null;
+        if (!mTStart && mTEnd) mTStart = new Date(mTEnd);
+        if (!mTEnd && mTStart) mTEnd = new Date(mTStart);
+        if (mTStart) mTStart.setHours(0, 0, 0, 0);
+        if (mTEnd) mTEnd.setHours(23, 59, 59, 999);
+        var mBarStartIdx = -1, mBarEndIdx = -1;
+        for (var m = 0; m < 12; m++) {
+          var ms = new Date(ganttYear, m, 1);
+          var me = new Date(ganttYear, m + 1, 0, 23, 59, 59, 999);
+          if (mTStart && mTEnd && mTStart <= me && mTEnd >= ms) {
+            if (mBarStartIdx === -1) mBarStartIdx = m;
+            mBarEndIdx = m;
+          }
+        }
+        var mExtEnd = getTaskExtensionEnd(task);
+        var mExtStart = -1, mExtEndI = -1;
+        if (mExtEnd && mTEnd && mExtEnd > mTEnd) {
+          for (var me2 = 0; me2 < 12; me2++) {
+            var ms2 = new Date(ganttYear, me2, 1);
+            var me2e = new Date(ganttYear, me2 + 1, 0, 23, 59, 59, 999);
+            if (ms2 > mTEnd && mExtEnd >= ms2) {
+              if (mExtStart === -1) mExtStart = me2;
+              mExtEndI = me2;
+            }
+          }
+        }
+        var mExtColor = getExtensionBarColor(task);
+        for (var m = 0; m < 12; m++) {
+          var isTodayMonth = ganttYear === todayYear && m === todayMonth;
+          html += '<td class="gantt-cell" style="position:relative;min-width:80px;">';
+          if (isTodayMonth && todayDayPct >= 0) {
+            html += '<div style="position:absolute;top:0;bottom:0;left:' + todayDayPct + '%;width:2px;background:#ef4444;z-index:1;pointer-events:none;"></div>';
+          }
+          if (m === mBarStartIdx) {
+            var mBarWidth = (mBarEndIdx - mBarStartIdx + 1) * 80;
+            html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + mBarWidth + "px;cursor:pointer;" + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + "</div>";
+          }
+          if (m === mExtStart && mExtStart >= 0) {
+            var mExtW = (mExtEndI - mExtStart + 1) * 80;
+            html += '<div class="gantt-bar-extension" title="' + t("extensionTooltip") + " \u2014 " + sanitize(task.Title) + '" style="left:2px;width:' + mExtW + "px;border-color:" + mExtColor + ";background:" + mExtColor + '20;"></div>';
+          }
+          html += "</td>";
+        }
+        html += "</tr>";
+        if (expandedGanttTasks[task.id]) {
+          var sts = getGanttSubtasks(task.id);
+          for (var sti = 0; sti < sts.length; sti++) {
+            var st = sts[sti];
+            var stRange = getGanttSubtaskRange(st, task);
+            var stBarClass = ganttSubtaskBarClass(st, task);
+            html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
+            var stStartM = -1, stEndM = -1;
+            for (var m2 = 0; m2 < 12; m2++) {
+              var mStart = new Date(ganttYear, m2, 1);
+              var mEnd = new Date(ganttYear, m2 + 1, 0, 23, 59, 59, 999);
+              if (stRange.start <= mEnd && stRange.end >= mStart) {
+                if (stStartM === -1) stStartM = m2;
+                stEndM = m2;
+              }
+            }
+            for (var m2 = 0; m2 < 12; m2++) {
+              var isTodayMonth2 = ganttYear === todayYear && m2 === todayMonth;
+              html += '<td class="gantt-cell" style="position:relative;min-width:80px;">';
+              if (isTodayMonth2 && todayDayPct >= 0) {
+                html += '<div style="position:absolute;top:0;bottom:0;left:' + todayDayPct + '%;width:2px;background:#ef4444;z-index:1;pointer-events:none;"></div>';
+              }
+              if (m2 === stStartM) {
+                var stBarW = (stEndM - stStartM + 1) * 80;
+                html += '<div class="gantt-bar gantt-bar-subtask ' + stBarClass + '" style="left:2px;width:' + stBarW + 'px;cursor:pointer;" title="' + sanitize(st.Title) + '" onclick="openEditTaskModal(' + task.id + ')"></div>';
+              }
+              html += "</td>";
+            }
+            html += "</tr>";
+          }
+        }
+      }
+      html += "</tbody></table>";
+      html += '<div class="gantt-footer">';
+      html += "<span>\u{1F31F} " + t("ganttFullYear") + " \u2022 " + t("ganttNavInfo") + " \u2022 " + tasksWithDates.length + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks") + "</span>";
+      html += "<span>" + t("ganttViewRange") + " " + monthNames[0] + " - " + monthNames[11] + " " + ganttYear + "</span>";
+      html += "</div></div>";
+      document.getElementById("gantt-view").innerHTML = html;
+      initGanttDragScroll();
+      return;
+    }
+    var startDate, endDate;
+    if (ganttMode === "custom" && ganttCustomStart && ganttCustomEnd) {
+      startDate = /* @__PURE__ */ new Date(ganttCustomStart + "T00:00:00");
+      endDate = /* @__PURE__ */ new Date(ganttCustomEnd + "T00:00:00");
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || endDate < startDate) {
+        startDate = new Date(ganttYear, ganttMonth - 1, 1);
+        endDate = new Date(ganttYear, ganttMonth + 2, 0);
+      } else {
+        var maxEnd = new Date(startDate);
+        maxEnd.setDate(maxEnd.getDate() + 400);
+        if (endDate > maxEnd) endDate = maxEnd;
+      }
+    } else {
+      if (ganttYear === today.getFullYear() && ganttMonth === today.getMonth()) {
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - 7);
+        endDate = new Date(today);
+        endDate.setDate(today.getDate() + 60);
+      } else {
+        startDate = new Date(ganttYear, ganttMonth, 1);
+        endDate = new Date(ganttYear, ganttMonth + 2, 0);
+      }
+    }
+    var days = [];
+    var d = new Date(startDate);
+    while (d <= endDate) {
+      days.push(new Date(d));
+      d.setDate(d.getDate() + 1);
+    }
+    html += '<thead><tr><th class="gantt-task-label" style="text-align:left;" rowspan="2">' + t("colTaskName") + "</th>";
+    var prevMonth = -1;
+    for (var di0 = 0; di0 < days.length; di0++) {
+      var dm = days[di0].getMonth();
+      if (dm !== prevMonth) {
+        var colspan = 0;
+        for (var di1 = di0; di1 < days.length && days[di1].getMonth() === dm; di1++) colspan++;
+        html += '<th colspan="' + colspan + '" style="font-size:11px;font-weight:700;color:#475569;background:#f8fafc;border-bottom:1px solid #e2e8f0;">' + monthNames[dm].toUpperCase() + "</th>";
+        prevMonth = dm;
+      }
+    }
+    html += "</tr><tr>";
+    for (var di = 0; di < days.length; di++) {
+      var dd = days[di];
+      var isToday = dd.getTime() === today.getTime();
+      var isWeekend = dd.getDay() === 0 || dd.getDay() === 6;
+      html += '<th class="' + (isToday ? "today" : "") + (isWeekend ? " weekend" : "") + '">';
+      html += "<div>" + dd.getDate() + "</div>";
+      html += '<div style="font-size:8px;">' + dayNames[dd.getDay()] + "</div>";
+      html += "</th>";
+    }
+    html += "</tr></thead><tbody>";
+    for (var ti = 0; ti < tasksWithDates.length; ti++) {
+      var task = tasksWithDates[ti];
+      var barClass = getGanttBarClass(task);
+      var barCustomColor = getGanttBarColor(task);
+      var barCustomStyle = barCustomColor ? "background:" + barCustomColor + ";color:white;" : "";
+      html += ganttTaskRowStart(task);
+      html += renderGanttTaskLabel(task);
+      var tStart = task.Start_Date ? new Date(task.Start_Date * 1e3) : null;
+      var tEnd = task.Due_Date ? new Date(task.Due_Date * 1e3) : null;
+      if (!tStart && tEnd) tStart = tEnd;
+      if (!tEnd && tStart) tEnd = tStart;
+      if (tStart) tStart.setHours(0, 0, 0, 0);
+      if (tEnd) tEnd.setHours(0, 0, 0, 0);
+      var barStartIdx = -1, barEndIdx = -1;
+      if (tStart && tEnd) {
+        for (var di = 0; di < days.length; di++) {
+          var dday = days[di];
+          if (dday >= tStart && dday <= tEnd) {
+            if (barStartIdx === -1) barStartIdx = di;
+            barEndIdx = di;
+          }
+        }
+        if (barStartIdx === -1 && tStart < days[0] && tEnd >= days[0]) {
+          barStartIdx = 0;
+          for (var di2 = 0; di2 < days.length; di2++) {
+            if (days[di2] <= tEnd) barEndIdx = di2;
+          }
+        }
+      }
+      var dExtEnd = getTaskExtensionEnd(task);
+      var dExtStartIdx = -1, dExtEndIdx = -1;
+      if (dExtEnd && tEnd && dExtEnd > tEnd) {
+        var dExtDay = new Date(dExtEnd);
+        dExtDay.setHours(0, 0, 0, 0);
+        for (var dei = 0; dei < days.length; dei++) {
+          if (days[dei] >= tEnd && days[dei] <= dExtDay) {
+            if (dExtStartIdx === -1) dExtStartIdx = dei;
+            dExtEndIdx = dei;
+          }
+        }
+      }
+      var dExtColor = getExtensionBarColor(task);
+      for (var di = 0; di < days.length; di++) {
+        var dd = days[di];
+        var isToday = dd.getTime() === today.getTime();
+        var isWeekend = dd.getDay() === 0 || dd.getDay() === 6;
+        var cellClass = (isToday ? "today-col" : "") + (isWeekend ? " weekend-col" : "");
+        html += '<td class="gantt-cell ' + cellClass + '">';
+        if (di === barStartIdx) {
+          var spanDays = barEndIdx - barStartIdx + 1;
+          var widthPx = spanDays * 36;
+          html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + widthPx + "px;cursor:pointer;" + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + "</div>";
+        }
+        if (di === dExtStartIdx && dExtStartIdx >= 0) {
+          var dExtW = (dExtEndIdx - dExtStartIdx + 1) * 36;
+          html += '<div class="gantt-bar-extension" title="' + t("extensionTooltip") + " \u2014 " + sanitize(task.Title) + '" style="left:2px;width:' + dExtW + "px;border-color:" + dExtColor + ";background:" + dExtColor + '20;"></div>';
+        }
+        html += "</td>";
+      }
+      html += "</tr>";
+      if (expandedGanttTasks[task.id]) {
+        var sts = getGanttSubtasks(task.id);
+        for (var sti = 0; sti < sts.length; sti++) {
+          var st = sts[sti];
+          var stRange = getGanttSubtaskRange(st, task);
+          var stStartDay = new Date(stRange.start);
+          stStartDay.setHours(0, 0, 0, 0);
+          var stEndDay = new Date(stRange.end);
+          stEndDay.setHours(0, 0, 0, 0);
+          var stBarClass = ganttSubtaskBarClass(st, task);
+          var stBarStartIdx = -1, stBarEndIdx = -1;
+          for (var di2 = 0; di2 < days.length; di2++) {
+            var dday2 = days[di2];
+            if (dday2 >= stStartDay && dday2 <= stEndDay) {
+              if (stBarStartIdx === -1) stBarStartIdx = di2;
+              stBarEndIdx = di2;
+            }
+          }
+          html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
+          for (var di2 = 0; di2 < days.length; di2++) {
+            var dd2 = days[di2];
+            var isToday2 = dd2.getTime() === today.getTime();
+            var isWeekend2 = dd2.getDay() === 0 || dd2.getDay() === 6;
+            var cellClass2 = (isToday2 ? "today-col" : "") + (isWeekend2 ? " weekend-col" : "");
+            html += '<td class="gantt-cell ' + cellClass2 + '">';
+            if (di2 === stBarStartIdx) {
+              var stSpanDays = stBarEndIdx - stBarStartIdx + 1;
+              var stWidth = stSpanDays * 36;
+              html += '<div class="gantt-bar gantt-bar-subtask ' + stBarClass + '" style="left:2px;width:' + stWidth + 'px;cursor:pointer;" title="' + sanitize(st.Title) + '" onclick="openEditTaskModal(' + task.id + ')"></div>';
+            }
+            html += "</td>";
+          }
+          html += "</tr>";
+        }
+      }
+    }
+    html += "</tbody></table>";
+    var viewStart = monthNames[startDate.getMonth()];
+    var viewEnd = monthNames[endDate.getMonth()];
+    html += '<div class="gantt-footer">';
+    html += "<span>\u{1F31F} " + t("ganttFullYear") + " \u2022 " + t("ganttNavInfo") + " \u2022 " + tasksWithDates.length + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks") + "</span>";
+    html += "<span>" + t("ganttViewRange") + " " + viewStart + " - " + viewEnd + " " + ganttYear + "</span>";
+    html += "</div></div>";
+    document.getElementById("gantt-view").innerHTML = html;
+    initGanttDragScroll();
+    scrollGanttToToday();
+  }
+  function initGanttDragScroll() {
+    var container = document.querySelector("#gantt-view .gantt-container");
+    if (!container) return;
+    var isDown = false;
+    var startX, scrollLeft, hasMoved;
+    container.addEventListener("mousedown", function(e) {
+      if (e.button !== 0) return;
+      if (e.target.closest("button, a, select, input")) return;
+      isDown = true;
+      hasMoved = false;
+      startX = e.clientX;
+      scrollLeft = container.scrollLeft;
+      container.style.cursor = "grabbing";
+      container.style.userSelect = "none";
+    });
+    document.addEventListener("mouseup", function() {
+      if (!isDown) return;
+      isDown = false;
+      container.style.cursor = "";
+      container.style.userSelect = "";
+    });
+    document.addEventListener("mousemove", function(e) {
+      if (!isDown) return;
+      var dx = e.clientX - startX;
+      if (Math.abs(dx) > 3) hasMoved = true;
+      if (!hasMoved) return;
+      e.preventDefault();
+      container.scrollLeft = scrollLeft - dx;
+    });
+    container.addEventListener("click", function(e) {
+      if (hasMoved) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }, true);
+  }
+  function scrollGanttToToday() {
+    if (ganttMode !== "days") return;
+    var container = document.querySelector("#gantt-view .gantt-container");
+    var todayCell = container ? container.querySelector(".today-col") : null;
+    if (!container || !todayCell) return;
+    var left = todayCell.offsetLeft - Math.max(80, container.clientWidth * 0.38);
+    container.scrollLeft = Math.max(0, left);
+  }
+  function scrollGanttToTask(taskId) {
+    var container = document.querySelector("#gantt-view .gantt-container");
+    var bar = container ? container.querySelector('[data-gantt-bar-task-id="' + taskId + '"]') : null;
+    if (!container || !bar) return;
+    var stickyLabel = container.querySelector(".gantt-task-label");
+    var labelWidth = stickyLabel ? stickyLabel.offsetWidth : 260;
+    var containerRect = container.getBoundingClientRect();
+    var barRect = bar.getBoundingClientRect();
+    var barContentLeft = container.scrollLeft + (barRect.left - containerRect.left);
+    container.scrollLeft = Math.max(0, barContentLeft - labelWidth - 12);
+  }
+  function focusGanttTask(taskId, checked) {
+    selectedGanttTaskId = checked ? taskId : null;
+    document.querySelectorAll("#gantt-view .gantt-task-row").forEach(function(row) {
+      var isSelected = checked && Number(row.getAttribute("data-gantt-task-id")) === Number(taskId);
+      row.classList.toggle("gantt-row-selected", isSelected);
+      var checkbox = row.querySelector(".gantt-focus-checkbox");
+      if (checkbox) checkbox.checked = isSelected;
+    });
+    if (checked) requestAnimationFrame(function() {
+      scrollGanttToTask(taskId);
+    });
+  }
+  function setGanttYear(value) {
+    ganttYear = Math.max(2020, Math.min(2050, parseInt(value)));
+    renderGanttView();
+  }
+  function ganttNav(dir) {
+    if (ganttMode === "months" || ganttMode === "year" || ganttMode === "twoyears") {
+      ganttYear += dir;
+      ganttYear = Math.max(2020, Math.min(2050, ganttYear));
+    } else if (ganttMode === "weeks") {
+      ganttMonth += dir * 3;
+      if (ganttMonth > 11) {
+        ganttMonth -= 12;
+        ganttYear++;
+      }
+      if (ganttMonth < 0) {
+        ganttMonth += 12;
+        ganttYear--;
+      }
+      ganttYear = Math.max(2020, Math.min(2050, ganttYear));
+    } else {
+      ganttMonth += dir;
+      if (ganttMonth > 11) {
+        ganttMonth -= 12;
+        ganttYear++;
+      }
+      if (ganttMonth < 0) {
+        ganttMonth += 12;
+        ganttYear--;
+      }
+      ganttYear = Math.max(2020, Math.min(2050, ganttYear));
+    }
+    renderGanttView();
+  }
+  function ganttToday() {
+    var today = /* @__PURE__ */ new Date();
+    ganttYear = today.getFullYear();
+    ganttMonth = today.getMonth();
+    renderGanttView();
+  }
+  function ganttExpandAll() {
+    var tasksWithSubs = state.tasks.filter(function(t2) {
+      return getGanttSubtasks(t2.id).length > 0;
+    });
+    tasksWithSubs.forEach(function(t2) {
+      expandedGanttTasks[t2.id] = true;
+    });
+    renderGanttView();
+  }
+  function ganttCollapseAll() {
+    expandedGanttTasks = {};
+    renderGanttView();
+  }
+  function setGanttMode(mode) {
+    ganttMode = mode;
+    var rangeBox = document.getElementById("gantt-custom-range");
+    if (rangeBox) rangeBox.style.display = mode === "custom" ? "flex" : "none";
+    if (mode === "custom") {
+      if (!ganttCustomStart || !ganttCustomEnd) {
+        var ds = new Date(ganttYear, ganttMonth - 1, 1);
+        var de = new Date(ganttYear, ganttMonth + 2, 0);
+        ganttCustomStart = ds.toISOString().split("T")[0];
+        ganttCustomEnd = de.toISOString().split("T")[0];
+      }
+      var sEl = document.getElementById("gantt-custom-start");
+      var eEl = document.getElementById("gantt-custom-end");
+      if (sEl) sEl.value = ganttCustomStart;
+      if (eEl) eEl.value = ganttCustomEnd;
+    }
+    renderGanttView();
+  }
+  function setGanttCustomRange() {
+    var sEl = document.getElementById("gantt-custom-start");
+    var eEl = document.getElementById("gantt-custom-end");
+    if (sEl) ganttCustomStart = sEl.value;
+    if (eEl) ganttCustomEnd = eEl.value;
+    renderGanttView();
+  }
+  function setGanttSort(value) {
+    ganttSort = value;
+    renderGanttView();
+  }
+  async function exportGanttPdf() {
+    var container = document.querySelector("#gantt-view .gantt-container");
+    var table = container ? container.querySelector(".gantt-table") : null;
+    if (!table) {
+      showToast(currentLang === "fr" ? "Affichez d'abord le Gantt" : "Open the Gantt first", "error");
+      return;
+    }
+    if (typeof html2canvas === "undefined" || !window.jspdf) {
+      showToast(currentLang === "fr" ? "Librairies PDF non charg\xE9es" : "PDF libraries not loaded", "error");
+      return;
+    }
+    showToast(currentLang === "fr" ? "G\xE9n\xE9ration du PDF..." : "Generating PDF...", "info");
+    container.classList.add("gantt-exporting");
+    try {
+      var canvas = await html2canvas(table, { scale: 2, backgroundColor: "#ffffff", windowWidth: table.scrollWidth, windowHeight: table.scrollHeight });
+      container.classList.remove("gantt-exporting");
+      var imgData = canvas.toDataURL("image/png");
+      var jsPDF = window.jspdf.jsPDF;
+      var w = canvas.width, h = canvas.height;
+      var pdf = new jsPDF({ orientation: w >= h ? "landscape" : "portrait", unit: "px", format: [w, h], hotfixes: ["px_scaling"] });
+      pdf.addImage(imgData, "PNG", 0, 0, w, h);
+      var dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      pdf.save("Gantt_" + dateStr + ".pdf");
+      showToast(currentLang === "fr" ? "PDF export\xE9 \u2713" : "PDF exported \u2713", "success");
+    } catch (e) {
+      container.classList.remove("gantt-exporting");
+      console.error("exportGanttPdf:", e);
+      showToast((currentLang === "fr" ? "Erreur export PDF : " : "PDF export error: ") + e.message, "error");
+    }
+  }
+  function toggleGanttFullscreen() {
+    var el = document.getElementById("tab-gantt");
+    var btn = document.getElementById("gantt-fullscreen-btn");
+    if (!el) return;
+    var on = el.classList.toggle("gantt-fullscreen");
+    if (btn) {
+      var label = on ? currentLang === "fr" ? "Quitter le plein \xE9cran" : "Exit fullscreen" : currentLang === "fr" ? "Afficher le Gantt en plein \xE9cran" : "Show Gantt fullscreen";
+      btn.title = label;
+      btn.setAttribute("aria-label", label);
+      btn.setAttribute("data-tooltip", label);
+    }
+  }
+
+  // src/domains/templates.js
+  function renderTemplatesView() {
+    var search = (document.getElementById("template-search").value || "").toLowerCase();
+    var filterPriority = document.getElementById("filter-template-priority").value;
+    var filtered = state.templates.filter(function(tpl2) {
+      if (filterPriority && tpl2.Priority !== filterPriority) return false;
+      if (search) {
+        var text = (tpl2.Title + " " + tpl2.Description + " " + tpl2.Category).toLowerCase();
+        if (text.indexOf(search) === -1) return false;
+      }
+      return true;
+    });
+    var html = "";
+    for (var i = 0; i < filtered.length; i++) {
+      var tpl = filtered[i];
+      var dotClass = tpl.Priority === "high" ? "dot-high" : tpl.Priority === "medium" ? "dot-medium" : "dot-low";
+      html += '<div class="template-card">';
+      html += '<div class="template-card-info">';
+      html += "<h4>" + sanitize(tpl.Title) + "</h4>";
+      html += '<div class="template-meta">';
+      if (tpl.Category) html += "\u{1F3F7}\uFE0F " + sanitize(tpl.Category);
+      html += ' <span class="priority-dot ' + dotClass + '"></span> ' + priorityLabel(tpl.Priority);
+      if (tpl.Estimated_Hours) html += " \u23F1\uFE0F " + tpl.Estimated_Hours + "h";
+      html += " \u{1F4CA} " + (tpl.Usage_Count || 0) + " " + (currentLang === "fr" ? "utilisations" : "uses");
+      if (tpl.Updated_At) html += " \u2022 " + (currentLang === "fr" ? "Mis \xE0 jour le " : "Updated ") + formatDate(tpl.Updated_At);
+      html += "</div></div>";
+      html += '<div style="display:flex;gap:4px;">';
+      html += '<button class="btn btn-primary btn-sm" onclick="useTemplate(' + tpl.id + ')">' + t("useTemplate") + "</button>";
+      if (state.isOwner) html += '<button class="btn-icon" onclick="openNewTemplateModal(' + tpl.id + ')" title="' + t("editTemplate") + '">\u270F\uFE0F</button>';
+      if (state.isOwner) html += '<button class="btn-icon" onclick="deleteTemplate(' + tpl.id + ')">\u{1F5D1}\uFE0F</button>';
+      html += "</div>";
+      html += "</div>";
+    }
+    if (filtered.length === 0) {
+      html = '<div style="text-align:center;padding:40px;color:#94a3b8;">' + t("noTasks") + "</div>";
+    }
+    document.getElementById("templates-list").innerHTML = html;
+  }
+  function openNewTemplateModal(tplId) {
+    var editing = tplId != null;
+    var tpl = editing ? state.templates.find(function(x) {
+      return x.id === tplId;
+    }) : null;
+    if (editing && !tpl) return;
+    var title = editing ? sanitize(tpl.Title || "") : "";
+    var desc = editing ? sanitize(tpl.Description || "") : "";
+    var priority = editing ? tpl.Priority || "medium" : "medium";
+    var category = editing ? tpl.Category || "" : "";
+    var hours = editing ? tpl.Estimated_Hours || "" : "";
+    var tplGroup = editing ? tpl.Group_Name || "" : "";
+    var tplTag = editing ? tpl.Tag || "" : "";
+    var tplRecur = editing ? tpl.Recurrence || "none" : "none";
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t(editing ? "modalEditTemplate" : "modalNewTemplate") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldTitle") + '</label><input type="text" id="tpl-title" value="' + title + '" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="tpl-desc">' + desc + "</textarea></div>";
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>' + t("fieldPriority") + '</label><select id="tpl-priority">';
+    html += '<option value="medium"' + (priority === "medium" ? " selected" : "") + ">" + t("priorityMedium") + "</option>";
+    html += '<option value="high"' + (priority === "high" ? " selected" : "") + ">" + t("priorityHigh") + "</option>";
+    html += '<option value="low"' + (priority === "low" ? " selected" : "") + ">" + t("priorityLow") + "</option>";
+    html += "</select></div>";
+    var tplCatOptions = '<option value=""' + (!category ? " selected" : "") + ">--</option>";
+    for (var tci = 0; tci < state.categories.length; tci++) {
+      var catName = state.categories[tci].Name;
+      tplCatOptions += '<option value="' + sanitize(catName) + '"' + (catName === category ? " selected" : "") + ">" + sanitize(catName) + "</option>";
+    }
+    html += '<div class="form-group"><label>' + t("fieldCategory") + '</label><select id="tpl-category">' + tplCatOptions + "</select></div>";
+    html += "</div>";
+    html += '<div class="form-group"><label>' + t("fieldEstimatedTime") + '</label><input type="number" id="tpl-hours" step="0.5" min="0" value="' + hours + '" /></div>';
+    html += '<div class="form-row">';
+    var tplGroupOpts = '<option value="">--</option>';
+    for (var tgi = 0; tgi < state.groups.length; tgi++) tplGroupOpts += '<option value="' + sanitize(state.groups[tgi].Name) + '"' + (state.groups[tgi].Name === tplGroup ? " selected" : "") + ">" + sanitize(state.groups[tgi].Name) + "</option>";
+    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="tpl-group">' + tplGroupOpts + "</select></div>";
+    var tplTagOpts = '<option value="">--</option>';
+    for (var tti = 0; tti < state.tags.length; tti++) tplTagOpts += '<option value="' + sanitize(state.tags[tti].Name) + '"' + (state.tags[tti].Name === tplTag ? " selected" : "") + ">" + sanitize(state.tags[tti].Name) + "</option>";
+    html += '<div class="form-group"><label>' + t("tag") + '</label><select id="tpl-tag">' + tplTagOpts + "</select></div>";
+    html += "</div>";
+    var recurKeys = ["none", "daily", "weekly", "biweekly", "monthly", "quarterly", "yearly"];
+    var recurLabels = { none: "recurrenceNone", daily: "recurrenceDaily", weekly: "recurrenceWeekly", biweekly: "recurrenceBiweekly", monthly: "recurrenceMonthly", quarterly: "recurrenceQuarterly", yearly: "recurrenceYearly" };
+    var tplRecurOpts = recurKeys.map(function(k) {
+      return '<option value="' + k + '"' + (tplRecur === k ? " selected" : "") + ">" + t(recurLabels[k]) + "</option>";
+    }).join("");
+    html += '<div class="form-group"><label>\u{1F501} ' + (currentLang === "fr" ? "R\xE9currence" : "Recurrence") + '</label><select id="tpl-recurrence">' + tplRecurOpts + "</select></div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    if (editing) {
+      html += '<button class="btn btn-primary" onclick="updateTemplate(' + tplId + ')">' + t("save") + "</button>";
+    } else {
+      html += '<button class="btn btn-primary" onclick="createTemplate()">' + t("save") + "</button>";
+    }
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  async function createTemplate() {
+    var title = document.getElementById("tpl-title").value.trim();
+    if (!title) return;
+    var record = {
+      Title: title,
+      Description: document.getElementById("tpl-desc").value.trim(),
+      Priority: document.getElementById("tpl-priority").value,
+      Category: document.getElementById("tpl-category").value.trim(),
+      Estimated_Hours: parseFloat(document.getElementById("tpl-hours").value) || 0,
+      Group_Name: (document.getElementById("tpl-group") || {}).value || "",
+      Tag: (document.getElementById("tpl-tag") || {}).value || "",
+      Recurrence: (document.getElementById("tpl-recurrence") || {}).value || "none",
+      Usage_Count: 0,
+      Updated_At: Math.floor(Date.now() / 1e3)
+    };
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.TEMPLATES_TABLE, null, record]
+      ]);
+      showToast(t("templateCreated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error creating template:", e);
+    }
+  }
+  async function updateTemplate(tplId) {
+    var title = document.getElementById("tpl-title").value.trim();
+    if (!title) return;
+    var record = {
+      Title: title,
+      Description: document.getElementById("tpl-desc").value.trim(),
+      Priority: document.getElementById("tpl-priority").value,
+      Category: document.getElementById("tpl-category").value.trim(),
+      Estimated_Hours: parseFloat(document.getElementById("tpl-hours").value) || 0,
+      Group_Name: (document.getElementById("tpl-group") || {}).value || "",
+      Tag: (document.getElementById("tpl-tag") || {}).value || "",
+      Recurrence: (document.getElementById("tpl-recurrence") || {}).value || "none",
+      Updated_At: Math.floor(Date.now() / 1e3)
+    };
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.TEMPLATES_TABLE, tplId, record]
+      ]);
+      showToast(t("templateUpdated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error updating template:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function deleteTemplate(tplId) {
+    if (!state.isOwner) return;
+    var confirmed = await showConfirmModal(t("confirmDeleteTemplate"), currentLang === "fr" ? "Supprimer le mod\xE8le" : "Delete template");
+    if (!confirmed) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["RemoveRecord", state.TEMPLATES_TABLE, tplId]
+      ]);
+      showToast(t("templateDeleted"), "info");
+      await loadAllData();
+    } catch (e) {
+      console.error("Error deleting template:", e);
+    }
+  }
+  async function useTemplate(tplId) {
+    var tpl = state.templates.find(function(t2) {
+      return t2.id === tplId;
+    });
+    if (!tpl) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.TEMPLATES_TABLE, tplId, { Usage_Count: (tpl.Usage_Count || 0) + 1 }]
+      ]);
+    } catch (e) {
+    }
+    startNewTask("todo", null, {
+      title: tpl.Title || "",
+      description: tpl.Description || "",
+      priority: tpl.Priority || "medium",
+      category: tpl.Category || "",
+      group: tpl.Group_Name || "",
+      tag: tpl.Tag || "",
+      recurrence: tpl.Recurrence || "none",
+      estimatedHours: tpl.Estimated_Hours || 0
+    });
+  }
+
+  // src/domains/stats.js
+  function updateStats() {
+    var container = document.getElementById("stats-row");
+    if (!container) return;
+    var filteredTasks = getFilteredTasks();
+    var total = filteredTasks.length;
+    var html = "";
+    if (showArchivedTasks) {
+      html += '<div class="stat-card stat-total"><div><div class="stat-label">' + (currentLang === "fr" ? "Archiv\xE9es" : "Archived") + '</div><div class="stat-value">' + total + '</div></div><div class="stat-icon"><span class="suite-stat-mark"></span></div></div>';
+    } else {
+      html += '<div class="stat-card stat-total"><div><div class="stat-label">Total</div><div class="stat-value">' + total + '</div></div><div class="stat-icon"><span class="suite-stat-mark"></span></div></div>';
+      var statuses = getKanbanStatuses();
+      for (var i = 0; i < statuses.length; i++) {
+        var s = statuses[i];
+        var count = filteredTasks.filter(function(t2) {
+          return t2.Status === s.key;
+        }).length;
+        var label = currentLang === "fr" ? s.label_fr : s.label_en;
+        var color = s.color || "#94a3b8";
+        var icon = s.emoji && s.emoji.trim() ? s.emoji.trim() : '<span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:' + color + ';"></span>';
+        html += '<div class="stat-card"><div><div class="stat-label">' + sanitize(label) + '</div><div class="stat-value" style="color:' + color + '">' + count + '</div></div><div class="stat-icon">' + icon + "</div></div>";
+      }
+    }
+    container.innerHTML = html;
+  }
+  function renderStatsView() {
+    var filteredTasks = getFilteredTasks();
+    var kanbanStatuses = getKanbanStatuses();
+    var statusCounts = {};
+    kanbanStatuses.forEach(function(s) {
+      statusCounts[s.key] = 0;
+    });
+    filteredTasks.forEach(function(t2) {
+      statusCounts[t2.Status] = (statusCounts[t2.Status] || 0) + 1;
+    });
+    var maxStatus = Math.max.apply(null, kanbanStatuses.map(function(s) {
+      return statusCounts[s.key] || 0;
+    }).concat([1]));
+    var statusHtml = "";
+    kanbanStatuses.forEach(function(s) {
+      var count = statusCounts[s.key] || 0;
+      var height = count / maxStatus * 160;
+      var label = currentLang === "fr" ? s.label_fr : s.label_en;
+      statusHtml += '<div class="chart-bar">';
+      statusHtml += '<span class="chart-bar-value">' + count + "</span>";
+      statusHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + (s.color || "#94a3b8") + '"></div>';
+      statusHtml += '<span class="chart-bar-label">' + sanitize(label) + "</span>";
+      statusHtml += "</div>";
+    });
+    document.getElementById("chart-status").innerHTML = statusHtml;
+    var priorityCounts = { high: 0, medium: 0, low: 0 };
+    filteredTasks.forEach(function(t2) {
+      priorityCounts[t2.Priority] = (priorityCounts[t2.Priority] || 0) + 1;
+    });
+    var maxPriority = Math.max(priorityCounts.high, priorityCounts.medium, priorityCounts.low, 1);
+    var priorityHtml = "";
+    var priorityColors = { high: "#ef4444", medium: "#f59e0b", low: "#22c55e" };
+    var priorityLabels = { high: t("priorityHigh"), medium: t("priorityMedium"), low: t("priorityLow") };
+    ["high", "medium", "low"].forEach(function(p) {
+      var height = priorityCounts[p] / maxPriority * 160;
+      priorityHtml += '<div class="chart-bar">';
+      priorityHtml += '<span class="chart-bar-value">' + priorityCounts[p] + "</span>";
+      priorityHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + priorityColors[p] + '"></div>';
+      priorityHtml += '<span class="chart-bar-label">' + priorityLabels[p] + "</span>";
+      priorityHtml += "</div>";
+    });
+    document.getElementById("chart-priority").innerHTML = priorityHtml;
+    var assigneeCounts = {};
+    filteredTasks.forEach(function(t2) {
+      if (t2.Assignee) {
+        t2.Assignee.split(",").forEach(function(a) {
+          var name = getUserDisplayName(a.trim());
+          assigneeCounts[name] = (assigneeCounts[name] || 0) + 1;
+        });
+      }
+    });
+    var assigneeEntries = Object.entries(assigneeCounts).sort(function(a, b) {
+      return b[1] - a[1];
+    }).slice(0, 5);
+    var maxAssignee = assigneeEntries.length > 0 ? assigneeEntries[0][1] : 1;
+    var assigneeHtml = "";
+    var colors = ["#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b", "#22c55e"];
+    assigneeEntries.forEach(function(entry, i) {
+      var height = entry[1] / maxAssignee * 160;
+      assigneeHtml += '<div class="chart-bar">';
+      assigneeHtml += '<span class="chart-bar-value">' + entry[1] + "</span>";
+      assigneeHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + colors[i % colors.length] + '"></div>';
+      assigneeHtml += '<span class="chart-bar-label">' + entry[0] + "</span>";
+      assigneeHtml += "</div>";
+    });
+    if (assigneeEntries.length === 0) {
+      assigneeHtml = '<div style="text-align:center;color:#94a3b8;width:100%;">Aucune donn\xE9e</div>';
+    }
+    document.getElementById("chart-assignee").innerHTML = assigneeHtml;
+    var weekDays = currentLang === "fr" ? ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    var now = /* @__PURE__ */ new Date();
+    var dayOfWeek = now.getDay();
+    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    var weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
+    var weekCounts = [0, 0, 0, 0, 0, 0, 0];
+    filteredTasks.forEach(function(task) {
+      var tStart = task.Start_Date ? task.Start_Date : task.Due_Date || null;
+      var tEnd = task.Due_Date ? task.Due_Date : task.Start_Date || null;
+      if (!tEnd) return;
+      for (var d = 0; d < 7; d++) {
+        var dayStart = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + d);
+        var dayEnd = new Date(dayStart);
+        dayEnd.setHours(23, 59, 59, 999);
+        var dsTs = Math.floor(dayStart.getTime() / 1e3);
+        var deTs = Math.floor(dayEnd.getTime() / 1e3);
+        if (tStart <= deTs && tEnd >= dsTs) {
+          weekCounts[d]++;
+        }
+      }
+    });
+    var maxWeek = Math.max.apply(null, weekCounts) || 1;
+    var weekHtml = "";
+    weekCounts.forEach(function(count, i) {
+      var height = count / maxWeek * 160;
+      var isToday = i === (now.getDay() + 6) % 7;
+      weekHtml += '<div class="chart-bar">';
+      weekHtml += '<span class="chart-bar-value">' + count + "</span>";
+      weekHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + (isToday ? "#ef4444" : "#3b82f6") + '"></div>';
+      weekHtml += '<span class="chart-bar-label">' + weekDays[i] + "</span>";
+      weekHtml += "</div>";
+    });
+    document.getElementById("chart-week").innerHTML = weekHtml;
+    var completionRate = filteredTasks.length > 0 ? Math.round(statusCounts.done / filteredTasks.length * 100) : 0;
+    document.getElementById("stats-completion-rate").textContent = completionRate + "%";
+    var overdueCount = getOverdueTasks().length;
+    document.getElementById("stats-overdue-count").textContent = overdueCount;
+    var totalMinutes = 0;
+    state.timeEntries.forEach(function(te) {
+      if (te.Duration) totalMinutes += te.Duration;
+    });
+    var totalHours = Math.round(totalMinutes / 60);
+    document.getElementById("stats-total-time").textContent = totalHours + "h";
+    var avgMinutes = filteredTasks.length > 0 ? Math.round(totalMinutes / filteredTasks.length) : 0;
+    var avgHours = Math.round(avgMinutes / 60 * 10) / 10;
+    document.getElementById("stats-avg-time").textContent = avgHours + "h";
+    renderWorkloadChart();
+    renderBurndownChart();
+    renderActivityLog();
+  }
+  function renderWorkloadChart() {
+    var workloadData = {};
+    var now = Math.floor(Date.now() / 1e3);
+    var filteredTasks = getFilteredTasks();
+    filteredTasks.forEach(function(task) {
+      if (task.Assignee && task.Status !== "done") {
+        task.Assignee.split(",").forEach(function(a) {
+          var email = a.trim();
+          var name = getUserDisplayName(email);
+          if (!workloadData[name]) {
+            workloadData[name] = {
+              total: 0,
+              overdue: 0,
+              highPriority: 0,
+              estimatedHours: 0
+            };
+          }
+          workloadData[name].total++;
+          if (task.Due_Date && task.Due_Date < now) {
+            workloadData[name].overdue++;
+          }
+          if (task.Priority === "high") {
+            workloadData[name].highPriority++;
+          }
+          if (task.Estimated_Hours) {
+            workloadData[name].estimatedHours += task.Estimated_Hours;
+          }
+        });
+      }
+    });
+    var workloadEntries = Object.entries(workloadData).map(function(entry) {
+      var name = entry[0];
+      var data = entry[1];
+      var score = data.total * 10 + data.overdue * 30 + data.highPriority * 15;
+      var level = score <= 50 ? "low" : score <= 100 ? "medium" : "high";
+      var levelLabel = currentLang === "fr" ? level === "low" ? "OK" : level === "medium" ? "Attention" : "Surcharge" : level === "low" ? "OK" : level === "medium" ? "Warning" : "Overload";
+      return {
+        name,
+        total: data.total,
+        overdue: data.overdue,
+        highPriority: data.highPriority,
+        score,
+        level,
+        levelLabel
+      };
+    }).sort(function(a, b) {
+      return b.score - a.score;
+    });
+    var maxScore = workloadEntries.length > 0 ? Math.max(workloadEntries[0].score, 100) : 100;
+    var html = "";
+    if (workloadEntries.length === 0) {
+      html = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === "fr" ? "Aucune t\xE2che assign\xE9e" : "No assigned tasks") + "</div>";
+    } else {
+      workloadEntries.forEach(function(entry) {
+        var barWidth = Math.min(entry.score / maxScore * 100, 100);
+        html += '<div class="workload-row">';
+        html += '<div class="workload-name" title="' + entry.name + '">' + entry.name + "</div>";
+        html += '<div class="workload-bar-bg">';
+        html += '<div class="workload-bar-fill ' + entry.level + '" style="width:' + barWidth + '%"></div>';
+        html += "</div>";
+        html += '<div class="workload-stats">';
+        html += '<span class="workload-badge ' + entry.level + '">' + entry.levelLabel + "</span>";
+        html += '<span class="workload-detail">' + entry.total + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks");
+        if (entry.overdue > 0) {
+          html += ' \u2022 <span style="color:#ef4444;">' + entry.overdue + " " + (currentLang === "fr" ? "en retard" : "overdue") + "</span>";
+        }
+        html += "</span>";
+        html += "</div>";
+        html += "</div>";
+      });
+    }
+    document.getElementById("chart-workload").innerHTML = html;
+    var agentSelect = document.getElementById("timeline-agent");
+    if (agentSelect) {
+      var agentNames = Object.keys(workloadData).sort();
+      var currentAgentVal = agentSelect.value;
+      agentSelect.innerHTML = '<option value="">' + (currentLang === "fr" ? "Tous les agents" : "All agents") + "</option>";
+      agentNames.forEach(function(name) {
+        var sel = name === currentAgentVal ? " selected" : "";
+        agentSelect.innerHTML += '<option value="' + sanitize(name) + '"' + sel + ">" + sanitize(name) + "</option>";
+      });
+    }
+    renderTimelineChart();
+  }
+  function renderTimelineChart() {
+    var container = document.getElementById("chart-timeline");
+    if (!container) return;
+    var periodSel = document.getElementById("timeline-period");
+    var agentSel = document.getElementById("timeline-agent");
+    var period = periodSel ? periodSel.value : "weeks";
+    var agentFilter = agentSel ? agentSel.value : "";
+    var now = /* @__PURE__ */ new Date();
+    now.setHours(0, 0, 0, 0);
+    var slots = [];
+    var tlMn = currentLang === "fr" ? ["Jan", "F\xE9v", "Mar", "Avr", "Mai", "Jun", "Jul", "Ao\xFB", "Sep", "Oct", "Nov", "D\xE9c"] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    if (period === "weeks") {
+      var dayOfW = now.getDay();
+      var offToMon = dayOfW === 0 ? -6 : 1 - dayOfW;
+      var thisMon = new Date(now);
+      thisMon.setDate(thisMon.getDate() + offToMon);
+      for (var w = -4; w < 4; w++) {
+        var wStart = new Date(thisMon);
+        wStart.setDate(thisMon.getDate() + w * 7);
+        var wEnd = new Date(wStart);
+        wEnd.setDate(wStart.getDate() + 6);
+        wEnd.setHours(23, 59, 59, 999);
+        var isCurrentW = w === 0;
+        slots.push({ label: wStart.getDate() + "/" + (wStart.getMonth() + 1), start: Math.floor(wStart.getTime() / 1e3), end: Math.floor(wEnd.getTime() / 1e3), current: isCurrentW });
+      }
+    } else {
+      for (var m = -3; m < 3; m++) {
+        var d = new Date(now.getFullYear(), now.getMonth() + m, 1);
+        var dEnd = new Date(now.getFullYear(), now.getMonth() + m + 1, 0, 23, 59, 59, 999);
+        slots.push({ label: tlMn[d.getMonth()], start: Math.floor(d.getTime() / 1e3), end: Math.floor(dEnd.getTime() / 1e3), current: m === 0 });
+      }
+    }
+    var agentColors = ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16"];
+    var allAgents = [];
+    var filteredTasks = getFilteredTasks().filter(function(t2) {
+      return t2.Status !== "done";
+    });
+    filteredTasks.forEach(function(t2) {
+      if (!t2.Assignee) return;
+      t2.Assignee.split(",").forEach(function(a) {
+        var name = getUserDisplayName(a.trim());
+        if (allAgents.indexOf(name) === -1) allAgents.push(name);
+      });
+    });
+    allAgents.sort();
+    var visibleAgents = agentFilter ? [agentFilter] : allAgents;
+    var data = slots.map(function(slot) {
+      var row = { label: slot.label, total: 0, current: slot.current };
+      visibleAgents.forEach(function(agent) {
+        row[agent] = 0;
+      });
+      filteredTasks.forEach(function(t2) {
+        var tS = t2.Start_Date ? t2.Start_Date : t2.Due_Date || null;
+        var tE = t2.Due_Date ? t2.Due_Date : t2.Start_Date || null;
+        if (!tE) return;
+        if (tS > slot.end || tE < slot.start) return;
+        if (!t2.Assignee) return;
+        t2.Assignee.split(",").forEach(function(a) {
+          var name = getUserDisplayName(a.trim());
+          if (visibleAgents.indexOf(name) === -1) return;
+          row[name] = (row[name] || 0) + 1;
+          row.total++;
+        });
+      });
+      return row;
+    });
+    var maxVal = Math.max.apply(null, data.map(function(d2) {
+      return d2.total;
+    }));
+    if (maxVal === 0) maxVal = 1;
+    var BAR_H = 120;
+    var html = '<div style="display:flex;gap:4px;align-items:flex-end;min-height:' + (BAR_H + 50) + 'px;">';
+    data.forEach(function(slot) {
+      var colStyle = slot.current ? "flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:#eff6ff;border-radius:6px;padding:2px;" : "flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;";
+      html += '<div style="' + colStyle + '">';
+      html += '<span style="font-size:10px;color:' + (slot.current ? "#2563eb" : "#64748b") + ";font-weight:" + (slot.current ? "700" : "600") + ';">' + (slot.total || "") + "</span>";
+      html += '<div style="width:100%;display:flex;flex-direction:column-reverse;gap:1px;">';
+      var stackH = 0;
+      visibleAgents.forEach(function(agent, idx) {
+        var count = slot[agent] || 0;
+        if (count === 0) return;
+        var h = Math.max(Math.round(count / maxVal * BAR_H), 4);
+        stackH += h;
+        var color = agentColors[idx % agentColors.length];
+        html += '<div title="' + sanitize(agent) + " : " + count + '" style="height:' + h + "px;background:" + color + ';border-radius:2px;opacity:0.85;"></div>';
+      });
+      if (stackH === 0) {
+        html += '<div style="height:4px;background:#e2e8f0;border-radius:2px;"></div>';
+      }
+      html += "</div>";
+      html += '<span style="font-size:10px;color:' + (slot.current ? "#2563eb" : "#94a3b8") + ";margin-top:4px;font-weight:" + (slot.current ? "700" : "normal") + ';">' + slot.label + "</span>";
+      html += "</div>";
+    });
+    html += "</div>";
+    if (visibleAgents.length > 1) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">';
+      visibleAgents.forEach(function(agent, idx) {
+        var color = agentColors[idx % agentColors.length];
+        html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;background:' + color + ';border-radius:2px;"></span>' + sanitize(agent) + "</span>";
+      });
+      html += "</div>";
+    }
+    container.innerHTML = html;
+  }
+  function renderBurndownChart() {
+    var container = document.getElementById("chart-burndown");
+    if (!container) return;
+    var periodSel = document.getElementById("burndown-period");
+    var weeks = periodSel ? parseInt(periodSel.value) || 8 : 8;
+    var now = /* @__PURE__ */ new Date();
+    var dayOfWeek = now.getDay();
+    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    var thisMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
+    thisMonday.setHours(0, 0, 0, 0);
+    var allTasks = getFilteredTasks();
+    var labels = [];
+    var remaining = [];
+    var completed = [];
+    for (var w = weeks - 1; w >= 0; w--) {
+      var weekEnd = new Date(thisMonday.getTime() - w * 7 * 864e5);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      var weekEndTs = Math.floor(weekEnd.getTime() / 1e3);
+      var dd = String(weekEnd.getDate()).padStart(2, "0");
+      var mm = String(weekEnd.getMonth() + 1).padStart(2, "0");
+      labels.push(dd + "/" + mm);
+      var createdBefore = allTasks.filter(function(t2) {
+        return t2.Created_At && t2.Created_At <= weekEndTs;
+      });
+      var doneByThen = createdBefore.filter(function(t2) {
+        return t2.Status === "done";
+      }).length;
+      var totalByThen = createdBefore.length;
+      var remainByThen = totalByThen - doneByThen;
+      remaining.push(remainByThen);
+      completed.push(doneByThen);
+    }
+    var maxVal = Math.max.apply(null, remaining.concat(completed).concat([1]));
+    var chartH = 180;
+    var barW = Math.max(20, Math.floor(300 / weeks));
+    var html = '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;">';
+    html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:2px;flex-shrink:0;"></span>' + t("burnRemaining") + "</span>";
+    html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border-radius:2px;flex-shrink:0;"></span>' + t("burnCompleted") + "</span>";
+    html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;border:1.5px dashed #94a3b8;border-radius:2px;flex-shrink:0;"></span>' + t("burnIdeal") + "</span>";
+    html += "</div>";
+    html += '<div style="position:relative;height:' + (chartH + 30) + 'px;">';
+    var startRemaining = remaining[0] || 0;
+    var svgW = labels.length * (barW + 8);
+    html += '<svg style="position:absolute;top:0;left:0;width:' + svgW + "px;height:" + chartH + 'px;pointer-events:none;">';
+    for (var li = 0; li < labels.length - 1; li++) {
+      var x1 = li * (barW + 8) + barW / 2;
+      var x2 = (li + 1) * (barW + 8) + barW / 2;
+      var idealVal1 = startRemaining - startRemaining / (labels.length - 1) * li;
+      var idealVal2 = startRemaining - startRemaining / (labels.length - 1) * (li + 1);
+      var y1 = chartH - idealVal1 / maxVal * chartH;
+      var y2 = chartH - idealVal2 / maxVal * chartH;
+      html += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="#94a3b8" stroke-dasharray="4,3" stroke-width="1.5"/>';
+    }
+    html += "</svg>";
+    html += '<div style="display:flex;align-items:flex-end;gap:8px;height:' + chartH + 'px;">';
+    for (var bi = 0; bi < labels.length; bi++) {
+      var remH = remaining[bi] / maxVal * (chartH - 20);
+      var compH = completed[bi] / maxVal * (chartH - 20);
+      html += '<div style="display:flex;flex-direction:column;align-items:center;width:' + barW + 'px;">';
+      html += '<div style="font-size:9px;color:#64748b;margin-bottom:2px;">' + remaining[bi] + "</div>";
+      html += '<div style="width:100%;display:flex;flex-direction:column;gap:1px;">';
+      html += '<div style="height:' + remH + 'px;background:#ef4444;border-radius:3px 3px 0 0;min-height:2px;"></div>';
+      html += '<div style="height:' + compH + 'px;background:#22c55e;border-radius:0 0 3px 3px;min-height:2px;"></div>';
+      html += "</div>";
+      html += "</div>";
+    }
+    html += "</div>";
+    html += '<div style="display:flex;gap:8px;margin-top:4px;">';
+    for (var lbi = 0; lbi < labels.length; lbi++) {
+      html += '<div style="width:' + barW + 'px;text-align:center;font-size:9px;color:#94a3b8;">' + labels[lbi] + "</div>";
+    }
+    html += "</div>";
+    html += "</div>";
+    container.innerHTML = html;
+  }
+
+  // src/domains/team.js
+  function renderTeamView() {
+    renderUsersList();
+    renderGroupsList();
+    renderCategoriesList();
+  }
+  function renderUsersList() {
+    var container = document.getElementById("users-list");
+    if (!container) return;
+    var displayedUsers = state.currentFilterRole ? state.users.filter(function(u2) {
+      return userMatchesRole(u2, state.currentFilterRole);
+    }) : state.users;
+    if (displayedUsers.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noUsers") + "</div>";
+      return;
+    }
+    var html = '<table class="data-table"><thead><tr>';
+    html += "<th>" + t("fieldName") + "</th>";
+    html += "<th>" + t("fieldEmail") + "</th>";
+    html += "<th>" + t("fieldRole") + "</th>";
+    html += "<th>" + t("fieldGroup") + "</th>";
+    html += "<th>" + t("colActions") + "</th>";
+    html += "</tr></thead><tbody>";
+    for (var i = 0; i < displayedUsers.length; i++) {
+      var u = displayedUsers[i];
+      var roleText = userRoleDisplay(u) ? userRoleDisplay(u).split(",").map(function(r) {
+        return roleLabel(r.trim());
+      }).join(", ") : "";
+      var firstRole = getUserRoles(u)[0] || "member";
+      var roleBg = firstRole === "admin" ? "#fef2f2;color:#dc2626" : firstRole === "viewer" ? "#f1f5f9;color:#64748b" : "#eff6ff;color:#1e40af";
+      html += "<tr>";
+      html += '<td style="font-weight:700;">\u{1F464} ' + sanitize(u.Name) + "</td>";
+      html += "<td>" + sanitize(u.Email) + "</td>";
+      html += '<td><span style="padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;background:' + roleBg + '">' + sanitize(roleText) + "</span></td>";
+      html += "<td>" + (u.Group_Name ? '<span class="assignee-chip">\u{1F465} ' + sanitize(u.Group_Name) + "</span>" : "--") + "</td>";
+      html += '<td><button class="btn-icon" onclick="openEditUserModal(' + u.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
+      html += '<button class="btn-icon" onclick="deleteUser(' + u.id + ')">\u{1F5D1}\uFE0F</button></td>';
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  }
+  function renderGroupsList() {
+    var container = document.getElementById("groups-list");
+    if (!container) return;
+    if (state.groups.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noGroups") + "</div>";
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < state.groups.length; i++) {
+      var g = state.groups[i];
+      var memberCount = state.users.filter(function(u) {
+        return u.Group_Name === g.Name;
+      }).length;
+      var memberNames = state.users.filter(function(u) {
+        return u.Group_Name === g.Name;
+      }).map(function(u) {
+        return u.Name || u.Email;
+      });
+      html += '<div class="template-card">';
+      html += '<div class="template-card-info">';
+      html += "<h4>\u{1F465} " + sanitize(g.Name) + "</h4>";
+      html += '<div class="template-meta">';
+      html += memberCount + " " + t("members");
+      if (g.Description) html += " \u2022 " + sanitize(g.Description);
+      html += "</div>";
+      if (memberNames.length > 0) {
+        html += '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">';
+        for (var j = 0; j < memberNames.length; j++) {
+          html += '<span class="assignee-chip">\u{1F464} ' + sanitize(memberNames[j]) + "</span>";
+        }
+        html += "</div>";
+      }
+      html += "</div>";
+      html += '<button class="btn-icon" onclick="openEditGroupModal(' + g.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
+      html += '<button class="btn-icon" onclick="deleteGroup(' + g.id + ')">\u{1F5D1}\uFE0F</button>';
+      html += "</div>";
+    }
+    container.innerHTML = html;
+  }
+  async function getRoleChoicesFromGrist() {
+    var roleSet = {};
+    var hasGristChoices = false;
+    try {
+      var roleColName = getColumnName("users", "role");
+      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
+      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
+      var tableRowId = null;
+      if (tablesData && tablesData.id && tablesData.tableId) {
+        for (var i = 0; i < tablesData.id.length; i++) {
+          if (tablesData.tableId[i] === state.USERS_TABLE) {
+            tableRowId = tablesData.id[i];
+            break;
+          }
+        }
+      }
+      if (tableRowId !== null && columnsData && columnsData.id) {
+        for (var j = 0; j < columnsData.id.length; j++) {
+          if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
+            var wo = columnsData.widgetOptions[j];
+            if (wo) {
+              try {
+                var opts = JSON.parse(wo);
+                if (opts.choices && Array.isArray(opts.choices) && opts.choices.length > 0) {
+                  opts.choices.forEach(function(c) {
+                    roleSet[c] = true;
+                  });
+                  hasGristChoices = true;
+                }
+              } catch (e) {
+              }
+            }
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Could not fetch role choices from Grist metadata:", e);
+    }
+    if (!hasGristChoices) {
+      ["admin", "member", "viewer"].forEach(function(r) {
+        roleSet[r] = true;
+      });
+    }
+    state.users.forEach(function(u) {
+      getUserRoles(u).forEach(function(r) {
+        if (r) roleSet[r] = true;
+      });
+    });
+    return Object.keys(roleSet).sort();
+  }
+  var _manageRolesState = { choices: [] };
+  async function openManageRolesModal() {
+    var choices = await getRoleChoicesFromGrist();
+    _manageRolesState.choices = choices.slice();
+    renderManageRolesModal();
+  }
+  function renderManageRolesModal() {
+    var choices = _manageRolesState.choices;
+    var usage = {};
+    state.users.forEach(function(u) {
+      getUserRoles(u).forEach(function(r2) {
+        if (r2) usage[r2] = (usage[r2] || 0) + 1;
+      });
+    });
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("manageRolesTitle") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<p style="color:#64748b;font-size:13px;margin:0 0 12px 0;">' + t("manageRolesSubtitle") + "</p>";
+    html += '<div class="settings-items">';
+    if (choices.length === 0) {
+      html += '<div style="text-align:center;color:#94a3b8;padding:20px;">--</div>';
+    } else {
+      for (var i = 0; i < choices.length; i++) {
+        var r = choices[i];
+        var count = usage[r] || 0;
+        html += '<div class="settings-item">';
+        html += '<div class="settings-item-info">';
+        html += "<strong>" + sanitize(roleLabel(r)) + "</strong>";
+        html += '<span class="settings-item-meta">' + count + " " + (currentLang === "fr" ? "utilisateur(s)" : "user(s)") + "</span>";
+        html += "</div>";
+        html += '<div class="settings-item-actions">';
+        html += '<button class="btn-icon" onclick="removeRoleChoice(' + i + ')" title="' + t("confirmDeleteRole") + '">\u{1F5D1}\uFE0F</button>';
+        html += "</div>";
+        html += "</div>";
+      }
+    }
+    html += "</div>";
+    html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+    html += '<input type="text" id="new-role-name" placeholder="' + t("newRolePlaceholder") + `" style="flex:1;" onkeydown="if(event.key==='Enter'){addRoleChoice();}" />`;
+    html += '<button class="btn btn-primary btn-sm" onclick="addRoleChoice()">+ ' + t("addRole") + "</button>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="saveRoleChoices()">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function addRoleChoice() {
+    var input = document.getElementById("new-role-name");
+    var name = (input.value || "").trim();
+    if (!name) return;
+    if (_manageRolesState.choices.indexOf(name) !== -1) {
+      showToast(currentLang === "fr" ? "Ce r\xF4le existe d\xE9j\xE0" : "Role already exists", "error");
+      return;
+    }
+    _manageRolesState.choices.push(name);
+    renderManageRolesModal();
+  }
+  function removeRoleChoice(index) {
+    var role = _manageRolesState.choices[index];
+    var inUse = state.users.some(function(u) {
+      return userMatchesRole(u, role);
+    });
+    if (inUse) {
+      if (!confirm(t("cannotDeleteUsedRole") + ". " + (currentLang === "fr" ? "Continuer ?" : "Continue?"))) {
+        return;
+      }
+    } else if (!confirm(t("confirmDeleteRole"))) {
+      return;
+    }
+    _manageRolesState.choices.splice(index, 1);
+    renderManageRolesModal();
+  }
+  async function saveRoleChoices() {
+    try {
+      var roleColName = getColumnName("users", "role");
+      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
+      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
+      var tableRowId = null;
+      for (var i = 0; i < tablesData.id.length; i++) {
+        if (tablesData.tableId[i] === state.USERS_TABLE) {
+          tableRowId = tablesData.id[i];
+          break;
+        }
+      }
+      if (tableRowId === null) throw new Error("Table not found");
+      var existingOpts = {};
+      for (var j = 0; j < columnsData.id.length; j++) {
+        if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
+          var wo = columnsData.widgetOptions[j];
+          if (wo) {
+            try {
+              existingOpts = JSON.parse(wo);
+            } catch (e) {
+            }
+          }
+          break;
+        }
+      }
+      existingOpts.choices = _manageRolesState.choices;
+      if (!existingOpts.widget) existingOpts.widget = "TextBox";
+      await grist.docApi.applyUserActions([
+        ["ModifyColumn", state.USERS_TABLE, roleColName, { widgetOptions: JSON.stringify(existingOpts) }]
+      ]);
+      showToast(t("rolesUpdated"), "success");
+      closeModalForce();
+    } catch (e) {
+      console.error("Error saving roles:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function openEditUserModal(userId) {
+    var user = state.users.find(function(u) {
+      return u.id === userId;
+    });
+    if (!user) return;
+    var groupOptions = '<option value="">--</option>';
+    for (var i = 0; i < state.groups.length; i++) {
+      var sel = state.groups[i].Name === user.Group_Name ? " selected" : "";
+      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + ">" + sanitize(state.groups[i].Name) + "</option>";
+    }
+    var roleChoices = await getRoleChoicesFromGrist();
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(user.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" value="' + sanitize(user.Name) + '" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" value="' + sanitize(user.Email) + '" /></div>';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
+    if (user.Role && roleChoices.indexOf(user.Role) === -1) {
+      html += '<option value="' + sanitize(user.Role) + '" selected>' + sanitize(roleLabel(user.Role)) + "</option>";
+    }
+    for (var i = 0; i < roleChoices.length; i++) {
+      var r = roleChoices[i];
+      var sel = user.Role === r ? " selected" : "";
+      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
+    }
+    html += "</select></div>";
+    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="updateUser(' + userId + ')">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function openEditGroupModal(groupId) {
+    var group = state.groups.find(function(g) {
+      return g.id === groupId;
+    });
+    if (!group) return;
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(group.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" value="' + sanitize(group.Name) + '" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc">' + sanitize(group.Description || "") + "</textarea></div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="updateGroup(' + groupId + ')">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  async function updateUser(userId) {
+    var name = document.getElementById("user-name").value.trim();
+    if (!name) return;
+    var record = {};
+    record[getColumnName("users", "name")] = name;
+    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
+    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
+    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.USERS_TABLE, userId, record]
+      ]);
+      showToast(t("taskUpdated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error updating user:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function updateGroup(groupId) {
+    var name = document.getElementById("group-name").value.trim();
+    if (!name) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.GROUPS_TABLE, groupId, {
+          Name: name,
+          Description: document.getElementById("group-desc").value.trim()
+        }]
+      ]);
+      showToast(t("taskUpdated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error updating group:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function openNewUserModal() {
+    var groupOptions = '<option value="">--</option>';
+    for (var i = 0; i < state.groups.length; i++) {
+      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + "</option>";
+    }
+    var roleChoices = await getRoleChoicesFromGrist();
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("modalNewUser") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" /></div>';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
+    for (var i = 0; i < roleChoices.length; i++) {
+      var r = roleChoices[i];
+      var sel = r === "member" ? " selected" : "";
+      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
+    }
+    html += "</select></div>";
+    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="createUser()">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function openNewGroupModal() {
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("modalNewGroup") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc"></textarea></div>';
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="createGroup()">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  async function createUser() {
+    var name = document.getElementById("user-name").value.trim();
+    if (!name) return;
+    var record = {};
+    record[getColumnName("users", "name")] = name;
+    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
+    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
+    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.USERS_TABLE, null, record]
+      ]);
+      showToast(t("userCreated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error creating user:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function createGroup() {
+    var name = document.getElementById("group-name").value.trim();
+    if (!name) return;
+    var record = {
+      Name: name,
+      Description: document.getElementById("group-desc").value.trim()
+    };
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.GROUPS_TABLE, null, record]
+      ]);
+      showToast(t("groupCreated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error creating group:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function deleteUser(userId) {
+    if (!state.isOwner) return;
+    var confirmed = await showConfirmModal(t("confirmDeleteUser"), currentLang === "fr" ? "Supprimer l'utilisateur" : "Delete user");
+    if (!confirmed) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["RemoveRecord", state.USERS_TABLE, userId]
+      ]);
+      showToast(t("userDeleted"), "info");
+      await loadAllData();
+    } catch (e) {
+      console.error("Error deleting user:", e);
+    }
+  }
+  async function deleteGroup(groupId) {
+    if (!state.isOwner) return;
+    var confirmed = await showConfirmModal(t("confirmDeleteGroup"), currentLang === "fr" ? "Supprimer le groupe" : "Delete group");
+    if (!confirmed) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["RemoveRecord", state.GROUPS_TABLE, groupId]
+      ]);
+      showToast(t("groupDeleted"), "info");
+      await loadAllData();
+    } catch (e) {
+      console.error("Error deleting group:", e);
+    }
+  }
+
+  // src/ui/tabs.js
+  function switchTab(tabId) {
+    document.querySelectorAll(".tab-btn").forEach(function(btn) {
+      btn.classList.toggle("active", btn.getAttribute("data-tab") === tabId);
+    });
+    document.querySelectorAll(".tab-content").forEach(function(tc) {
+      tc.classList.toggle("active", tc.id === "tab-" + tabId);
+    });
+    localStorage.setItem("pm-active-tab", tabId);
+    if (tabId === "calendar") renderCalendarView();
+    if (tabId === "kanban") renderKanbanView();
+    if (tabId === "table") renderTableView();
+    if (tabId === "gantt") renderGanttView();
+    if (tabId === "templates") renderTemplatesView();
+    if (tabId === "stats") renderStatsView();
+    if (tabId === "team") renderTeamView();
+    if (tabId === "settings") renderSettingsView();
+  }
+  function restoreActiveTab() {
+    var savedTab = localStorage.getItem("pm-active-tab");
+    var allowedTabs = ["kanban", "gantt", "team", "settings"];
+    if (savedTab && allowedTabs.indexOf(savedTab) !== -1) {
+      switchTab(savedTab);
+    } else {
+      switchTab("kanban");
+    }
+  }
+  function refreshAllViews() {
+    if (typeof renderProjectSelector === "function") renderProjectSelector();
+    updateStats();
+    updateArchiveButton();
+    var activeTab = document.querySelector(".tab-btn.active");
+    if (activeTab) {
+      var tab = activeTab.getAttribute("data-tab");
+      if (tab === "calendar") renderCalendarView();
+      if (tab === "kanban") renderKanbanView();
+      if (tab === "table") renderTableView();
+      if (tab === "gantt") renderGanttView();
+      if (tab === "templates") renderTemplatesView();
+      if (tab === "stats") renderStatsView();
+      if (tab === "team") renderTeamView();
+    }
+    applyBusinessRoleRestrictions();
+  }
+
   // src/domains/task-modal.js
   function getInputValue(id, fallback) {
     var el = document.getElementById(id);
@@ -7003,601 +9366,6 @@
     }
   }
 
-  // src/domains/templates.js
-  function renderTemplatesView() {
-    var search = (document.getElementById("template-search").value || "").toLowerCase();
-    var filterPriority = document.getElementById("filter-template-priority").value;
-    var filtered = state.templates.filter(function(tpl2) {
-      if (filterPriority && tpl2.Priority !== filterPriority) return false;
-      if (search) {
-        var text = (tpl2.Title + " " + tpl2.Description + " " + tpl2.Category).toLowerCase();
-        if (text.indexOf(search) === -1) return false;
-      }
-      return true;
-    });
-    var html = "";
-    for (var i = 0; i < filtered.length; i++) {
-      var tpl = filtered[i];
-      var dotClass = tpl.Priority === "high" ? "dot-high" : tpl.Priority === "medium" ? "dot-medium" : "dot-low";
-      html += '<div class="template-card">';
-      html += '<div class="template-card-info">';
-      html += "<h4>" + sanitize(tpl.Title) + "</h4>";
-      html += '<div class="template-meta">';
-      if (tpl.Category) html += "\u{1F3F7}\uFE0F " + sanitize(tpl.Category);
-      html += ' <span class="priority-dot ' + dotClass + '"></span> ' + priorityLabel(tpl.Priority);
-      if (tpl.Estimated_Hours) html += " \u23F1\uFE0F " + tpl.Estimated_Hours + "h";
-      html += " \u{1F4CA} " + (tpl.Usage_Count || 0) + " " + (currentLang === "fr" ? "utilisations" : "uses");
-      if (tpl.Updated_At) html += " \u2022 " + (currentLang === "fr" ? "Mis \xE0 jour le " : "Updated ") + formatDate(tpl.Updated_At);
-      html += "</div></div>";
-      html += '<div style="display:flex;gap:4px;">';
-      html += '<button class="btn btn-primary btn-sm" onclick="useTemplate(' + tpl.id + ')">' + t("useTemplate") + "</button>";
-      if (state.isOwner) html += '<button class="btn-icon" onclick="openNewTemplateModal(' + tpl.id + ')" title="' + t("editTemplate") + '">\u270F\uFE0F</button>';
-      if (state.isOwner) html += '<button class="btn-icon" onclick="deleteTemplate(' + tpl.id + ')">\u{1F5D1}\uFE0F</button>';
-      html += "</div>";
-      html += "</div>";
-    }
-    if (filtered.length === 0) {
-      html = '<div style="text-align:center;padding:40px;color:#94a3b8;">' + t("noTasks") + "</div>";
-    }
-    document.getElementById("templates-list").innerHTML = html;
-  }
-  function openNewTemplateModal(tplId) {
-    var editing = tplId != null;
-    var tpl = editing ? state.templates.find(function(x) {
-      return x.id === tplId;
-    }) : null;
-    if (editing && !tpl) return;
-    var title = editing ? sanitize(tpl.Title || "") : "";
-    var desc = editing ? sanitize(tpl.Description || "") : "";
-    var priority = editing ? tpl.Priority || "medium" : "medium";
-    var category = editing ? tpl.Category || "" : "";
-    var hours = editing ? tpl.Estimated_Hours || "" : "";
-    var tplGroup = editing ? tpl.Group_Name || "" : "";
-    var tplTag = editing ? tpl.Tag || "" : "";
-    var tplRecur = editing ? tpl.Recurrence || "none" : "none";
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t(editing ? "modalEditTemplate" : "modalNewTemplate") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldTitle") + '</label><input type="text" id="tpl-title" value="' + title + '" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="tpl-desc">' + desc + "</textarea></div>";
-    html += '<div class="form-row">';
-    html += '<div class="form-group"><label>' + t("fieldPriority") + '</label><select id="tpl-priority">';
-    html += '<option value="medium"' + (priority === "medium" ? " selected" : "") + ">" + t("priorityMedium") + "</option>";
-    html += '<option value="high"' + (priority === "high" ? " selected" : "") + ">" + t("priorityHigh") + "</option>";
-    html += '<option value="low"' + (priority === "low" ? " selected" : "") + ">" + t("priorityLow") + "</option>";
-    html += "</select></div>";
-    var tplCatOptions = '<option value=""' + (!category ? " selected" : "") + ">--</option>";
-    for (var tci = 0; tci < state.categories.length; tci++) {
-      var catName = state.categories[tci].Name;
-      tplCatOptions += '<option value="' + sanitize(catName) + '"' + (catName === category ? " selected" : "") + ">" + sanitize(catName) + "</option>";
-    }
-    html += '<div class="form-group"><label>' + t("fieldCategory") + '</label><select id="tpl-category">' + tplCatOptions + "</select></div>";
-    html += "</div>";
-    html += '<div class="form-group"><label>' + t("fieldEstimatedTime") + '</label><input type="number" id="tpl-hours" step="0.5" min="0" value="' + hours + '" /></div>';
-    html += '<div class="form-row">';
-    var tplGroupOpts = '<option value="">--</option>';
-    for (var tgi = 0; tgi < state.groups.length; tgi++) tplGroupOpts += '<option value="' + sanitize(state.groups[tgi].Name) + '"' + (state.groups[tgi].Name === tplGroup ? " selected" : "") + ">" + sanitize(state.groups[tgi].Name) + "</option>";
-    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="tpl-group">' + tplGroupOpts + "</select></div>";
-    var tplTagOpts = '<option value="">--</option>';
-    for (var tti = 0; tti < state.tags.length; tti++) tplTagOpts += '<option value="' + sanitize(state.tags[tti].Name) + '"' + (state.tags[tti].Name === tplTag ? " selected" : "") + ">" + sanitize(state.tags[tti].Name) + "</option>";
-    html += '<div class="form-group"><label>' + t("tag") + '</label><select id="tpl-tag">' + tplTagOpts + "</select></div>";
-    html += "</div>";
-    var recurKeys = ["none", "daily", "weekly", "biweekly", "monthly", "quarterly", "yearly"];
-    var recurLabels = { none: "recurrenceNone", daily: "recurrenceDaily", weekly: "recurrenceWeekly", biweekly: "recurrenceBiweekly", monthly: "recurrenceMonthly", quarterly: "recurrenceQuarterly", yearly: "recurrenceYearly" };
-    var tplRecurOpts = recurKeys.map(function(k) {
-      return '<option value="' + k + '"' + (tplRecur === k ? " selected" : "") + ">" + t(recurLabels[k]) + "</option>";
-    }).join("");
-    html += '<div class="form-group"><label>\u{1F501} ' + (currentLang === "fr" ? "R\xE9currence" : "Recurrence") + '</label><select id="tpl-recurrence">' + tplRecurOpts + "</select></div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    if (editing) {
-      html += '<button class="btn btn-primary" onclick="updateTemplate(' + tplId + ')">' + t("save") + "</button>";
-    } else {
-      html += '<button class="btn btn-primary" onclick="createTemplate()">' + t("save") + "</button>";
-    }
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  async function createTemplate() {
-    var title = document.getElementById("tpl-title").value.trim();
-    if (!title) return;
-    var record = {
-      Title: title,
-      Description: document.getElementById("tpl-desc").value.trim(),
-      Priority: document.getElementById("tpl-priority").value,
-      Category: document.getElementById("tpl-category").value.trim(),
-      Estimated_Hours: parseFloat(document.getElementById("tpl-hours").value) || 0,
-      Group_Name: (document.getElementById("tpl-group") || {}).value || "",
-      Tag: (document.getElementById("tpl-tag") || {}).value || "",
-      Recurrence: (document.getElementById("tpl-recurrence") || {}).value || "none",
-      Usage_Count: 0,
-      Updated_At: Math.floor(Date.now() / 1e3)
-    };
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.TEMPLATES_TABLE, null, record]
-      ]);
-      showToast(t("templateCreated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error creating template:", e);
-    }
-  }
-  async function updateTemplate(tplId) {
-    var title = document.getElementById("tpl-title").value.trim();
-    if (!title) return;
-    var record = {
-      Title: title,
-      Description: document.getElementById("tpl-desc").value.trim(),
-      Priority: document.getElementById("tpl-priority").value,
-      Category: document.getElementById("tpl-category").value.trim(),
-      Estimated_Hours: parseFloat(document.getElementById("tpl-hours").value) || 0,
-      Group_Name: (document.getElementById("tpl-group") || {}).value || "",
-      Tag: (document.getElementById("tpl-tag") || {}).value || "",
-      Recurrence: (document.getElementById("tpl-recurrence") || {}).value || "none",
-      Updated_At: Math.floor(Date.now() / 1e3)
-    };
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.TEMPLATES_TABLE, tplId, record]
-      ]);
-      showToast(t("templateUpdated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error updating template:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function deleteTemplate(tplId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(t("confirmDeleteTemplate"), currentLang === "fr" ? "Supprimer le mod\xE8le" : "Delete template");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.TEMPLATES_TABLE, tplId]
-      ]);
-      showToast(t("templateDeleted"), "info");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error deleting template:", e);
-    }
-  }
-  async function useTemplate(tplId) {
-    var tpl = state.templates.find(function(t2) {
-      return t2.id === tplId;
-    });
-    if (!tpl) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.TEMPLATES_TABLE, tplId, { Usage_Count: (tpl.Usage_Count || 0) + 1 }]
-      ]);
-    } catch (e) {
-    }
-    startNewTask("todo", null, {
-      title: tpl.Title || "",
-      description: tpl.Description || "",
-      priority: tpl.Priority || "medium",
-      category: tpl.Category || "",
-      group: tpl.Group_Name || "",
-      tag: tpl.Tag || "",
-      recurrence: tpl.Recurrence || "none",
-      estimatedHours: tpl.Estimated_Hours || 0
-    });
-  }
-
-  // src/domains/stats.js
-  function updateStats() {
-    var container = document.getElementById("stats-row");
-    if (!container) return;
-    var filteredTasks = getFilteredTasks();
-    var total = filteredTasks.length;
-    var html = "";
-    if (showArchivedTasks) {
-      html += '<div class="stat-card stat-total"><div><div class="stat-label">' + (currentLang === "fr" ? "Archiv\xE9es" : "Archived") + '</div><div class="stat-value">' + total + '</div></div><div class="stat-icon"><span class="suite-stat-mark"></span></div></div>';
-    } else {
-      html += '<div class="stat-card stat-total"><div><div class="stat-label">Total</div><div class="stat-value">' + total + '</div></div><div class="stat-icon"><span class="suite-stat-mark"></span></div></div>';
-      var statuses = getKanbanStatuses();
-      for (var i = 0; i < statuses.length; i++) {
-        var s = statuses[i];
-        var count = filteredTasks.filter(function(t2) {
-          return t2.Status === s.key;
-        }).length;
-        var label = currentLang === "fr" ? s.label_fr : s.label_en;
-        var color = s.color || "#94a3b8";
-        var icon = s.emoji && s.emoji.trim() ? s.emoji.trim() : '<span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:' + color + ';"></span>';
-        html += '<div class="stat-card"><div><div class="stat-label">' + sanitize(label) + '</div><div class="stat-value" style="color:' + color + '">' + count + '</div></div><div class="stat-icon">' + icon + "</div></div>";
-      }
-    }
-    container.innerHTML = html;
-  }
-  function renderStatsView() {
-    var filteredTasks = getFilteredTasks();
-    var kanbanStatuses = getKanbanStatuses();
-    var statusCounts = {};
-    kanbanStatuses.forEach(function(s) {
-      statusCounts[s.key] = 0;
-    });
-    filteredTasks.forEach(function(t2) {
-      statusCounts[t2.Status] = (statusCounts[t2.Status] || 0) + 1;
-    });
-    var maxStatus = Math.max.apply(null, kanbanStatuses.map(function(s) {
-      return statusCounts[s.key] || 0;
-    }).concat([1]));
-    var statusHtml = "";
-    kanbanStatuses.forEach(function(s) {
-      var count = statusCounts[s.key] || 0;
-      var height = count / maxStatus * 160;
-      var label = currentLang === "fr" ? s.label_fr : s.label_en;
-      statusHtml += '<div class="chart-bar">';
-      statusHtml += '<span class="chart-bar-value">' + count + "</span>";
-      statusHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + (s.color || "#94a3b8") + '"></div>';
-      statusHtml += '<span class="chart-bar-label">' + sanitize(label) + "</span>";
-      statusHtml += "</div>";
-    });
-    document.getElementById("chart-status").innerHTML = statusHtml;
-    var priorityCounts = { high: 0, medium: 0, low: 0 };
-    filteredTasks.forEach(function(t2) {
-      priorityCounts[t2.Priority] = (priorityCounts[t2.Priority] || 0) + 1;
-    });
-    var maxPriority = Math.max(priorityCounts.high, priorityCounts.medium, priorityCounts.low, 1);
-    var priorityHtml = "";
-    var priorityColors = { high: "#ef4444", medium: "#f59e0b", low: "#22c55e" };
-    var priorityLabels = { high: t("priorityHigh"), medium: t("priorityMedium"), low: t("priorityLow") };
-    ["high", "medium", "low"].forEach(function(p) {
-      var height = priorityCounts[p] / maxPriority * 160;
-      priorityHtml += '<div class="chart-bar">';
-      priorityHtml += '<span class="chart-bar-value">' + priorityCounts[p] + "</span>";
-      priorityHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + priorityColors[p] + '"></div>';
-      priorityHtml += '<span class="chart-bar-label">' + priorityLabels[p] + "</span>";
-      priorityHtml += "</div>";
-    });
-    document.getElementById("chart-priority").innerHTML = priorityHtml;
-    var assigneeCounts = {};
-    filteredTasks.forEach(function(t2) {
-      if (t2.Assignee) {
-        t2.Assignee.split(",").forEach(function(a) {
-          var name = getUserDisplayName(a.trim());
-          assigneeCounts[name] = (assigneeCounts[name] || 0) + 1;
-        });
-      }
-    });
-    var assigneeEntries = Object.entries(assigneeCounts).sort(function(a, b) {
-      return b[1] - a[1];
-    }).slice(0, 5);
-    var maxAssignee = assigneeEntries.length > 0 ? assigneeEntries[0][1] : 1;
-    var assigneeHtml = "";
-    var colors = ["#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b", "#22c55e"];
-    assigneeEntries.forEach(function(entry, i) {
-      var height = entry[1] / maxAssignee * 160;
-      assigneeHtml += '<div class="chart-bar">';
-      assigneeHtml += '<span class="chart-bar-value">' + entry[1] + "</span>";
-      assigneeHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + colors[i % colors.length] + '"></div>';
-      assigneeHtml += '<span class="chart-bar-label">' + entry[0] + "</span>";
-      assigneeHtml += "</div>";
-    });
-    if (assigneeEntries.length === 0) {
-      assigneeHtml = '<div style="text-align:center;color:#94a3b8;width:100%;">Aucune donn\xE9e</div>';
-    }
-    document.getElementById("chart-assignee").innerHTML = assigneeHtml;
-    var weekDays = currentLang === "fr" ? ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    var now = /* @__PURE__ */ new Date();
-    var dayOfWeek = now.getDay();
-    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    var weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
-    var weekCounts = [0, 0, 0, 0, 0, 0, 0];
-    filteredTasks.forEach(function(task) {
-      var tStart = task.Start_Date ? task.Start_Date : task.Due_Date || null;
-      var tEnd = task.Due_Date ? task.Due_Date : task.Start_Date || null;
-      if (!tEnd) return;
-      for (var d = 0; d < 7; d++) {
-        var dayStart = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + d);
-        var dayEnd = new Date(dayStart);
-        dayEnd.setHours(23, 59, 59, 999);
-        var dsTs = Math.floor(dayStart.getTime() / 1e3);
-        var deTs = Math.floor(dayEnd.getTime() / 1e3);
-        if (tStart <= deTs && tEnd >= dsTs) {
-          weekCounts[d]++;
-        }
-      }
-    });
-    var maxWeek = Math.max.apply(null, weekCounts) || 1;
-    var weekHtml = "";
-    weekCounts.forEach(function(count, i) {
-      var height = count / maxWeek * 160;
-      var isToday = i === (now.getDay() + 6) % 7;
-      weekHtml += '<div class="chart-bar">';
-      weekHtml += '<span class="chart-bar-value">' + count + "</span>";
-      weekHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + (isToday ? "#ef4444" : "#3b82f6") + '"></div>';
-      weekHtml += '<span class="chart-bar-label">' + weekDays[i] + "</span>";
-      weekHtml += "</div>";
-    });
-    document.getElementById("chart-week").innerHTML = weekHtml;
-    var completionRate = filteredTasks.length > 0 ? Math.round(statusCounts.done / filteredTasks.length * 100) : 0;
-    document.getElementById("stats-completion-rate").textContent = completionRate + "%";
-    var overdueCount = getOverdueTasks().length;
-    document.getElementById("stats-overdue-count").textContent = overdueCount;
-    var totalMinutes = 0;
-    state.timeEntries.forEach(function(te) {
-      if (te.Duration) totalMinutes += te.Duration;
-    });
-    var totalHours = Math.round(totalMinutes / 60);
-    document.getElementById("stats-total-time").textContent = totalHours + "h";
-    var avgMinutes = filteredTasks.length > 0 ? Math.round(totalMinutes / filteredTasks.length) : 0;
-    var avgHours = Math.round(avgMinutes / 60 * 10) / 10;
-    document.getElementById("stats-avg-time").textContent = avgHours + "h";
-    renderWorkloadChart();
-    renderBurndownChart();
-    renderActivityLog();
-  }
-  function renderWorkloadChart() {
-    var workloadData = {};
-    var now = Math.floor(Date.now() / 1e3);
-    var filteredTasks = getFilteredTasks();
-    filteredTasks.forEach(function(task) {
-      if (task.Assignee && task.Status !== "done") {
-        task.Assignee.split(",").forEach(function(a) {
-          var email = a.trim();
-          var name = getUserDisplayName(email);
-          if (!workloadData[name]) {
-            workloadData[name] = {
-              total: 0,
-              overdue: 0,
-              highPriority: 0,
-              estimatedHours: 0
-            };
-          }
-          workloadData[name].total++;
-          if (task.Due_Date && task.Due_Date < now) {
-            workloadData[name].overdue++;
-          }
-          if (task.Priority === "high") {
-            workloadData[name].highPriority++;
-          }
-          if (task.Estimated_Hours) {
-            workloadData[name].estimatedHours += task.Estimated_Hours;
-          }
-        });
-      }
-    });
-    var workloadEntries = Object.entries(workloadData).map(function(entry) {
-      var name = entry[0];
-      var data = entry[1];
-      var score = data.total * 10 + data.overdue * 30 + data.highPriority * 15;
-      var level = score <= 50 ? "low" : score <= 100 ? "medium" : "high";
-      var levelLabel = currentLang === "fr" ? level === "low" ? "OK" : level === "medium" ? "Attention" : "Surcharge" : level === "low" ? "OK" : level === "medium" ? "Warning" : "Overload";
-      return {
-        name,
-        total: data.total,
-        overdue: data.overdue,
-        highPriority: data.highPriority,
-        score,
-        level,
-        levelLabel
-      };
-    }).sort(function(a, b) {
-      return b.score - a.score;
-    });
-    var maxScore = workloadEntries.length > 0 ? Math.max(workloadEntries[0].score, 100) : 100;
-    var html = "";
-    if (workloadEntries.length === 0) {
-      html = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === "fr" ? "Aucune t\xE2che assign\xE9e" : "No assigned tasks") + "</div>";
-    } else {
-      workloadEntries.forEach(function(entry) {
-        var barWidth = Math.min(entry.score / maxScore * 100, 100);
-        html += '<div class="workload-row">';
-        html += '<div class="workload-name" title="' + entry.name + '">' + entry.name + "</div>";
-        html += '<div class="workload-bar-bg">';
-        html += '<div class="workload-bar-fill ' + entry.level + '" style="width:' + barWidth + '%"></div>';
-        html += "</div>";
-        html += '<div class="workload-stats">';
-        html += '<span class="workload-badge ' + entry.level + '">' + entry.levelLabel + "</span>";
-        html += '<span class="workload-detail">' + entry.total + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks");
-        if (entry.overdue > 0) {
-          html += ' \u2022 <span style="color:#ef4444;">' + entry.overdue + " " + (currentLang === "fr" ? "en retard" : "overdue") + "</span>";
-        }
-        html += "</span>";
-        html += "</div>";
-        html += "</div>";
-      });
-    }
-    document.getElementById("chart-workload").innerHTML = html;
-    var agentSelect = document.getElementById("timeline-agent");
-    if (agentSelect) {
-      var agentNames = Object.keys(workloadData).sort();
-      var currentAgentVal = agentSelect.value;
-      agentSelect.innerHTML = '<option value="">' + (currentLang === "fr" ? "Tous les agents" : "All agents") + "</option>";
-      agentNames.forEach(function(name) {
-        var sel = name === currentAgentVal ? " selected" : "";
-        agentSelect.innerHTML += '<option value="' + sanitize(name) + '"' + sel + ">" + sanitize(name) + "</option>";
-      });
-    }
-    renderTimelineChart();
-  }
-  function renderTimelineChart() {
-    var container = document.getElementById("chart-timeline");
-    if (!container) return;
-    var periodSel = document.getElementById("timeline-period");
-    var agentSel = document.getElementById("timeline-agent");
-    var period = periodSel ? periodSel.value : "weeks";
-    var agentFilter = agentSel ? agentSel.value : "";
-    var now = /* @__PURE__ */ new Date();
-    now.setHours(0, 0, 0, 0);
-    var slots = [];
-    var tlMn = currentLang === "fr" ? ["Jan", "F\xE9v", "Mar", "Avr", "Mai", "Jun", "Jul", "Ao\xFB", "Sep", "Oct", "Nov", "D\xE9c"] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    if (period === "weeks") {
-      var dayOfW = now.getDay();
-      var offToMon = dayOfW === 0 ? -6 : 1 - dayOfW;
-      var thisMon = new Date(now);
-      thisMon.setDate(thisMon.getDate() + offToMon);
-      for (var w = -4; w < 4; w++) {
-        var wStart = new Date(thisMon);
-        wStart.setDate(thisMon.getDate() + w * 7);
-        var wEnd = new Date(wStart);
-        wEnd.setDate(wStart.getDate() + 6);
-        wEnd.setHours(23, 59, 59, 999);
-        var isCurrentW = w === 0;
-        slots.push({ label: wStart.getDate() + "/" + (wStart.getMonth() + 1), start: Math.floor(wStart.getTime() / 1e3), end: Math.floor(wEnd.getTime() / 1e3), current: isCurrentW });
-      }
-    } else {
-      for (var m = -3; m < 3; m++) {
-        var d = new Date(now.getFullYear(), now.getMonth() + m, 1);
-        var dEnd = new Date(now.getFullYear(), now.getMonth() + m + 1, 0, 23, 59, 59, 999);
-        slots.push({ label: tlMn[d.getMonth()], start: Math.floor(d.getTime() / 1e3), end: Math.floor(dEnd.getTime() / 1e3), current: m === 0 });
-      }
-    }
-    var agentColors = ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16"];
-    var allAgents = [];
-    var filteredTasks = getFilteredTasks().filter(function(t2) {
-      return t2.Status !== "done";
-    });
-    filteredTasks.forEach(function(t2) {
-      if (!t2.Assignee) return;
-      t2.Assignee.split(",").forEach(function(a) {
-        var name = getUserDisplayName(a.trim());
-        if (allAgents.indexOf(name) === -1) allAgents.push(name);
-      });
-    });
-    allAgents.sort();
-    var visibleAgents = agentFilter ? [agentFilter] : allAgents;
-    var data = slots.map(function(slot) {
-      var row = { label: slot.label, total: 0, current: slot.current };
-      visibleAgents.forEach(function(agent) {
-        row[agent] = 0;
-      });
-      filteredTasks.forEach(function(t2) {
-        var tS = t2.Start_Date ? t2.Start_Date : t2.Due_Date || null;
-        var tE = t2.Due_Date ? t2.Due_Date : t2.Start_Date || null;
-        if (!tE) return;
-        if (tS > slot.end || tE < slot.start) return;
-        if (!t2.Assignee) return;
-        t2.Assignee.split(",").forEach(function(a) {
-          var name = getUserDisplayName(a.trim());
-          if (visibleAgents.indexOf(name) === -1) return;
-          row[name] = (row[name] || 0) + 1;
-          row.total++;
-        });
-      });
-      return row;
-    });
-    var maxVal = Math.max.apply(null, data.map(function(d2) {
-      return d2.total;
-    }));
-    if (maxVal === 0) maxVal = 1;
-    var BAR_H = 120;
-    var html = '<div style="display:flex;gap:4px;align-items:flex-end;min-height:' + (BAR_H + 50) + 'px;">';
-    data.forEach(function(slot) {
-      var colStyle = slot.current ? "flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:#eff6ff;border-radius:6px;padding:2px;" : "flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;";
-      html += '<div style="' + colStyle + '">';
-      html += '<span style="font-size:10px;color:' + (slot.current ? "#2563eb" : "#64748b") + ";font-weight:" + (slot.current ? "700" : "600") + ';">' + (slot.total || "") + "</span>";
-      html += '<div style="width:100%;display:flex;flex-direction:column-reverse;gap:1px;">';
-      var stackH = 0;
-      visibleAgents.forEach(function(agent, idx) {
-        var count = slot[agent] || 0;
-        if (count === 0) return;
-        var h = Math.max(Math.round(count / maxVal * BAR_H), 4);
-        stackH += h;
-        var color = agentColors[idx % agentColors.length];
-        html += '<div title="' + sanitize(agent) + " : " + count + '" style="height:' + h + "px;background:" + color + ';border-radius:2px;opacity:0.85;"></div>';
-      });
-      if (stackH === 0) {
-        html += '<div style="height:4px;background:#e2e8f0;border-radius:2px;"></div>';
-      }
-      html += "</div>";
-      html += '<span style="font-size:10px;color:' + (slot.current ? "#2563eb" : "#94a3b8") + ";margin-top:4px;font-weight:" + (slot.current ? "700" : "normal") + ';">' + slot.label + "</span>";
-      html += "</div>";
-    });
-    html += "</div>";
-    if (visibleAgents.length > 1) {
-      html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">';
-      visibleAgents.forEach(function(agent, idx) {
-        var color = agentColors[idx % agentColors.length];
-        html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;background:' + color + ';border-radius:2px;"></span>' + sanitize(agent) + "</span>";
-      });
-      html += "</div>";
-    }
-    container.innerHTML = html;
-  }
-  function renderBurndownChart() {
-    var container = document.getElementById("chart-burndown");
-    if (!container) return;
-    var periodSel = document.getElementById("burndown-period");
-    var weeks = periodSel ? parseInt(periodSel.value) || 8 : 8;
-    var now = /* @__PURE__ */ new Date();
-    var dayOfWeek = now.getDay();
-    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    var thisMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
-    thisMonday.setHours(0, 0, 0, 0);
-    var allTasks = getFilteredTasks();
-    var labels = [];
-    var remaining = [];
-    var completed = [];
-    for (var w = weeks - 1; w >= 0; w--) {
-      var weekEnd = new Date(thisMonday.getTime() - w * 7 * 864e5);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
-      var weekEndTs = Math.floor(weekEnd.getTime() / 1e3);
-      var dd = String(weekEnd.getDate()).padStart(2, "0");
-      var mm = String(weekEnd.getMonth() + 1).padStart(2, "0");
-      labels.push(dd + "/" + mm);
-      var createdBefore = allTasks.filter(function(t2) {
-        return t2.Created_At && t2.Created_At <= weekEndTs;
-      });
-      var doneByThen = createdBefore.filter(function(t2) {
-        return t2.Status === "done";
-      }).length;
-      var totalByThen = createdBefore.length;
-      var remainByThen = totalByThen - doneByThen;
-      remaining.push(remainByThen);
-      completed.push(doneByThen);
-    }
-    var maxVal = Math.max.apply(null, remaining.concat(completed).concat([1]));
-    var chartH = 180;
-    var barW = Math.max(20, Math.floor(300 / weeks));
-    var html = '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;">';
-    html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:2px;flex-shrink:0;"></span>' + t("burnRemaining") + "</span>";
-    html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border-radius:2px;flex-shrink:0;"></span>' + t("burnCompleted") + "</span>";
-    html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;border:1.5px dashed #94a3b8;border-radius:2px;flex-shrink:0;"></span>' + t("burnIdeal") + "</span>";
-    html += "</div>";
-    html += '<div style="position:relative;height:' + (chartH + 30) + 'px;">';
-    var startRemaining = remaining[0] || 0;
-    var svgW = labels.length * (barW + 8);
-    html += '<svg style="position:absolute;top:0;left:0;width:' + svgW + "px;height:" + chartH + 'px;pointer-events:none;">';
-    for (var li = 0; li < labels.length - 1; li++) {
-      var x1 = li * (barW + 8) + barW / 2;
-      var x2 = (li + 1) * (barW + 8) + barW / 2;
-      var idealVal1 = startRemaining - startRemaining / (labels.length - 1) * li;
-      var idealVal2 = startRemaining - startRemaining / (labels.length - 1) * (li + 1);
-      var y1 = chartH - idealVal1 / maxVal * chartH;
-      var y2 = chartH - idealVal2 / maxVal * chartH;
-      html += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="#94a3b8" stroke-dasharray="4,3" stroke-width="1.5"/>';
-    }
-    html += "</svg>";
-    html += '<div style="display:flex;align-items:flex-end;gap:8px;height:' + chartH + 'px;">';
-    for (var bi = 0; bi < labels.length; bi++) {
-      var remH = remaining[bi] / maxVal * (chartH - 20);
-      var compH = completed[bi] / maxVal * (chartH - 20);
-      html += '<div style="display:flex;flex-direction:column;align-items:center;width:' + barW + 'px;">';
-      html += '<div style="font-size:9px;color:#64748b;margin-bottom:2px;">' + remaining[bi] + "</div>";
-      html += '<div style="width:100%;display:flex;flex-direction:column;gap:1px;">';
-      html += '<div style="height:' + remH + 'px;background:#ef4444;border-radius:3px 3px 0 0;min-height:2px;"></div>';
-      html += '<div style="height:' + compH + 'px;background:#22c55e;border-radius:0 0 3px 3px;min-height:2px;"></div>';
-      html += "</div>";
-      html += "</div>";
-    }
-    html += "</div>";
-    html += '<div style="display:flex;gap:8px;margin-top:4px;">';
-    for (var lbi = 0; lbi < labels.length; lbi++) {
-      html += '<div style="width:' + barW + 'px;text-align:center;font-size:9px;color:#94a3b8;">' + labels[lbi] + "</div>";
-    }
-    html += "</div>";
-    html += "</div>";
-    container.innerHTML = html;
-  }
-
   // src/domains/projects.js
   function populateProjectLead(selectedValue) {
     var sel = document.getElementById("project-lead");
@@ -7758,401 +9526,6 @@
       console.error("Error deleting project:", e);
       showToast("Error: " + e.message, "error");
     }
-  }
-
-  // src/domains/calendar.js
-  var calendarYear = (/* @__PURE__ */ new Date()).getFullYear();
-  var calendarMonth = (/* @__PURE__ */ new Date()).getMonth();
-  var calendarMode = "month";
-  var calendarWeekOffset = 0;
-  var calendarDayOffset = 0;
-  function renderCalendarView() {
-    document.querySelectorAll(".calendar-mode-btn").forEach(function(btn) {
-      btn.classList.toggle("active", btn.getAttribute("data-mode") === calendarMode);
-    });
-    applyCalendarResponsiveClasses();
-    attachCalendarResizeObserver();
-    if (window.innerWidth < 480 && calendarMode !== "day") {
-      renderCalendarMobileView();
-      return;
-    }
-    if (calendarMode === "week") {
-      renderCalendarWeekView();
-      return;
-    }
-    if (calendarMode === "day") {
-      renderCalendarDayView();
-      return;
-    }
-    var monthNames = currentLang === "fr" ? ["Janvier", "F\xE9vrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Ao\xFBt", "Septembre", "Octobre", "Novembre", "D\xE9cembre"] : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    var dayNames = currentLang === "fr" ? ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    document.getElementById("calendar-month-title").textContent = monthNames[calendarMonth] + " " + calendarYear;
-    var weekdaysHtml = "";
-    for (var d = 0; d < 7; d++) {
-      var isWeekend = d >= 5;
-      weekdaysHtml += '<div class="calendar-weekday' + (isWeekend ? " weekend" : "") + '">' + dayNames[d] + "</div>";
-    }
-    document.getElementById("calendar-weekdays").innerHTML = weekdaysHtml;
-    var firstDay = new Date(calendarYear, calendarMonth, 1);
-    var lastDay = new Date(calendarYear, calendarMonth + 1, 0);
-    var startDayOfWeek = (firstDay.getDay() + 6) % 7;
-    var daysInMonth = lastDay.getDate();
-    var today = /* @__PURE__ */ new Date();
-    today.setHours(0, 0, 0, 0);
-    var daysHtml = "";
-    var dayIndex = 0;
-    var prevMonth = new Date(calendarYear, calendarMonth, 0);
-    var prevMonthDays = prevMonth.getDate();
-    for (var i = startDayOfWeek - 1; i >= 0; i--) {
-      var dayNum = prevMonthDays - i;
-      var prevDate = new Date(calendarYear, calendarMonth - 1, dayNum);
-      var prevTasks = getTasksForDate(prevDate);
-      daysHtml += renderCalendarDay(dayNum, prevDate, prevTasks, true, false, false);
-      dayIndex++;
-    }
-    for (var d = 1; d <= daysInMonth; d++) {
-      var currentDate = new Date(calendarYear, calendarMonth, d);
-      var isToday = currentDate.getTime() === today.getTime();
-      var dayTasks = getTasksForDate(currentDate);
-      daysHtml += renderCalendarDay(d, currentDate, dayTasks, false, isToday, false);
-      dayIndex++;
-    }
-    var remainingDays = 42 - dayIndex;
-    for (var i = 1; i <= remainingDays; i++) {
-      var nextDate = new Date(calendarYear, calendarMonth + 1, i);
-      var nextTasks = getTasksForDate(nextDate);
-      daysHtml += renderCalendarDay(i, nextDate, nextTasks, true, false);
-    }
-    var daysContainer = document.getElementById("calendar-days");
-    daysContainer.innerHTML = daysHtml;
-    daysContainer.className = "calendar-days";
-  }
-  function renderCalendarDay(dayNum, date, dayTasks, isOtherMonth, isToday, isWeekView) {
-    if (!date || isNaN(date.getTime())) {
-      console.error("Invalid date in renderCalendarDay:", date);
-      return "";
-    }
-    var dayOfWeek = (date.getDay() + 6) % 7;
-    var isWeekend = dayOfWeek >= 5;
-    var dateStr = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
-    var classes = "calendar-day";
-    if (isOtherMonth) classes += " other-month";
-    if (isToday) classes += " today";
-    if (isWeekend) classes += " weekend";
-    var html = '<div class="' + classes + `" onclick="onCalendarDayClick('` + dateStr + `')" ondragover="onCalendarDragOver(event)" ondrop="onCalendarDrop(event, '` + dateStr + `')">`;
-    if (!isWeekView) {
-      html += '<div class="day-number">' + dayNum + "</div>";
-    }
-    html += '<div class="day-tasks">';
-    var maxTasks = isWeekView ? 20 : 3;
-    for (var i = 0; i < Math.min(dayTasks.length, maxTasks); i++) {
-      var task = dayTasks[i];
-      var statusClass = "status-" + task.Status;
-      var priorityClass = task.Priority === "high" ? " priority-high" : "";
-      html += '<div class="day-task ' + statusClass + priorityClass + '" draggable="true" ondragstart="onCalendarTaskDragStart(event, ' + task.id + ')" onclick="event.stopPropagation(); openEditTaskModal(' + task.id + ')" title="' + sanitize(task.Title) + '">';
-      html += sanitize(task.Title);
-      html += "</div>";
-    }
-    if (dayTasks.length > maxTasks) {
-      html += '<div class="day-more">+' + (dayTasks.length - maxTasks) + " " + (currentLang === "fr" ? "autres" : "more") + "</div>";
-    }
-    html += "</div></div>";
-    return html;
-  }
-  function onCalendarDayClick(dateStr) {
-    openNewTaskModalWithDate(dateStr);
-  }
-  var calendarDraggedTaskId = null;
-  function onCalendarTaskDragStart(event, taskId) {
-    calendarDraggedTaskId = taskId;
-    event.dataTransfer.effectAllowed = "move";
-    event.target.style.opacity = "0.5";
-  }
-  function onCalendarDragOver(event) {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    event.currentTarget.classList.add("drag-over");
-  }
-  async function onCalendarDrop(event, dateStr) {
-    event.preventDefault();
-    event.currentTarget.classList.remove("drag-over");
-    if (!calendarDraggedTaskId) return;
-    var task = state.tasks.find(function(t2) {
-      return t2.id === calendarDraggedTaskId;
-    });
-    if (!task) return;
-    var parts = dateStr.split("-");
-    var newDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-    var newTimestamp = Math.floor(newDate.getTime() / 1e3);
-    var duration = 0;
-    if (task.Start_Date && task.Due_Date) {
-      duration = task.Due_Date - task.Start_Date;
-    }
-    var updates = { Due_Date: newTimestamp };
-    if (task.Start_Date) {
-      updates.Start_Date = newTimestamp - duration;
-    }
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.TASKS_TABLE, calendarDraggedTaskId, updates]
-      ]);
-      showToast(t("taskMoved"), "success");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error moving task:", e);
-    }
-    calendarDraggedTaskId = null;
-  }
-  function openNewTaskModalWithDate(dateStr) {
-    return startNewTask(null, dateStr);
-  }
-  function calendarToday() {
-    calendarYear = (/* @__PURE__ */ new Date()).getFullYear();
-    calendarMonth = (/* @__PURE__ */ new Date()).getMonth();
-    calendarWeekOffset = 0;
-    calendarDayOffset = 0;
-    renderCalendarView();
-  }
-  function setCalendarMode(mode) {
-    calendarMode = mode;
-    if (mode === "week") calendarWeekOffset = 0;
-    if (mode === "day") calendarDayOffset = 0;
-    renderCalendarView();
-  }
-  function getTasksForDate(date) {
-    var dateStart = new Date(date);
-    dateStart.setHours(0, 0, 0, 0);
-    var dateEnd = new Date(date);
-    dateEnd.setHours(23, 59, 59, 999);
-    var dateTs = dateStart.getTime() / 1e3;
-    var dateEndTs = dateEnd.getTime() / 1e3;
-    return getFilteredTasks().filter(function(task) {
-      var taskStart = task.Start_Date;
-      var taskEnd = task.Due_Date;
-      if (!taskStart && !taskEnd) return false;
-      if (taskStart && taskEnd) {
-        return taskStart <= dateEndTs && taskEnd >= dateTs;
-      }
-      if (taskStart) return taskStart >= dateTs && taskStart <= dateEndTs;
-      if (taskEnd) return taskEnd >= dateTs && taskEnd <= dateEndTs;
-      return false;
-    });
-  }
-  function renderCalendarWeekView() {
-    var now = /* @__PURE__ */ new Date();
-    var dayOfWeek = now.getDay();
-    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    var weekStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset + calendarWeekOffset * 7);
-    var monthNames = currentLang === "fr" ? ["Janvier", "F\xE9vrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Ao\xFBt", "Septembre", "Octobre", "Novembre", "D\xE9cembre"] : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    var dayNamesFull = currentLang === "fr" ? ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"] : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-    var weekEndDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + 6);
-    var startMonth = monthNames[weekStartDate.getMonth()];
-    var endMonth = monthNames[weekEndDate.getMonth()];
-    var title = weekStartDate.getDate() + " " + startMonth;
-    if (startMonth !== endMonth) {
-      title += " - " + weekEndDate.getDate() + " " + endMonth;
-    } else {
-      title += " - " + weekEndDate.getDate() + " " + endMonth;
-    }
-    title += " " + weekStartDate.getFullYear();
-    document.getElementById("calendar-month-title").textContent = title;
-    var today = /* @__PURE__ */ new Date();
-    today.setHours(0, 0, 0, 0);
-    var weekdaysHtml = "";
-    for (var d = 0; d < 7; d++) {
-      var dayDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + d);
-      var isWeekend = d >= 5;
-      var isToday = dayDate.getTime() === today.getTime();
-      weekdaysHtml += '<div class="calendar-weekday' + (isWeekend ? " weekend" : "") + (isToday ? " today" : "") + '">';
-      weekdaysHtml += dayNamesFull[d] + " <strong>" + dayDate.getDate() + "</strong>";
-      weekdaysHtml += "</div>";
-    }
-    document.getElementById("calendar-weekdays").innerHTML = weekdaysHtml;
-    var daysHtml = "";
-    for (var d = 0; d < 7; d++) {
-      var dayDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + d);
-      var isToday = dayDate.getTime() === today.getTime();
-      var dayTasks = getTasksForDate(dayDate);
-      daysHtml += renderCalendarDay(dayDate.getDate(), dayDate, dayTasks, false, isToday, true);
-    }
-    var daysContainer = document.getElementById("calendar-days");
-    daysContainer.innerHTML = daysHtml;
-    daysContainer.className = "calendar-days week-view";
-  }
-  function calendarNav(dir) {
-    if (window.innerWidth < 480 && calendarMode !== "day") {
-      calendarWeekOffset += dir;
-      renderCalendarView();
-      return;
-    }
-    if (calendarMode === "week") {
-      calendarWeekOffset += dir;
-    } else if (calendarMode === "day") {
-      calendarDayOffset += dir;
-    } else {
-      calendarMonth += dir;
-      if (calendarMonth > 11) {
-        calendarMonth = 0;
-        calendarYear++;
-      }
-      if (calendarMonth < 0) {
-        calendarMonth = 11;
-        calendarYear--;
-      }
-    }
-    renderCalendarView();
-  }
-  function renderCalendarMobileView() {
-    var now = /* @__PURE__ */ new Date();
-    var dayOfWeek = now.getDay();
-    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    var weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset + calendarWeekOffset * 7);
-    var weekEnd = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6);
-    var monthNames = currentLang === "fr" ? ["Jan", "F\xE9v", "Mar", "Avr", "Mai", "Juin", "Juil", "Ao\xFBt", "Sep", "Oct", "Nov", "D\xE9c"] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    var dayNames = currentLang === "fr" ? ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"] : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    var titleStart = weekStart.getDate() + " " + monthNames[weekStart.getMonth()];
-    var titleEnd = weekEnd.getDate() + " " + monthNames[weekEnd.getMonth()] + " " + weekEnd.getFullYear();
-    document.getElementById("calendar-month-title").textContent = titleStart + " \u2013 " + titleEnd;
-    document.getElementById("calendar-weekdays").innerHTML = "";
-    var today = /* @__PURE__ */ new Date();
-    today.setHours(0, 0, 0, 0);
-    var html = "";
-    for (var d = 0; d < 7; d++) {
-      var dayDate = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + d);
-      var isToday = dayDate.getTime() === today.getTime();
-      var isWeekend = d >= 5;
-      var dayTasks = getTasksForDate(dayDate);
-      var dateStr = dayDate.getFullYear() + "-" + String(dayDate.getMonth() + 1).padStart(2, "0") + "-" + String(dayDate.getDate()).padStart(2, "0");
-      var cls = "calendar-day" + (isToday ? " today" : "") + (isWeekend ? " weekend" : "");
-      html += '<div class="' + cls + `" onclick="onCalendarDayClick('` + dateStr + `')">`;
-      html += '<div class="mobile-day-label">';
-      html += '<span class="mobile-day-name">' + dayNames[dayDate.getDay()] + "</span>";
-      html += '<div class="day-number">' + dayDate.getDate() + "</div>";
-      html += "</div>";
-      html += '<div class="day-tasks">';
-      for (var i = 0; i < dayTasks.length; i++) {
-        var task = dayTasks[i];
-        html += '<div class="day-task status-' + task.Status + '" onclick="event.stopPropagation(); openEditTaskModal(' + task.id + ')" title="' + sanitize(task.Title) + '">' + sanitize(task.Title) + "</div>";
-      }
-      if (dayTasks.length === 0) {
-        html += '<span class="mobile-no-task">\u2014</span>';
-      }
-      html += "</div></div>";
-    }
-    var daysContainer = document.getElementById("calendar-days");
-    daysContainer.innerHTML = html;
-    daysContainer.className = "calendar-days calendar-mobile-list";
-  }
-  var _calResizeTimer;
-  var _calResizeObserver = null;
-  function applyCalendarResponsiveClasses() {
-    var calContainer = document.querySelector(".calendar-container");
-    if (!calContainer) return;
-    var w = calContainer.getBoundingClientRect().width || window.innerWidth;
-    calContainer.classList.toggle("cal-compact", w < 768 && w >= 480);
-    calContainer.classList.toggle("cal-mobile", w < 480);
-  }
-  function attachCalendarResizeObserver() {
-    var calContainer = document.querySelector(".calendar-container");
-    if (!calContainer || _calResizeObserver) return;
-    if (window.ResizeObserver) {
-      _calResizeObserver = new ResizeObserver(function() {
-        clearTimeout(_calResizeTimer);
-        _calResizeTimer = setTimeout(function() {
-          applyCalendarResponsiveClasses();
-          var calTab = document.getElementById("tab-calendar");
-          if (calTab && calTab.classList.contains("active")) renderCalendarView();
-        }, 150);
-      });
-      _calResizeObserver.observe(calContainer);
-    }
-  }
-  window.addEventListener("resize", function() {
-    clearTimeout(_calResizeTimer);
-    _calResizeTimer = setTimeout(function() {
-      applyCalendarResponsiveClasses();
-      var calTab = document.getElementById("tab-calendar");
-      if (calTab && calTab.classList.contains("active")) renderCalendarView();
-    }, 200);
-  });
-  function renderCalendarDayView() {
-    var today = /* @__PURE__ */ new Date();
-    var viewDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + calendarDayOffset);
-    var isToday = calendarDayOffset === 0;
-    var monthNames = currentLang === "fr" ? ["Janvier", "F\xE9vrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Ao\xFBt", "Septembre", "Octobre", "Novembre", "D\xE9cembre"] : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    var dayNamesFull = currentLang === "fr" ? ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"] : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    document.getElementById("calendar-month-title").textContent = dayNamesFull[viewDate.getDay()] + " " + viewDate.getDate() + " " + monthNames[viewDate.getMonth()] + " " + viewDate.getFullYear();
-    var dayStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), 0, 0, 0);
-    var dayEnd = new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), 23, 59, 59);
-    var dayStartTs = Math.floor(dayStart.getTime() / 1e3);
-    var dayEndTs = Math.floor(dayEnd.getTime() / 1e3);
-    var filteredTasks = getFilteredTasks();
-    var dayTasks = filteredTasks.filter(function(t2) {
-      var dueThisDay = t2.Due_Date && t2.Due_Date >= dayStartTs && t2.Due_Date <= dayEndTs;
-      var inProgressThisDay = t2.Status === "progress" && t2.Start_Date && t2.Due_Date && t2.Start_Date <= dayEndTs && t2.Due_Date >= dayStartTs;
-      var inProgressNoEnd = t2.Status === "progress" && t2.Start_Date && !t2.Due_Date && t2.Start_Date <= dayEndTs;
-      return dueThisDay || inProgressThisDay || inProgressNoEnd;
-    });
-    var statusColors = { todo: "#94a3b8", progress: "#3b82f6", done: "#22c55e" };
-    var priorityColors = { high: "#ef4444", medium: "#f59e0b", low: "#22c55e" };
-    var html = '<div class="calendar-day-view">';
-    html += '<div class="calendar-day-header' + (isToday ? " today" : "") + '">';
-    html += isToday ? "\u{1F4C5} " + (currentLang === "fr" ? "Aujourd'hui" : "Today") : "";
-    html += '<span class="day-task-count">' + dayTasks.length + " " + (currentLang === "fr" ? "t\xE2che(s)" : "task(s)") + "</span>";
-    html += "</div>";
-    if (dayTasks.length === 0) {
-      html += '<div class="day-empty">' + (currentLang === "fr" ? "Aucune t\xE2che ce jour" : "No tasks today") + "</div>";
-    } else {
-      dayTasks.forEach(function(task) {
-        var taskSubtasks = getTaskSubtasks(task.id);
-        var completedSt = taskSubtasks.filter(function(st) {
-          return st.Completed;
-        }).length;
-        var stColor = statusColors[task.Status] || "#94a3b8";
-        var dueThisDay = task.Due_Date && task.Due_Date >= dayStartTs && task.Due_Date <= dayEndTs;
-        var isOverdue2 = task.Due_Date && task.Due_Date < dayStartTs && task.Status !== "done";
-        var dueBadge = dueThisDay ? '<span class="day-due-badge">\u{1F4CC} ' + (currentLang === "fr" ? "\xC9ch\xE9ance" : "Due today") + "</span>" : isOverdue2 ? '<span class="day-due-badge overdue">\u26A0\uFE0F ' + (currentLang === "fr" ? "En retard" : "Overdue") + "</span>" : '<span class="day-due-badge ongoing">\u{1F504} ' + (currentLang === "fr" ? "En cours" : "In progress") + "</span>";
-        html += '<div class="day-task-row" onclick="openEditTaskModal(' + task.id + ')">';
-        html += '<div class="day-task-indicator" style="background:' + stColor + '"></div>';
-        html += '<div class="day-task-body">';
-        html += '<div class="day-task-title">' + sanitize(task.Title) + " " + dueBadge + "</div>";
-        html += '<div class="day-task-meta">';
-        if (task.Assignee) html += "<span>\u{1F464} " + sanitize(task.Assignee.split(",")[0].trim()) + "</span>";
-        html += '<span style="color:' + priorityColors[task.Priority] + ';">\u25B2 ' + task.Priority + "</span>";
-        if (taskSubtasks.length > 0) {
-          html += "<span>\u2611\uFE0F " + completedSt + "/" + taskSubtasks.length + "</span>";
-        }
-        html += "</div>";
-        if (taskSubtasks.length > 0) {
-          html += '<div class="day-subtasks">';
-          taskSubtasks.forEach(function(st) {
-            html += '<div class="day-subtask-item">';
-            html += '<input type="checkbox" ' + (st.Completed ? "checked" : "") + ' onclick="event.stopPropagation();toggleSubtask(' + st.id + ", " + !st.Completed + ')" />';
-            html += '<span class="' + (st.Completed ? "st-done" : "") + '">' + sanitize(st.Title) + "</span>";
-            if (st.Assignee) html += '<span class="day-st-assignee">\u{1F464} ' + sanitize(st.Assignee) + "</span>";
-            html += "</div>";
-          });
-          html += "</div>";
-        }
-        html += "</div>";
-        html += "</div>";
-      });
-    }
-    var dateStr = viewDate.getFullYear() + "-" + String(viewDate.getMonth() + 1).padStart(2, "0") + "-" + String(viewDate.getDate()).padStart(2, "0");
-    html += `<div class="day-add-task" onclick="openNewTaskForDay('` + dateStr + `')">`;
-    html += "+ " + (currentLang === "fr" ? "Ajouter une t\xE2che ce jour" : "Add a task for this day");
-    html += "</div>";
-    html += "</div>";
-    var weekdays = document.getElementById("calendar-weekdays");
-    var days = document.getElementById("calendar-days");
-    if (weekdays) weekdays.innerHTML = "";
-    if (days) {
-      days.innerHTML = html;
-      days.className = "calendar-days day-view";
-    }
-  }
-  function openNewTaskForDay(dateStr) {
-    openNewTaskModalWithDate(dateStr);
   }
 
   // src/bootstrap/ensure-tables.js
@@ -9102,1334 +10475,6 @@
     }
   }
 
-  // src/domains/team.js
-  function renderTeamView() {
-    renderUsersList();
-    renderGroupsList();
-    renderCategoriesList();
-  }
-  function renderUsersList() {
-    var container = document.getElementById("users-list");
-    if (!container) return;
-    var displayedUsers = state.currentFilterRole ? state.users.filter(function(u2) {
-      return userMatchesRole(u2, state.currentFilterRole);
-    }) : state.users;
-    if (displayedUsers.length === 0) {
-      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noUsers") + "</div>";
-      return;
-    }
-    var html = '<table class="data-table"><thead><tr>';
-    html += "<th>" + t("fieldName") + "</th>";
-    html += "<th>" + t("fieldEmail") + "</th>";
-    html += "<th>" + t("fieldRole") + "</th>";
-    html += "<th>" + t("fieldGroup") + "</th>";
-    html += "<th>" + t("colActions") + "</th>";
-    html += "</tr></thead><tbody>";
-    for (var i = 0; i < displayedUsers.length; i++) {
-      var u = displayedUsers[i];
-      var roleText = userRoleDisplay(u) ? userRoleDisplay(u).split(",").map(function(r) {
-        return roleLabel(r.trim());
-      }).join(", ") : "";
-      var firstRole = getUserRoles(u)[0] || "member";
-      var roleBg = firstRole === "admin" ? "#fef2f2;color:#dc2626" : firstRole === "viewer" ? "#f1f5f9;color:#64748b" : "#eff6ff;color:#1e40af";
-      html += "<tr>";
-      html += '<td style="font-weight:700;">\u{1F464} ' + sanitize(u.Name) + "</td>";
-      html += "<td>" + sanitize(u.Email) + "</td>";
-      html += '<td><span style="padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;background:' + roleBg + '">' + sanitize(roleText) + "</span></td>";
-      html += "<td>" + (u.Group_Name ? '<span class="assignee-chip">\u{1F465} ' + sanitize(u.Group_Name) + "</span>" : "--") + "</td>";
-      html += '<td><button class="btn-icon" onclick="openEditUserModal(' + u.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
-      html += '<button class="btn-icon" onclick="deleteUser(' + u.id + ')">\u{1F5D1}\uFE0F</button></td>';
-      html += "</tr>";
-    }
-    html += "</tbody></table>";
-    container.innerHTML = html;
-  }
-  function renderGroupsList() {
-    var container = document.getElementById("groups-list");
-    if (!container) return;
-    if (state.groups.length === 0) {
-      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noGroups") + "</div>";
-      return;
-    }
-    var html = "";
-    for (var i = 0; i < state.groups.length; i++) {
-      var g = state.groups[i];
-      var memberCount = state.users.filter(function(u) {
-        return u.Group_Name === g.Name;
-      }).length;
-      var memberNames = state.users.filter(function(u) {
-        return u.Group_Name === g.Name;
-      }).map(function(u) {
-        return u.Name || u.Email;
-      });
-      html += '<div class="template-card">';
-      html += '<div class="template-card-info">';
-      html += "<h4>\u{1F465} " + sanitize(g.Name) + "</h4>";
-      html += '<div class="template-meta">';
-      html += memberCount + " " + t("members");
-      if (g.Description) html += " \u2022 " + sanitize(g.Description);
-      html += "</div>";
-      if (memberNames.length > 0) {
-        html += '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">';
-        for (var j = 0; j < memberNames.length; j++) {
-          html += '<span class="assignee-chip">\u{1F464} ' + sanitize(memberNames[j]) + "</span>";
-        }
-        html += "</div>";
-      }
-      html += "</div>";
-      html += '<button class="btn-icon" onclick="openEditGroupModal(' + g.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
-      html += '<button class="btn-icon" onclick="deleteGroup(' + g.id + ')">\u{1F5D1}\uFE0F</button>';
-      html += "</div>";
-    }
-    container.innerHTML = html;
-  }
-  async function getRoleChoicesFromGrist() {
-    var roleSet = {};
-    var hasGristChoices = false;
-    try {
-      var roleColName = getColumnName("users", "role");
-      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
-      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
-      var tableRowId = null;
-      if (tablesData && tablesData.id && tablesData.tableId) {
-        for (var i = 0; i < tablesData.id.length; i++) {
-          if (tablesData.tableId[i] === state.USERS_TABLE) {
-            tableRowId = tablesData.id[i];
-            break;
-          }
-        }
-      }
-      if (tableRowId !== null && columnsData && columnsData.id) {
-        for (var j = 0; j < columnsData.id.length; j++) {
-          if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
-            var wo = columnsData.widgetOptions[j];
-            if (wo) {
-              try {
-                var opts = JSON.parse(wo);
-                if (opts.choices && Array.isArray(opts.choices) && opts.choices.length > 0) {
-                  opts.choices.forEach(function(c) {
-                    roleSet[c] = true;
-                  });
-                  hasGristChoices = true;
-                }
-              } catch (e) {
-              }
-            }
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      console.log("Could not fetch role choices from Grist metadata:", e);
-    }
-    if (!hasGristChoices) {
-      ["admin", "member", "viewer"].forEach(function(r) {
-        roleSet[r] = true;
-      });
-    }
-    state.users.forEach(function(u) {
-      getUserRoles(u).forEach(function(r) {
-        if (r) roleSet[r] = true;
-      });
-    });
-    return Object.keys(roleSet).sort();
-  }
-  var _manageRolesState = { choices: [] };
-  async function openManageRolesModal() {
-    var choices = await getRoleChoicesFromGrist();
-    _manageRolesState.choices = choices.slice();
-    renderManageRolesModal();
-  }
-  function renderManageRolesModal() {
-    var choices = _manageRolesState.choices;
-    var usage = {};
-    state.users.forEach(function(u) {
-      getUserRoles(u).forEach(function(r2) {
-        if (r2) usage[r2] = (usage[r2] || 0) + 1;
-      });
-    });
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("manageRolesTitle") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<p style="color:#64748b;font-size:13px;margin:0 0 12px 0;">' + t("manageRolesSubtitle") + "</p>";
-    html += '<div class="settings-items">';
-    if (choices.length === 0) {
-      html += '<div style="text-align:center;color:#94a3b8;padding:20px;">--</div>';
-    } else {
-      for (var i = 0; i < choices.length; i++) {
-        var r = choices[i];
-        var count = usage[r] || 0;
-        html += '<div class="settings-item">';
-        html += '<div class="settings-item-info">';
-        html += "<strong>" + sanitize(roleLabel(r)) + "</strong>";
-        html += '<span class="settings-item-meta">' + count + " " + (currentLang === "fr" ? "utilisateur(s)" : "user(s)") + "</span>";
-        html += "</div>";
-        html += '<div class="settings-item-actions">';
-        html += '<button class="btn-icon" onclick="removeRoleChoice(' + i + ')" title="' + t("confirmDeleteRole") + '">\u{1F5D1}\uFE0F</button>';
-        html += "</div>";
-        html += "</div>";
-      }
-    }
-    html += "</div>";
-    html += '<div style="display:flex;gap:8px;margin-top:16px;">';
-    html += '<input type="text" id="new-role-name" placeholder="' + t("newRolePlaceholder") + `" style="flex:1;" onkeydown="if(event.key==='Enter'){addRoleChoice();}" />`;
-    html += '<button class="btn btn-primary btn-sm" onclick="addRoleChoice()">+ ' + t("addRole") + "</button>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="saveRoleChoices()">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function addRoleChoice() {
-    var input = document.getElementById("new-role-name");
-    var name = (input.value || "").trim();
-    if (!name) return;
-    if (_manageRolesState.choices.indexOf(name) !== -1) {
-      showToast(currentLang === "fr" ? "Ce r\xF4le existe d\xE9j\xE0" : "Role already exists", "error");
-      return;
-    }
-    _manageRolesState.choices.push(name);
-    renderManageRolesModal();
-  }
-  function removeRoleChoice(index) {
-    var role = _manageRolesState.choices[index];
-    var inUse = state.users.some(function(u) {
-      return userMatchesRole(u, role);
-    });
-    if (inUse) {
-      if (!confirm(t("cannotDeleteUsedRole") + ". " + (currentLang === "fr" ? "Continuer ?" : "Continue?"))) {
-        return;
-      }
-    } else if (!confirm(t("confirmDeleteRole"))) {
-      return;
-    }
-    _manageRolesState.choices.splice(index, 1);
-    renderManageRolesModal();
-  }
-  async function saveRoleChoices() {
-    try {
-      var roleColName = getColumnName("users", "role");
-      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
-      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
-      var tableRowId = null;
-      for (var i = 0; i < tablesData.id.length; i++) {
-        if (tablesData.tableId[i] === state.USERS_TABLE) {
-          tableRowId = tablesData.id[i];
-          break;
-        }
-      }
-      if (tableRowId === null) throw new Error("Table not found");
-      var existingOpts = {};
-      for (var j = 0; j < columnsData.id.length; j++) {
-        if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
-          var wo = columnsData.widgetOptions[j];
-          if (wo) {
-            try {
-              existingOpts = JSON.parse(wo);
-            } catch (e) {
-            }
-          }
-          break;
-        }
-      }
-      existingOpts.choices = _manageRolesState.choices;
-      if (!existingOpts.widget) existingOpts.widget = "TextBox";
-      await grist.docApi.applyUserActions([
-        ["ModifyColumn", state.USERS_TABLE, roleColName, { widgetOptions: JSON.stringify(existingOpts) }]
-      ]);
-      showToast(t("rolesUpdated"), "success");
-      closeModalForce();
-    } catch (e) {
-      console.error("Error saving roles:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function openEditUserModal(userId) {
-    var user = state.users.find(function(u) {
-      return u.id === userId;
-    });
-    if (!user) return;
-    var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      var sel = state.groups[i].Name === user.Group_Name ? " selected" : "";
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + ">" + sanitize(state.groups[i].Name) + "</option>";
-    }
-    var roleChoices = await getRoleChoicesFromGrist();
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(user.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" value="' + sanitize(user.Name) + '" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" value="' + sanitize(user.Email) + '" /></div>';
-    html += '<div class="form-row">';
-    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
-    if (user.Role && roleChoices.indexOf(user.Role) === -1) {
-      html += '<option value="' + sanitize(user.Role) + '" selected>' + sanitize(roleLabel(user.Role)) + "</option>";
-    }
-    for (var i = 0; i < roleChoices.length; i++) {
-      var r = roleChoices[i];
-      var sel = user.Role === r ? " selected" : "";
-      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
-    }
-    html += "</select></div>";
-    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="updateUser(' + userId + ')">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function openEditGroupModal(groupId) {
-    var group = state.groups.find(function(g) {
-      return g.id === groupId;
-    });
-    if (!group) return;
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(group.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" value="' + sanitize(group.Name) + '" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc">' + sanitize(group.Description || "") + "</textarea></div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="updateGroup(' + groupId + ')">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  async function updateUser(userId) {
-    var name = document.getElementById("user-name").value.trim();
-    if (!name) return;
-    var record = {};
-    record[getColumnName("users", "name")] = name;
-    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
-    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
-    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.USERS_TABLE, userId, record]
-      ]);
-      showToast(t("taskUpdated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error updating user:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function updateGroup(groupId) {
-    var name = document.getElementById("group-name").value.trim();
-    if (!name) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.GROUPS_TABLE, groupId, {
-          Name: name,
-          Description: document.getElementById("group-desc").value.trim()
-        }]
-      ]);
-      showToast(t("taskUpdated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error updating group:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function openNewUserModal() {
-    var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + "</option>";
-    }
-    var roleChoices = await getRoleChoicesFromGrist();
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("modalNewUser") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" /></div>';
-    html += '<div class="form-row">';
-    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
-    for (var i = 0; i < roleChoices.length; i++) {
-      var r = roleChoices[i];
-      var sel = r === "member" ? " selected" : "";
-      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
-    }
-    html += "</select></div>";
-    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="createUser()">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function openNewGroupModal() {
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("modalNewGroup") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc"></textarea></div>';
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="createGroup()">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  async function createUser() {
-    var name = document.getElementById("user-name").value.trim();
-    if (!name) return;
-    var record = {};
-    record[getColumnName("users", "name")] = name;
-    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
-    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
-    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.USERS_TABLE, null, record]
-      ]);
-      showToast(t("userCreated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error creating user:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function createGroup() {
-    var name = document.getElementById("group-name").value.trim();
-    if (!name) return;
-    var record = {
-      Name: name,
-      Description: document.getElementById("group-desc").value.trim()
-    };
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.GROUPS_TABLE, null, record]
-      ]);
-      showToast(t("groupCreated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error creating group:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function deleteUser(userId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(t("confirmDeleteUser"), currentLang === "fr" ? "Supprimer l'utilisateur" : "Delete user");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.USERS_TABLE, userId]
-      ]);
-      showToast(t("userDeleted"), "info");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error deleting user:", e);
-    }
-  }
-  async function deleteGroup(groupId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(t("confirmDeleteGroup"), currentLang === "fr" ? "Supprimer le groupe" : "Delete group");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.GROUPS_TABLE, groupId]
-      ]);
-      showToast(t("groupDeleted"), "info");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error deleting group:", e);
-    }
-  }
-
-  // src/domains/gantt.js
-  var ganttMode = "days";
-  var ganttSort = "default";
-  var ganttCustomStart = "";
-  var ganttCustomEnd = "";
-  var ganttYear = (/* @__PURE__ */ new Date()).getFullYear();
-  var ganttMonth = (/* @__PURE__ */ new Date()).getMonth();
-  var expandedGanttTasks = {};
-  var selectedGanttTaskId = null;
-  function getGanttSubtasks(taskId) {
-    return getTaskSubtasks(taskId);
-  }
-  function renderGanttSubtaskLabelCell(st, parentTaskId) {
-    var completedClass = st.Completed ? " completed" : "";
-    var html = '<td class="gantt-task-label gantt-subtask-cell' + completedClass + '">';
-    html += '<label class="gantt-subtask-label" onclick="event.stopPropagation()">';
-    html += '<span class="gantt-subtask-arrow">' + (isMilestone(st) ? "\u25C6" : "\u21B3") + "</span>";
-    html += '<input type="checkbox" class="gantt-subtask-checkbox" ' + (st.Completed ? "checked" : "") + ' onchange="toggleGanttSubtask(' + st.id + ', this.checked)">';
-    html += '<span class="gantt-subtask-title">' + sanitize(st.Title) + "</span>";
-    html += "</label>";
-    var stMeta = "";
-    var stBlocker = getSubtaskBlocker(st);
-    if (stBlocker) {
-      var depColor = stBlocker.Completed ? "#94a3b8" : "#ef4444";
-      stMeta += '<span style="color:' + depColor + ';" title="' + (currentLang === "fr" ? "D\xE9pend de" : "Depends on") + " : " + sanitize(stBlocker.Title) + '">\u{1F517} ' + sanitize(stBlocker.Title).substring(0, 14) + "</span>";
-    }
-    if (st.Due_Date) stMeta += "<span>\u{1F4C5} " + formatDate(st.Due_Date) + "</span>";
-    else stMeta += "<span>" + (currentLang === "fr" ? "sans date" : "no date") + "</span>";
-    if (st.Assignee) stMeta += "<span>\u{1F464} " + sanitize(st.Assignee).split(",")[0].trim().substring(0, 10) + "</span>";
-    if (stMeta) html += '<div class="gantt-subtask-meta">' + stMeta + "</div>";
-    html += "</td>";
-    return html;
-  }
-  async function toggleGanttSubtask(subtaskId, completed) {
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, { Completed: completed }]
-      ]);
-      for (var i = 0; i < state.subtasks.length; i++) {
-        if (state.subtasks[i].id === subtaskId) {
-          state.subtasks[i].Completed = completed;
-          break;
-        }
-      }
-      renderGanttView();
-    } catch (e) {
-      console.error("toggleGanttSubtask:", e);
-      showToast((currentLang === "fr" ? "Impossible de modifier la sous-t\xE2che : " : "Could not update subtask: ") + e.message, "error");
-    }
-  }
-  function ganttSubtaskBarClass(st, parentTask) {
-    var base;
-    if (st.Completed) base = "gantt-bar-done";
-    else if (parentTask.Status === "progress") base = "gantt-bar-progress";
-    else base = "gantt-bar-todo";
-    return base + (isMilestone(st) ? " gantt-bar-milestone" : "");
-  }
-  function getGanttSubtaskRange(st, parentTask) {
-    if (!st.Start_Date && !st.Due_Date) {
-      var far = /* @__PURE__ */ new Date(864e13);
-      return { start: far, end: far };
-    }
-    var stEnd = st.Due_Date ? new Date(st.Due_Date * 1e3) : parentTask.Due_Date ? new Date(parentTask.Due_Date * 1e3) : null;
-    if (!stEnd) {
-      var far2 = /* @__PURE__ */ new Date(864e13);
-      return { start: far2, end: far2 };
-    }
-    var stStart;
-    if (isMilestone(st)) {
-      stStart = new Date(stEnd);
-    } else {
-      stStart = st.Start_Date ? new Date(st.Start_Date * 1e3) : new Date(stEnd);
-      if (stStart > stEnd) stStart = new Date(stEnd);
-    }
-    stStart.setHours(0, 0, 0, 0);
-    stEnd.setHours(23, 59, 59, 999);
-    return { start: stStart, end: stEnd };
-  }
-  function getTaskExtensionEnd(task) {
-    if (task.Auto_Extend && task.Status !== "done" && task.Status !== "archived") {
-      var now = /* @__PURE__ */ new Date();
-      now.setHours(23, 59, 59, 999);
-      var dueDate = task.Due_Date ? new Date(task.Due_Date * 1e3) : null;
-      if (dueDate && now > dueDate) return now;
-    }
-    if (task.Extension_Date) {
-      var ext = new Date(task.Extension_Date * 1e3);
-      ext.setHours(23, 59, 59, 999);
-      return ext;
-    }
-    return null;
-  }
-  function getExtensionBarColor(task) {
-    var statuses = getKanbanStatuses();
-    for (var si = 0; si < statuses.length; si++) {
-      if (statuses[si].key === task.Status && statuses[si].color) return statuses[si].color;
-    }
-    if (task.Status === "done") return "#22c55e";
-    if (task.Status === "progress") return "#f59e0b";
-    return "#3b82f6";
-  }
-  function getGanttBarColor(task) {
-    var statuses = getKanbanStatuses();
-    for (var si = 0; si < statuses.length; si++) {
-      if (statuses[si].key === task.Status && statuses[si].color) return statuses[si].color;
-    }
-    return "";
-  }
-  function getGanttBarClass(task) {
-    if (isOverdue(task)) return "gantt-bar-overdue";
-    if (task.Status === "done") return "gantt-bar-done";
-    if (task.Status === "progress") return "gantt-bar-progress";
-    return "gantt-bar-todo";
-  }
-  function ganttPriorityClass(priority) {
-    if (priority === "high") return "gantt-priority-high";
-    if (priority === "low") return "gantt-priority-low";
-    return "gantt-priority-medium";
-  }
-  function ganttTaskRowStart(task) {
-    var selected = selectedGanttTaskId === task.id;
-    return '<tr class="gantt-task-row' + (selected ? " gantt-row-selected" : "") + '" data-gantt-task-id="' + task.id + '">';
-  }
-  function renderGanttTaskLabel(task) {
-    var dotClass = task.Priority === "high" ? "dot-high" : task.Priority === "medium" ? "dot-medium" : "dot-low";
-    var assigneeNames = task.Assignee ? task.Assignee.split(",").map(function(a) {
-      return getUserDisplayName(a.trim());
-    }).join(", ") : "";
-    var ganttProjColor = getProjectColor(task.Project_Id);
-    var ganttProjName = getProjectName(task.Project_Id);
-    var checked = selectedGanttTaskId === task.id ? " checked" : "";
-    var focusTitle = currentLang === "fr" ? "Afficher cette t\xE2che dans le Gantt" : "Show this task in the Gantt";
-    var openTitle = currentLang === "fr" ? "Ouvrir la fiche de la t\xE2che" : "Open task details";
-    var taskComments = getTaskComments(task.id);
-    var taskAttachments = getTaskAttachments(task.id);
-    var html = '<td class="gantt-task-label">';
-    html += '<div class="task-name">';
-    html += '<input type="checkbox" class="gantt-focus-checkbox"' + checked + ' title="' + focusTitle + '" onclick="event.stopPropagation()" onchange="focusGanttTask(' + task.id + ', this.checked)">';
-    html += '<span class="priority-dot ' + dotClass + '" title="' + priorityLabel(task.Priority) + '"></span>';
-    html += '<button type="button" class="gantt-task-title-btn" onclick="openEditTaskModal(' + task.id + ')" title="' + openTitle + '">' + sanitize(task.Title) + "</button>";
-    html += ganttDepBadge(task) + "</div>";
-    if (ganttProjName) {
-      html += '<div class="gantt-project-line" style="--project-color:' + ganttProjColor + ';">' + sanitize(ganttProjName) + "</div>";
-    }
-    html += '<div class="task-info">';
-    if (task.Priority) html += '<span class="gantt-priority-text ' + ganttPriorityClass(task.Priority) + '">' + priorityLabel(task.Priority) + "</span>";
-    if (assigneeNames) html += " \u{1F464} " + sanitize(assigneeNames);
-    if (task.Due_Date) html += " \u{1F4C5} " + formatDate(task.Due_Date);
-    if (taskComments.length > 0) html += ' <button class="gantt-mini-btn" onclick="event.stopPropagation();openCardCommentsModal(' + task.id + ')" title="' + t("comments") + '">\u{1F4AC} ' + taskComments.length + "</button>";
-    if (taskAttachments.length > 0) html += ' <button class="gantt-mini-btn" onclick="event.stopPropagation();openCardAttachmentsModal(' + task.id + ')" title="' + (currentLang === "fr" ? "Pi\xE8ces jointes" : "Attachments") + '">\u{1F4CE} ' + taskAttachments.length + "</button>";
-    html += "</div></td>";
-    return html;
-  }
-  function renderGanttView() {
-    var yearSelect = document.getElementById("gantt-year");
-    if (yearSelect.options.length === 0) {
-      for (var y = 2020; y <= 2050; y++) {
-        var opt = document.createElement("option");
-        opt.value = y;
-        opt.textContent = y;
-        yearSelect.appendChild(opt);
-      }
-    }
-    yearSelect.value = ganttYear;
-    document.querySelectorAll("[data-gantt-mode]").forEach(function(btn) {
-      btn.classList.toggle("active", btn.getAttribute("data-gantt-mode") === ganttMode);
-    });
-    var tasksWithDates = getFilteredTasks().filter(function(task2) {
-      return task2.Start_Date || task2.Due_Date;
-    });
-    var ganttSortSel = document.getElementById("gantt-sort");
-    if (ganttSortSel && ganttSortSel.value !== ganttSort) ganttSortSel.value = ganttSort;
-    if (ganttSort === "priority") {
-      var prioOrder = { high: 0, medium: 1, low: 2 };
-      tasksWithDates.sort(function(a, b) {
-        var pa = prioOrder[a.Priority] !== void 0 ? prioOrder[a.Priority] : 3;
-        var pb = prioOrder[b.Priority] !== void 0 ? prioOrder[b.Priority] : 3;
-        return pa - pb;
-      });
-    } else if (ganttSort === "alpha") {
-      tasksWithDates.sort(function(a, b) {
-        return (a.Title || "").localeCompare(b.Title || "");
-      });
-    } else if (ganttSort === "due") {
-      tasksWithDates.sort(function(a, b) {
-        var da = a.Due_Date || a.Start_Date || 0, db = b.Due_Date || b.Start_Date || 0;
-        return da - db;
-      });
-    }
-    document.getElementById("gantt-task-count").textContent = "(" + tasksWithDates.length + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks") + ")";
-    var today = /* @__PURE__ */ new Date();
-    today.setHours(0, 0, 0, 0);
-    var dayNames = currentLang === "fr" ? ["DIM.", "LUN.", "MAR.", "MER.", "JEU.", "VEN.", "SAM."] : ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-    var monthNamesShort = currentLang === "fr" ? ["janv.", "f\xE9vr.", "mars", "avr.", "mai", "juin", "juil.", "ao\xFBt", "sept.", "oct.", "nov.", "d\xE9c."] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    var monthNames = currentLang === "fr" ? ["janvier", "f\xE9vrier", "mars", "avril", "mai", "juin", "juillet", "ao\xFBt", "septembre", "octobre", "novembre", "d\xE9cembre"] : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    var html = '<div class="gantt-container"><table class="gantt-table">';
-    if (ganttMode === "weeks") {
-      var weekAnchor = ganttYear === today.getFullYear() && ganttMonth === today.getMonth() ? new Date(today) : new Date(ganttYear, ganttMonth, 1);
-      var startWeek = getISOWeek(weekAnchor);
-      var numWeeks = 24;
-      var weeks = [];
-      for (var w = 0; w < numWeeks; w++) {
-        var wn = startWeek + w;
-        var yr = ganttYear;
-        if (wn > 52) {
-          wn -= 52;
-          yr++;
-        }
-        var ws = getWeekStart(yr, wn);
-        var we = new Date(ws);
-        we.setDate(we.getDate() + 6);
-        weeks.push({ num: wn, year: yr, start: ws, end: we });
-      }
-      html += '<thead><tr><th class="gantt-task-label" style="text-align:left;">' + t("colTaskName") + "</th>";
-      for (var wi = 0; wi < weeks.length; wi++) {
-        var wk = weeks[wi];
-        var isCurrentWeek = getISOWeek(today) === wk.num && today.getFullYear() === wk.year;
-        html += '<th style="min-width:80px;' + (isCurrentWeek ? "background:#fef2f2;color:#ef4444;" : "") + '">';
-        html += '<div style="font-size:11px;font-weight:800;">S' + wk.num + "</div>";
-        html += '<div style="font-size:9px;font-weight:400;color:#94a3b8;">' + monthNamesShort[wk.start.getMonth()] + " " + String(wk.start.getFullYear()).substring(2) + "</div>";
-        html += "</th>";
-      }
-      html += "</tr></thead><tbody>";
-      for (var ti = 0; ti < tasksWithDates.length; ti++) {
-        var task = tasksWithDates[ti];
-        var barClass = getGanttBarClass(task);
-        var barCustomColor = getGanttBarColor(task);
-        var barCustomStyle = barCustomColor ? "background:" + barCustomColor + ";color:white;" : "";
-        html += ganttTaskRowStart(task);
-        html += renderGanttTaskLabel(task);
-        var tStart = task.Start_Date ? new Date(task.Start_Date * 1e3) : null;
-        var tEnd = task.Due_Date ? new Date(task.Due_Date * 1e3) : null;
-        if (!tStart && tEnd) tStart = tEnd;
-        if (!tEnd && tStart) tEnd = tStart;
-        if (tStart) tStart.setHours(0, 0, 0, 0);
-        if (tEnd) tEnd.setHours(23, 59, 59, 999);
-        var barStartIdx = -1, barEndIdx = -1;
-        for (var wi = 0; wi < weeks.length; wi++) {
-          var wk = weeks[wi];
-          if (tStart && tEnd && tStart <= wk.end && tEnd >= wk.start) {
-            if (barStartIdx === -1) barStartIdx = wi;
-            barEndIdx = wi;
-          }
-        }
-        var extEnd = getTaskExtensionEnd(task);
-        var extStartIdx = -1, extEndIdx = -1;
-        if (extEnd && tEnd && extEnd > tEnd) {
-          for (var ewi = 0; ewi < weeks.length; ewi++) {
-            if (tEnd <= weeks[ewi].end && extEnd >= weeks[ewi].start) {
-              if (extStartIdx === -1) extStartIdx = ewi;
-              extEndIdx = ewi;
-            }
-          }
-        }
-        var extColor = getExtensionBarColor(task);
-        for (var wi = 0; wi < weeks.length; wi++) {
-          var isCurrentWeek = getISOWeek(today) === weeks[wi].num && today.getFullYear() === weeks[wi].year;
-          html += '<td class="gantt-cell" style="position:relative;' + (isCurrentWeek ? "background:#fef2f2;" : "") + '">';
-          if (wi === barStartIdx) {
-            var spanCols = barEndIdx - barStartIdx + 1;
-            var widthPx = spanCols * 80;
-            html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + widthPx + "px;cursor:pointer;" + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + "</div>";
-          }
-          if (wi === extStartIdx && extStartIdx >= 0) {
-            var extSpan = extEndIdx - extStartIdx + 1;
-            var extW = extSpan * 80;
-            html += '<div class="gantt-bar-extension" title="' + t("extensionTooltip") + " \u2014 " + sanitize(task.Title) + '" style="left:2px;width:' + extW + "px;border-color:" + extColor + ";background:" + extColor + '20;"></div>';
-          }
-          html += "</td>";
-        }
-        html += "</tr>";
-        if (expandedGanttTasks[task.id]) {
-          var sts = getGanttSubtasks(task.id);
-          for (var sti = 0; sti < sts.length; sti++) {
-            var st = sts[sti];
-            var stRange = getGanttSubtaskRange(st, task);
-            var stBarClass = ganttSubtaskBarClass(st, task);
-            html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
-            var stStartIdx = -1, stEndIdx = -1;
-            for (var wi2 = 0; wi2 < weeks.length; wi2++) {
-              if (stRange.start <= weeks[wi2].end && stRange.end >= weeks[wi2].start) {
-                if (stStartIdx === -1) stStartIdx = wi2;
-                stEndIdx = wi2;
-              }
-            }
-            for (var wi2 = 0; wi2 < weeks.length; wi2++) {
-              var isCW = getISOWeek(today) === weeks[wi2].num && today.getFullYear() === weeks[wi2].year;
-              html += '<td class="gantt-cell" style="position:relative;' + (isCW ? "background:#fef2f2;" : "") + '">';
-              if (wi2 === stStartIdx) {
-                var stSpan = stEndIdx - stStartIdx + 1;
-                var stWidth = stSpan * 80;
-                html += '<div class="gantt-bar gantt-bar-subtask ' + stBarClass + '" style="left:2px;width:' + stWidth + 'px;cursor:pointer;" title="' + sanitize(st.Title) + '" onclick="openEditTaskModal(' + task.id + ')"></div>';
-              }
-              html += "</td>";
-            }
-            html += "</tr>";
-          }
-        }
-      }
-      var viewStartMonth = monthNames[weeks[0].start.getMonth()];
-      var viewEndMonth = monthNames[weeks[weeks.length - 1].start.getMonth()];
-      html += "</tbody></table>";
-      html += '<div class="gantt-footer">';
-      html += "<span>\u{1F31F} " + t("ganttFullYear") + " \u2022 " + t("ganttNavInfo") + " \u2022 " + tasksWithDates.length + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks") + "</span>";
-      html += "<span>" + t("ganttViewRange") + " " + viewStartMonth + " - " + viewEndMonth + " " + ganttYear + "</span>";
-      html += "</div></div>";
-      document.getElementById("gantt-view").innerHTML = html;
-      initGanttDragScroll();
-      return;
-    }
-    if (ganttMode === "year" || ganttMode === "twoyears") {
-      var numYears = ganttMode === "twoyears" ? 2 : 1;
-      var totalMonths = numYears * 12;
-      var startYr = ganttYear;
-      var colWidth = ganttMode === "twoyears" ? 50 : 70;
-      var todayMonth = today.getMonth();
-      var todayYear = today.getFullYear();
-      html += "<thead>";
-      if (ganttMode === "twoyears") {
-        html += '<tr><th class="gantt-task-label" style="text-align:left;" rowspan="2">' + t("colTaskName") + "</th>";
-        html += '<th colspan="12" style="font-size:12px;font-weight:800;background:#f8fafc;">' + startYr + "</th>";
-        html += '<th colspan="12" style="font-size:12px;font-weight:800;background:#f8fafc;">' + (startYr + 1) + "</th>";
-        html += "</tr><tr>";
-      } else {
-        html += '<tr><th class="gantt-task-label" style="text-align:left;">' + t("colTaskName") + "</th>";
-      }
-      for (var ym = 0; ym < totalMonths; ym++) {
-        var yr = startYr + Math.floor(ym / 12);
-        var mo = ym % 12;
-        var isCurrent = yr === todayYear && mo === todayMonth;
-        html += '<th style="min-width:' + colWidth + "px;" + (isCurrent ? "background:#fef2f2;color:#ef4444;" : "") + '">' + monthNamesShort[mo].substring(0, 3) + "</th>";
-      }
-      html += "</tr></thead><tbody>";
-      for (var ti = 0; ti < tasksWithDates.length; ti++) {
-        var task = tasksWithDates[ti];
-        var barClass = getGanttBarClass(task);
-        html += ganttTaskRowStart(task) + renderGanttTaskLabel(task);
-        var yTStart = task.Start_Date ? new Date(task.Start_Date * 1e3) : null;
-        var yTEnd = task.Due_Date ? new Date(task.Due_Date * 1e3) : null;
-        if (!yTStart && yTEnd) yTStart = new Date(yTEnd);
-        if (!yTEnd && yTStart) yTEnd = new Date(yTStart);
-        if (yTStart) yTStart.setHours(0, 0, 0, 0);
-        if (yTEnd) yTEnd.setHours(23, 59, 59, 999);
-        var yBarStart = -1, yBarEnd = -1;
-        for (var ym = 0; ym < totalMonths; ym++) {
-          var yr = startYr + Math.floor(ym / 12);
-          var mo = ym % 12;
-          var ms = new Date(yr, mo, 1);
-          var me = new Date(yr, mo + 1, 0, 23, 59, 59, 999);
-          if (yTStart && yTEnd && yTStart <= me && yTEnd >= ms) {
-            if (yBarStart === -1) yBarStart = ym;
-            yBarEnd = ym;
-          }
-        }
-        var yExtEnd = getTaskExtensionEnd(task);
-        var yExtStart = -1, yExtEndIdx = -1;
-        if (yExtEnd && yTEnd && yExtEnd > yTEnd) {
-          for (var yme = 0; yme < totalMonths; yme++) {
-            var yre = startYr + Math.floor(yme / 12);
-            var moe = yme % 12;
-            var mse = new Date(yre, moe, 1);
-            var mee = new Date(yre, moe + 1, 0, 23, 59, 59, 999);
-            if (mse > yTEnd && yExtEnd >= mse) {
-              if (yExtStart === -1) yExtStart = yme;
-              yExtEndIdx = yme;
-            }
-          }
-        }
-        var yExtColor = getExtensionBarColor(task);
-        for (var ym = 0; ym < totalMonths; ym++) {
-          var yr2 = startYr + Math.floor(ym / 12);
-          var mo2 = ym % 12;
-          var isCurrent2 = yr2 === todayYear && mo2 === todayMonth;
-          html += '<td class="gantt-cell" style="position:relative;min-width:' + colWidth + "px;" + (isCurrent2 ? "background:#fef2f2;" : "") + '">';
-          if (ym === yBarStart) {
-            var yBarW = (yBarEnd - yBarStart + 1) * colWidth;
-            html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + yBarW + "px;cursor:pointer;" + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + "</div>";
-          }
-          if (ym === yExtStart && yExtStart >= 0) {
-            var yExtW = (yExtEndIdx - yExtStart + 1) * colWidth;
-            html += '<div class="gantt-bar-extension" title="' + t("extensionTooltip") + " \u2014 " + sanitize(task.Title) + '" style="left:2px;width:' + yExtW + "px;border-color:" + yExtColor + ";background:" + yExtColor + '20;"></div>';
-          }
-          html += "</td>";
-        }
-        html += "</tr>";
-        if (expandedGanttTasks[task.id]) {
-          var sts = getGanttSubtasks(task.id);
-          for (var sti = 0; sti < sts.length; sti++) {
-            var st = sts[sti];
-            var stRange = getGanttSubtaskRange(st, task);
-            var stBarClass = ganttSubtaskBarClass(st, task);
-            html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
-            var stYStart = -1, stYEnd = -1;
-            for (var ym3 = 0; ym3 < totalMonths; ym3++) {
-              var yr3 = startYr + Math.floor(ym3 / 12);
-              var mo3 = ym3 % 12;
-              var ms3 = new Date(yr3, mo3, 1);
-              var me3 = new Date(yr3, mo3 + 1, 0, 23, 59, 59, 999);
-              if (stRange.start <= me3 && stRange.end >= ms3) {
-                if (stYStart === -1) stYStart = ym3;
-                stYEnd = ym3;
-              }
-            }
-            for (var ym3 = 0; ym3 < totalMonths; ym3++) {
-              html += '<td class="gantt-cell" style="position:relative;min-width:' + colWidth + 'px;">';
-              if (ym3 === stYStart) {
-                var stYW = (stYEnd - stYStart + 1) * colWidth;
-                html += '<div class="gantt-bar gantt-bar-subtask ' + stBarClass + '" style="left:2px;width:' + stYW + 'px;cursor:pointer;" title="' + sanitize(st.Title) + '" onclick="openEditTaskModal(' + task.id + ')"></div>';
-              }
-              html += "</td>";
-            }
-            html += "</tr>";
-          }
-        }
-      }
-      html += "</tbody></table>";
-      html += '<div class="gantt-footer">';
-      var rangeLabel = ganttMode === "twoyears" ? startYr + " - " + (startYr + 1) : String(startYr);
-      html += "<span>\u{1F31F} " + t("ganttFullYear") + " \u2022 " + tasksWithDates.length + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks") + "</span>";
-      html += "<span>" + t("ganttViewRange") + " " + rangeLabel + "</span>";
-      html += "</div></div>";
-      document.getElementById("gantt-view").innerHTML = html;
-      initGanttDragScroll();
-      return;
-    }
-    if (ganttMode === "months") {
-      var startDate = new Date(ganttYear, 0, 1);
-      var endDate = new Date(ganttYear, 11, 31);
-      var todayMonth = today.getMonth();
-      var todayYear = today.getFullYear();
-      var todayDayPct = todayYear === ganttYear && todayMonth >= 0 && todayMonth < 12 ? Math.round((today.getDate() - 1) / new Date(ganttYear, todayMonth + 1, 0).getDate() * 100) : -1;
-      html += '<thead><tr><th class="gantt-task-label" style="text-align:left;">' + t("colTaskName") + "</th>";
-      for (var m = 0; m < 12; m++) {
-        var isCurrentMonth = ganttYear === todayYear && m === todayMonth;
-        html += '<th colspan="1" style="' + (isCurrentMonth ? "background:#fef2f2;color:#ef4444;" : "") + '">' + monthNames[m].substring(0, 3).toUpperCase() + "</th>";
-      }
-      html += "</tr></thead><tbody>";
-      for (var ti = 0; ti < tasksWithDates.length; ti++) {
-        var task = tasksWithDates[ti];
-        var barClass = getGanttBarClass(task);
-        var barCustomColor = getGanttBarColor(task);
-        var barCustomStyle = barCustomColor ? "background:" + barCustomColor + ";color:white;" : "";
-        html += ganttTaskRowStart(task);
-        html += renderGanttTaskLabel(task);
-        var mTStart = task.Start_Date ? new Date(task.Start_Date * 1e3) : null;
-        var mTEnd = task.Due_Date ? new Date(task.Due_Date * 1e3) : null;
-        if (!mTStart && mTEnd) mTStart = new Date(mTEnd);
-        if (!mTEnd && mTStart) mTEnd = new Date(mTStart);
-        if (mTStart) mTStart.setHours(0, 0, 0, 0);
-        if (mTEnd) mTEnd.setHours(23, 59, 59, 999);
-        var mBarStartIdx = -1, mBarEndIdx = -1;
-        for (var m = 0; m < 12; m++) {
-          var ms = new Date(ganttYear, m, 1);
-          var me = new Date(ganttYear, m + 1, 0, 23, 59, 59, 999);
-          if (mTStart && mTEnd && mTStart <= me && mTEnd >= ms) {
-            if (mBarStartIdx === -1) mBarStartIdx = m;
-            mBarEndIdx = m;
-          }
-        }
-        var mExtEnd = getTaskExtensionEnd(task);
-        var mExtStart = -1, mExtEndI = -1;
-        if (mExtEnd && mTEnd && mExtEnd > mTEnd) {
-          for (var me2 = 0; me2 < 12; me2++) {
-            var ms2 = new Date(ganttYear, me2, 1);
-            var me2e = new Date(ganttYear, me2 + 1, 0, 23, 59, 59, 999);
-            if (ms2 > mTEnd && mExtEnd >= ms2) {
-              if (mExtStart === -1) mExtStart = me2;
-              mExtEndI = me2;
-            }
-          }
-        }
-        var mExtColor = getExtensionBarColor(task);
-        for (var m = 0; m < 12; m++) {
-          var isTodayMonth = ganttYear === todayYear && m === todayMonth;
-          html += '<td class="gantt-cell" style="position:relative;min-width:80px;">';
-          if (isTodayMonth && todayDayPct >= 0) {
-            html += '<div style="position:absolute;top:0;bottom:0;left:' + todayDayPct + '%;width:2px;background:#ef4444;z-index:1;pointer-events:none;"></div>';
-          }
-          if (m === mBarStartIdx) {
-            var mBarWidth = (mBarEndIdx - mBarStartIdx + 1) * 80;
-            html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + mBarWidth + "px;cursor:pointer;" + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + "</div>";
-          }
-          if (m === mExtStart && mExtStart >= 0) {
-            var mExtW = (mExtEndI - mExtStart + 1) * 80;
-            html += '<div class="gantt-bar-extension" title="' + t("extensionTooltip") + " \u2014 " + sanitize(task.Title) + '" style="left:2px;width:' + mExtW + "px;border-color:" + mExtColor + ";background:" + mExtColor + '20;"></div>';
-          }
-          html += "</td>";
-        }
-        html += "</tr>";
-        if (expandedGanttTasks[task.id]) {
-          var sts = getGanttSubtasks(task.id);
-          for (var sti = 0; sti < sts.length; sti++) {
-            var st = sts[sti];
-            var stRange = getGanttSubtaskRange(st, task);
-            var stBarClass = ganttSubtaskBarClass(st, task);
-            html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
-            var stStartM = -1, stEndM = -1;
-            for (var m2 = 0; m2 < 12; m2++) {
-              var mStart = new Date(ganttYear, m2, 1);
-              var mEnd = new Date(ganttYear, m2 + 1, 0, 23, 59, 59, 999);
-              if (stRange.start <= mEnd && stRange.end >= mStart) {
-                if (stStartM === -1) stStartM = m2;
-                stEndM = m2;
-              }
-            }
-            for (var m2 = 0; m2 < 12; m2++) {
-              var isTodayMonth2 = ganttYear === todayYear && m2 === todayMonth;
-              html += '<td class="gantt-cell" style="position:relative;min-width:80px;">';
-              if (isTodayMonth2 && todayDayPct >= 0) {
-                html += '<div style="position:absolute;top:0;bottom:0;left:' + todayDayPct + '%;width:2px;background:#ef4444;z-index:1;pointer-events:none;"></div>';
-              }
-              if (m2 === stStartM) {
-                var stBarW = (stEndM - stStartM + 1) * 80;
-                html += '<div class="gantt-bar gantt-bar-subtask ' + stBarClass + '" style="left:2px;width:' + stBarW + 'px;cursor:pointer;" title="' + sanitize(st.Title) + '" onclick="openEditTaskModal(' + task.id + ')"></div>';
-              }
-              html += "</td>";
-            }
-            html += "</tr>";
-          }
-        }
-      }
-      html += "</tbody></table>";
-      html += '<div class="gantt-footer">';
-      html += "<span>\u{1F31F} " + t("ganttFullYear") + " \u2022 " + t("ganttNavInfo") + " \u2022 " + tasksWithDates.length + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks") + "</span>";
-      html += "<span>" + t("ganttViewRange") + " " + monthNames[0] + " - " + monthNames[11] + " " + ganttYear + "</span>";
-      html += "</div></div>";
-      document.getElementById("gantt-view").innerHTML = html;
-      initGanttDragScroll();
-      return;
-    }
-    var startDate, endDate;
-    if (ganttMode === "custom" && ganttCustomStart && ganttCustomEnd) {
-      startDate = /* @__PURE__ */ new Date(ganttCustomStart + "T00:00:00");
-      endDate = /* @__PURE__ */ new Date(ganttCustomEnd + "T00:00:00");
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || endDate < startDate) {
-        startDate = new Date(ganttYear, ganttMonth - 1, 1);
-        endDate = new Date(ganttYear, ganttMonth + 2, 0);
-      } else {
-        var maxEnd = new Date(startDate);
-        maxEnd.setDate(maxEnd.getDate() + 400);
-        if (endDate > maxEnd) endDate = maxEnd;
-      }
-    } else {
-      if (ganttYear === today.getFullYear() && ganttMonth === today.getMonth()) {
-        startDate = new Date(today);
-        startDate.setDate(today.getDate() - 7);
-        endDate = new Date(today);
-        endDate.setDate(today.getDate() + 60);
-      } else {
-        startDate = new Date(ganttYear, ganttMonth, 1);
-        endDate = new Date(ganttYear, ganttMonth + 2, 0);
-      }
-    }
-    var days = [];
-    var d = new Date(startDate);
-    while (d <= endDate) {
-      days.push(new Date(d));
-      d.setDate(d.getDate() + 1);
-    }
-    html += '<thead><tr><th class="gantt-task-label" style="text-align:left;" rowspan="2">' + t("colTaskName") + "</th>";
-    var prevMonth = -1;
-    for (var di0 = 0; di0 < days.length; di0++) {
-      var dm = days[di0].getMonth();
-      if (dm !== prevMonth) {
-        var colspan = 0;
-        for (var di1 = di0; di1 < days.length && days[di1].getMonth() === dm; di1++) colspan++;
-        html += '<th colspan="' + colspan + '" style="font-size:11px;font-weight:700;color:#475569;background:#f8fafc;border-bottom:1px solid #e2e8f0;">' + monthNames[dm].toUpperCase() + "</th>";
-        prevMonth = dm;
-      }
-    }
-    html += "</tr><tr>";
-    for (var di = 0; di < days.length; di++) {
-      var dd = days[di];
-      var isToday = dd.getTime() === today.getTime();
-      var isWeekend = dd.getDay() === 0 || dd.getDay() === 6;
-      html += '<th class="' + (isToday ? "today" : "") + (isWeekend ? " weekend" : "") + '">';
-      html += "<div>" + dd.getDate() + "</div>";
-      html += '<div style="font-size:8px;">' + dayNames[dd.getDay()] + "</div>";
-      html += "</th>";
-    }
-    html += "</tr></thead><tbody>";
-    for (var ti = 0; ti < tasksWithDates.length; ti++) {
-      var task = tasksWithDates[ti];
-      var barClass = getGanttBarClass(task);
-      var barCustomColor = getGanttBarColor(task);
-      var barCustomStyle = barCustomColor ? "background:" + barCustomColor + ";color:white;" : "";
-      html += ganttTaskRowStart(task);
-      html += renderGanttTaskLabel(task);
-      var tStart = task.Start_Date ? new Date(task.Start_Date * 1e3) : null;
-      var tEnd = task.Due_Date ? new Date(task.Due_Date * 1e3) : null;
-      if (!tStart && tEnd) tStart = tEnd;
-      if (!tEnd && tStart) tEnd = tStart;
-      if (tStart) tStart.setHours(0, 0, 0, 0);
-      if (tEnd) tEnd.setHours(0, 0, 0, 0);
-      var barStartIdx = -1, barEndIdx = -1;
-      if (tStart && tEnd) {
-        for (var di = 0; di < days.length; di++) {
-          var dday = days[di];
-          if (dday >= tStart && dday <= tEnd) {
-            if (barStartIdx === -1) barStartIdx = di;
-            barEndIdx = di;
-          }
-        }
-        if (barStartIdx === -1 && tStart < days[0] && tEnd >= days[0]) {
-          barStartIdx = 0;
-          for (var di2 = 0; di2 < days.length; di2++) {
-            if (days[di2] <= tEnd) barEndIdx = di2;
-          }
-        }
-      }
-      var dExtEnd = getTaskExtensionEnd(task);
-      var dExtStartIdx = -1, dExtEndIdx = -1;
-      if (dExtEnd && tEnd && dExtEnd > tEnd) {
-        var dExtDay = new Date(dExtEnd);
-        dExtDay.setHours(0, 0, 0, 0);
-        for (var dei = 0; dei < days.length; dei++) {
-          if (days[dei] >= tEnd && days[dei] <= dExtDay) {
-            if (dExtStartIdx === -1) dExtStartIdx = dei;
-            dExtEndIdx = dei;
-          }
-        }
-      }
-      var dExtColor = getExtensionBarColor(task);
-      for (var di = 0; di < days.length; di++) {
-        var dd = days[di];
-        var isToday = dd.getTime() === today.getTime();
-        var isWeekend = dd.getDay() === 0 || dd.getDay() === 6;
-        var cellClass = (isToday ? "today-col" : "") + (isWeekend ? " weekend-col" : "");
-        html += '<td class="gantt-cell ' + cellClass + '">';
-        if (di === barStartIdx) {
-          var spanDays = barEndIdx - barStartIdx + 1;
-          var widthPx = spanDays * 36;
-          html += '<div class="gantt-bar ' + barClass + '" data-gantt-bar-task-id="' + task.id + '" style="left:2px;width:' + widthPx + "px;cursor:pointer;" + barCustomStyle + '" title="' + sanitize(task.Title) + '" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + "</div>";
-        }
-        if (di === dExtStartIdx && dExtStartIdx >= 0) {
-          var dExtW = (dExtEndIdx - dExtStartIdx + 1) * 36;
-          html += '<div class="gantt-bar-extension" title="' + t("extensionTooltip") + " \u2014 " + sanitize(task.Title) + '" style="left:2px;width:' + dExtW + "px;border-color:" + dExtColor + ";background:" + dExtColor + '20;"></div>';
-        }
-        html += "</td>";
-      }
-      html += "</tr>";
-      if (expandedGanttTasks[task.id]) {
-        var sts = getGanttSubtasks(task.id);
-        for (var sti = 0; sti < sts.length; sti++) {
-          var st = sts[sti];
-          var stRange = getGanttSubtaskRange(st, task);
-          var stStartDay = new Date(stRange.start);
-          stStartDay.setHours(0, 0, 0, 0);
-          var stEndDay = new Date(stRange.end);
-          stEndDay.setHours(0, 0, 0, 0);
-          var stBarClass = ganttSubtaskBarClass(st, task);
-          var stBarStartIdx = -1, stBarEndIdx = -1;
-          for (var di2 = 0; di2 < days.length; di2++) {
-            var dday2 = days[di2];
-            if (dday2 >= stStartDay && dday2 <= stEndDay) {
-              if (stBarStartIdx === -1) stBarStartIdx = di2;
-              stBarEndIdx = di2;
-            }
-          }
-          html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
-          for (var di2 = 0; di2 < days.length; di2++) {
-            var dd2 = days[di2];
-            var isToday2 = dd2.getTime() === today.getTime();
-            var isWeekend2 = dd2.getDay() === 0 || dd2.getDay() === 6;
-            var cellClass2 = (isToday2 ? "today-col" : "") + (isWeekend2 ? " weekend-col" : "");
-            html += '<td class="gantt-cell ' + cellClass2 + '">';
-            if (di2 === stBarStartIdx) {
-              var stSpanDays = stBarEndIdx - stBarStartIdx + 1;
-              var stWidth = stSpanDays * 36;
-              html += '<div class="gantt-bar gantt-bar-subtask ' + stBarClass + '" style="left:2px;width:' + stWidth + 'px;cursor:pointer;" title="' + sanitize(st.Title) + '" onclick="openEditTaskModal(' + task.id + ')"></div>';
-            }
-            html += "</td>";
-          }
-          html += "</tr>";
-        }
-      }
-    }
-    html += "</tbody></table>";
-    var viewStart = monthNames[startDate.getMonth()];
-    var viewEnd = monthNames[endDate.getMonth()];
-    html += '<div class="gantt-footer">';
-    html += "<span>\u{1F31F} " + t("ganttFullYear") + " \u2022 " + t("ganttNavInfo") + " \u2022 " + tasksWithDates.length + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks") + "</span>";
-    html += "<span>" + t("ganttViewRange") + " " + viewStart + " - " + viewEnd + " " + ganttYear + "</span>";
-    html += "</div></div>";
-    document.getElementById("gantt-view").innerHTML = html;
-    initGanttDragScroll();
-    scrollGanttToToday();
-  }
-  function initGanttDragScroll() {
-    var container = document.querySelector("#gantt-view .gantt-container");
-    if (!container) return;
-    var isDown = false;
-    var startX, scrollLeft, hasMoved;
-    container.addEventListener("mousedown", function(e) {
-      if (e.button !== 0) return;
-      if (e.target.closest("button, a, select, input")) return;
-      isDown = true;
-      hasMoved = false;
-      startX = e.clientX;
-      scrollLeft = container.scrollLeft;
-      container.style.cursor = "grabbing";
-      container.style.userSelect = "none";
-    });
-    document.addEventListener("mouseup", function() {
-      if (!isDown) return;
-      isDown = false;
-      container.style.cursor = "";
-      container.style.userSelect = "";
-    });
-    document.addEventListener("mousemove", function(e) {
-      if (!isDown) return;
-      var dx = e.clientX - startX;
-      if (Math.abs(dx) > 3) hasMoved = true;
-      if (!hasMoved) return;
-      e.preventDefault();
-      container.scrollLeft = scrollLeft - dx;
-    });
-    container.addEventListener("click", function(e) {
-      if (hasMoved) {
-        e.stopPropagation();
-        e.preventDefault();
-      }
-    }, true);
-  }
-  function scrollGanttToToday() {
-    if (ganttMode !== "days") return;
-    var container = document.querySelector("#gantt-view .gantt-container");
-    var todayCell = container ? container.querySelector(".today-col") : null;
-    if (!container || !todayCell) return;
-    var left = todayCell.offsetLeft - Math.max(80, container.clientWidth * 0.38);
-    container.scrollLeft = Math.max(0, left);
-  }
-  function scrollGanttToTask(taskId) {
-    var container = document.querySelector("#gantt-view .gantt-container");
-    var bar = container ? container.querySelector('[data-gantt-bar-task-id="' + taskId + '"]') : null;
-    if (!container || !bar) return;
-    var stickyLabel = container.querySelector(".gantt-task-label");
-    var labelWidth = stickyLabel ? stickyLabel.offsetWidth : 260;
-    var containerRect = container.getBoundingClientRect();
-    var barRect = bar.getBoundingClientRect();
-    var barContentLeft = container.scrollLeft + (barRect.left - containerRect.left);
-    container.scrollLeft = Math.max(0, barContentLeft - labelWidth - 12);
-  }
-  function focusGanttTask(taskId, checked) {
-    selectedGanttTaskId = checked ? taskId : null;
-    document.querySelectorAll("#gantt-view .gantt-task-row").forEach(function(row) {
-      var isSelected = checked && Number(row.getAttribute("data-gantt-task-id")) === Number(taskId);
-      row.classList.toggle("gantt-row-selected", isSelected);
-      var checkbox = row.querySelector(".gantt-focus-checkbox");
-      if (checkbox) checkbox.checked = isSelected;
-    });
-    if (checked) requestAnimationFrame(function() {
-      scrollGanttToTask(taskId);
-    });
-  }
-  function setGanttYear(value) {
-    ganttYear = Math.max(2020, Math.min(2050, parseInt(value)));
-    renderGanttView();
-  }
-  function ganttNav(dir) {
-    if (ganttMode === "months" || ganttMode === "year" || ganttMode === "twoyears") {
-      ganttYear += dir;
-      ganttYear = Math.max(2020, Math.min(2050, ganttYear));
-    } else if (ganttMode === "weeks") {
-      ganttMonth += dir * 3;
-      if (ganttMonth > 11) {
-        ganttMonth -= 12;
-        ganttYear++;
-      }
-      if (ganttMonth < 0) {
-        ganttMonth += 12;
-        ganttYear--;
-      }
-      ganttYear = Math.max(2020, Math.min(2050, ganttYear));
-    } else {
-      ganttMonth += dir;
-      if (ganttMonth > 11) {
-        ganttMonth -= 12;
-        ganttYear++;
-      }
-      if (ganttMonth < 0) {
-        ganttMonth += 12;
-        ganttYear--;
-      }
-      ganttYear = Math.max(2020, Math.min(2050, ganttYear));
-    }
-    renderGanttView();
-  }
-  function ganttToday() {
-    var today = /* @__PURE__ */ new Date();
-    ganttYear = today.getFullYear();
-    ganttMonth = today.getMonth();
-    renderGanttView();
-  }
-  function ganttExpandAll() {
-    var tasksWithSubs = state.tasks.filter(function(t2) {
-      return getGanttSubtasks(t2.id).length > 0;
-    });
-    tasksWithSubs.forEach(function(t2) {
-      expandedGanttTasks[t2.id] = true;
-    });
-    renderGanttView();
-  }
-  function ganttCollapseAll() {
-    expandedGanttTasks = {};
-    renderGanttView();
-  }
-  function setGanttMode(mode) {
-    ganttMode = mode;
-    var rangeBox = document.getElementById("gantt-custom-range");
-    if (rangeBox) rangeBox.style.display = mode === "custom" ? "flex" : "none";
-    if (mode === "custom") {
-      if (!ganttCustomStart || !ganttCustomEnd) {
-        var ds = new Date(ganttYear, ganttMonth - 1, 1);
-        var de = new Date(ganttYear, ganttMonth + 2, 0);
-        ganttCustomStart = ds.toISOString().split("T")[0];
-        ganttCustomEnd = de.toISOString().split("T")[0];
-      }
-      var sEl = document.getElementById("gantt-custom-start");
-      var eEl = document.getElementById("gantt-custom-end");
-      if (sEl) sEl.value = ganttCustomStart;
-      if (eEl) eEl.value = ganttCustomEnd;
-    }
-    renderGanttView();
-  }
-  function setGanttCustomRange() {
-    var sEl = document.getElementById("gantt-custom-start");
-    var eEl = document.getElementById("gantt-custom-end");
-    if (sEl) ganttCustomStart = sEl.value;
-    if (eEl) ganttCustomEnd = eEl.value;
-    renderGanttView();
-  }
-  function setGanttSort(value) {
-    ganttSort = value;
-    renderGanttView();
-  }
-  async function exportGanttPdf() {
-    var container = document.querySelector("#gantt-view .gantt-container");
-    var table = container ? container.querySelector(".gantt-table") : null;
-    if (!table) {
-      showToast(currentLang === "fr" ? "Affichez d'abord le Gantt" : "Open the Gantt first", "error");
-      return;
-    }
-    if (typeof html2canvas === "undefined" || !window.jspdf) {
-      showToast(currentLang === "fr" ? "Librairies PDF non charg\xE9es" : "PDF libraries not loaded", "error");
-      return;
-    }
-    showToast(currentLang === "fr" ? "G\xE9n\xE9ration du PDF..." : "Generating PDF...", "info");
-    container.classList.add("gantt-exporting");
-    try {
-      var canvas = await html2canvas(table, { scale: 2, backgroundColor: "#ffffff", windowWidth: table.scrollWidth, windowHeight: table.scrollHeight });
-      container.classList.remove("gantt-exporting");
-      var imgData = canvas.toDataURL("image/png");
-      var jsPDF = window.jspdf.jsPDF;
-      var w = canvas.width, h = canvas.height;
-      var pdf = new jsPDF({ orientation: w >= h ? "landscape" : "portrait", unit: "px", format: [w, h], hotfixes: ["px_scaling"] });
-      pdf.addImage(imgData, "PNG", 0, 0, w, h);
-      var dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-      pdf.save("Gantt_" + dateStr + ".pdf");
-      showToast(currentLang === "fr" ? "PDF export\xE9 \u2713" : "PDF exported \u2713", "success");
-    } catch (e) {
-      container.classList.remove("gantt-exporting");
-      console.error("exportGanttPdf:", e);
-      showToast((currentLang === "fr" ? "Erreur export PDF : " : "PDF export error: ") + e.message, "error");
-    }
-  }
-  function toggleGanttFullscreen() {
-    var el = document.getElementById("tab-gantt");
-    var btn = document.getElementById("gantt-fullscreen-btn");
-    if (!el) return;
-    var on = el.classList.toggle("gantt-fullscreen");
-    if (btn) {
-      var label = on ? currentLang === "fr" ? "Quitter le plein \xE9cran" : "Exit fullscreen" : currentLang === "fr" ? "Afficher le Gantt en plein \xE9cran" : "Show Gantt fullscreen";
-      btn.title = label;
-      btn.setAttribute("aria-label", label);
-      btn.setAttribute("data-tooltip", label);
-    }
-  }
-
   // src/main.js
   Object.assign(window, {
     addComment,
@@ -10746,49 +10791,6 @@
   }
   function statusLabel(s) {
     return getStatusLabel(s) || s || "";
-  }
-  function switchTab(tabId) {
-    document.querySelectorAll(".tab-btn").forEach(function(btn) {
-      btn.classList.toggle("active", btn.getAttribute("data-tab") === tabId);
-    });
-    document.querySelectorAll(".tab-content").forEach(function(tc) {
-      tc.classList.toggle("active", tc.id === "tab-" + tabId);
-    });
-    localStorage.setItem("pm-active-tab", tabId);
-    if (tabId === "calendar") renderCalendarView();
-    if (tabId === "kanban") renderKanbanView();
-    if (tabId === "table") renderTableView();
-    if (tabId === "gantt") renderGanttView();
-    if (tabId === "templates") renderTemplatesView();
-    if (tabId === "stats") renderStatsView();
-    if (tabId === "team") renderTeamView();
-    if (tabId === "settings") renderSettingsView();
-  }
-  function restoreActiveTab() {
-    var savedTab = localStorage.getItem("pm-active-tab");
-    var allowedTabs = ["kanban", "gantt", "team", "settings"];
-    if (savedTab && allowedTabs.indexOf(savedTab) !== -1) {
-      switchTab(savedTab);
-    } else {
-      switchTab("kanban");
-    }
-  }
-  function refreshAllViews() {
-    if (typeof renderProjectSelector === "function") renderProjectSelector();
-    updateStats();
-    updateArchiveButton();
-    var activeTab = document.querySelector(".tab-btn.active");
-    if (activeTab) {
-      var tab = activeTab.getAttribute("data-tab");
-      if (tab === "calendar") renderCalendarView();
-      if (tab === "kanban") renderKanbanView();
-      if (tab === "table") renderTableView();
-      if (tab === "gantt") renderGanttView();
-      if (tab === "templates") renderTemplatesView();
-      if (tab === "stats") renderStatsView();
-      if (tab === "team") renderTeamView();
-    }
-    applyBusinessRoleRestrictions();
   }
   function setKanbanSort(value) {
     kanbanSort = value;

@@ -121,6 +121,7 @@ import {
   showClientSetup, hideClientSetup, ensureTables, runSetupDiagnostic,
   setupCreateFrenchTables, setupUseExistingTables
 } from './bootstrap/ensure-tables.js';
+import { switchTab, restoreActiveTab, refreshAllViews } from './ui/tabs.js';
 
 // index.html can't change and calls these ~182 functions via inline
 // onclick="..."/onchange="..." attributes (both in the static HTML and in
@@ -334,58 +335,6 @@ export function statusLabel(s) {
 // TABS
 // =============================================================================
 
-export function switchTab(tabId) {
-  document.querySelectorAll('.tab-btn').forEach(function(btn) {
-    btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
-  });
-  document.querySelectorAll('.tab-content').forEach(function(tc) {
-    tc.classList.toggle('active', tc.id === 'tab-' + tabId);
-  });
-  // Save active tab to localStorage
-  localStorage.setItem('pm-active-tab', tabId);
-  
-  if (tabId === 'calendar') renderCalendarView();
-  if (tabId === 'kanban') renderKanbanView();
-  if (tabId === 'table') renderTableView();
-  if (tabId === 'gantt') renderGanttView();
-  if (tabId === 'templates') renderTemplatesView();
-  if (tabId === 'stats') renderStatsView();
-  if (tabId === 'team') renderTeamView();
-  if (tabId === 'settings') renderSettingsView();
-}
-
-function restoreActiveTab() {
-  var savedTab = localStorage.getItem('pm-active-tab');
-  var allowedTabs = ['kanban', 'gantt', 'team', 'settings'];
-  if (savedTab && allowedTabs.indexOf(savedTab) !== -1) {
-    switchTab(savedTab);
-  } else {
-    switchTab('kanban');
-  }
-}
-
-// =============================================================================
-// INIT — CREATE TABLES IF NEEDED
-// =============================================================================
-
-
-export function refreshAllViews() {
-  if (typeof renderProjectSelector === 'function') renderProjectSelector();
-  updateStats();
-  updateArchiveButton();
-  var activeTab = document.querySelector('.tab-btn.active');
-  if (activeTab) {
-    var tab = activeTab.getAttribute('data-tab');
-    if (tab === 'calendar') renderCalendarView();
-    if (tab === 'kanban') renderKanbanView();
-    if (tab === 'table') renderTableView();
-    if (tab === 'gantt') renderGanttView();
-    if (tab === 'templates') renderTemplatesView();
-    if (tab === 'stats') renderStatsView();
-    if (tab === 'team') renderTeamView();
-  }
-  applyBusinessRoleRestrictions();
-}
 
 // =============================================================================
 // KANBAN VIEW

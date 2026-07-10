@@ -4,10 +4,7 @@ import { state } from '../store.js';
 import {
   shouldLimitToMyProjects, taskConcernsCurrentUser, canSeeAllProjects, getUserRoles, userMatchesRole
 } from './permissions.js';
-// Temporary backwards import: refreshAllViews stays in main.js - it's the
-// cross-view orchestrator and still needs renderKanbanView/renderGanttView/
-// renderTeamView, none extracted yet.
-import { refreshAllViews } from '../main.js';
+import { refreshAllViews } from '../ui/tabs.js';
 
 export function roleLabel(role) {
   if (role === 'admin') return t('roleAdmin');

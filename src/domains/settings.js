@@ -9,15 +9,15 @@ import { renderProjectSelector } from './filters.js';
 import { loadAllData } from './data-loader.js';
 import { getKanbanStatuses, renderKanbanView } from './kanban.js';
 import { closeModalForce } from './task-modal.js';
+import { refreshAllViews } from '../ui/tabs.js';
 // Temporary backwards imports: none of these are extracted yet
-// (setField -> config, refreshAllViews -> main orchestration,
-// renderKanbanStatusesList -> kanban domain but stays in main.js since it
-// reassigns customKanbanStatuses like loadSettings() does,
-// defaultCardDisplay/cardDisplaySettings -> stay in main.js because
+// (setField -> config, renderKanbanStatusesList -> kanban domain but stays
+// in main.js since it reassigns customKanbanStatuses like loadSettings()
+// does, defaultCardDisplay/cardDisplaySettings -> stay in main.js because
 // loadSettings() reassigns cardDisplaySettings and can't move until
 // bootstrap/ensure-tables.js is extracted).
 import {
-  setField, refreshAllViews,
+  setField,
   renderKanbanStatusesList,
   defaultCardDisplay, cardDisplaySettings
 } from '../main.js';

@@ -4,9 +4,7 @@ import { state } from '../store.js';
 import { showConfirmModal } from '../ui/confirm-modal.js';
 import { showToast } from '../ui/toast.js';
 import { loadAllData } from './data-loader.js';
-// Temporary backwards import: refreshAllViews is the tab-render orchestrator,
-// still depends on domains (kanban/gantt/team) not extracted yet.
-import { refreshAllViews } from '../main.js';
+import { refreshAllViews } from '../ui/tabs.js';
 
 export const ATTACH_MAX_BYTES = 5 * 1024 * 1024; // limite pratique par fichier (~5 Mo)
 
