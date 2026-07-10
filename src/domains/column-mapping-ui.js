@@ -2,13 +2,14 @@ import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
 import { loadAllData } from './data-loader.js';
+import { saveSetting } from './settings.js';
 // Temporary backwards imports: none of these are extracted yet
-// (getColumnName/loadColumnMapping -> config, loadSettings/saveSetting/
-// ensureConfigAndSettingsTables/hasValidMappedTaskTable -> bootstrap/settings,
+// (getColumnName/loadColumnMapping -> config, loadSettings/
+// ensureConfigAndSettingsTables/hasValidMappedTaskTable -> bootstrap,
 // closeModalForce -> task-modal, refreshAllViews -> main orchestration,
 // formatAccessError -> bootstrap).
 import {
-  getColumnName, loadColumnMapping, loadSettings, saveSetting,
+  getColumnName, loadColumnMapping, loadSettings,
   ensureConfigAndSettingsTables, hasValidMappedTaskTable,
   closeModalForce, refreshAllViews, formatAccessError
 } from '../main.js';

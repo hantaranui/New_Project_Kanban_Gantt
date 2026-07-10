@@ -4,9 +4,10 @@ import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
 import { showConfirmModal } from '../ui/confirm-modal.js';
 import { myAssigneeValue, myProjectIdSet } from './filters.js';
+import { renderSecuritySection } from './settings.js';
 // Temporary backwards imports: none of these are extracted yet
-// (switchTab depends on every render*View, renderSecuritySection is settings-tab UI).
-import { switchTab, renderSecuritySection } from '../main.js';
+// (switchTab depends on every render*View).
+import { switchTab } from '../main.js';
 
 // ChoiceList-safe role helpers
 // Grist ChoiceList is serialized as:
