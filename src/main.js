@@ -48,6 +48,10 @@ import {
   toggleSubtaskFromTable, openSubtaskDepModal, updateSubtaskDep,
   setStStatus, setStType, setStPill, startEditSubtask, cancelEditSubtask, filterStAssignees
 } from './domains/subtasks.js';
+import { generateOccurrences, addRecurrenceToEpoch, createNextOccurrence } from './domains/recurrence.js';
+import {
+  renderMultiFilter, toggleMsFilter, toggleMsOption, clearMsFilter, sortTable, renderTableView
+} from './domains/table-view.js';
 
 // index.html can't change and calls these ~182 functions via inline
 // onclick="..."/onchange="..." attributes (both in the static HTML and in
@@ -624,7 +628,7 @@ function applyBusinessRoleRestrictions() {
   });
 }
 
-function isOverdue(task) {
+export function isOverdue(task) {
   if (!task.Due_Date || task.Status === 'done') return false;
   var now = Math.floor(Date.now() / 1000);
   return task.Due_Date < now;
@@ -644,7 +648,7 @@ export function getUserDisplayName(emailOrName) {
   return emailOrName;
 }
 
-function statusLabel(s) {
+export function statusLabel(s) {
   return getStatusLabel(s) || s || '';
 }
 
@@ -1933,93 +1937,6 @@ function buildFilterCombo(id, placeholder, options, selectedValue, onSelect) {
   return h;
 }
 
-// B2 : multi-filtres statut/priorité du tableau (tableau vide = tous)
-var tableFilterStatuses = [];
-var tableFilterPriorities = [];
-
-function renderMultiFilter(kind) {
-  var containerId = kind === 'status' ? 'ms-status' : 'ms-priority';
-  var c = document.getElementById(containerId);
-  if (!c) return;
-  var opts, selected, placeholder;
-  if (kind === 'status') {
-    opts = getKanbanStatuses().map(function(s) { return { value: s.key, label: currentLang === 'fr' ? s.label_fr : s.label_en }; });
-    selected = tableFilterStatuses;
-    placeholder = currentLang === 'fr' ? 'Tous les statuts' : 'All statuses';
-  } else {
-    opts = [
-      { value: 'high', label: t('priorityHigh') },
-      { value: 'medium', label: t('priorityMedium') },
-      { value: 'low', label: t('priorityLow') }
-    ];
-    selected = tableFilterPriorities;
-    placeholder = currentLang === 'fr' ? 'Toutes priorités' : 'All priorities';
-  }
-  var labelText = selected.length === 0 ? placeholder
-    : opts.filter(function(o) { return selected.indexOf(o.value) !== -1; }).map(function(o) { return o.label; }).join(', ');
-  var h = '<button type="button" class="filter-combo-btn' + (selected.length ? ' active' : '') + '" onclick="toggleMsFilter(\'' + containerId + '\')" id="' + containerId + '-btn">';
-  h += '<span class="filter-combo-label">' + sanitize(labelText) + '</span><span class="filter-combo-chevron">▾</span></button>';
-  h += '<div class="filter-combo-dd" id="' + containerId + '-dd"><div class="filter-combo-list">';
-  if (selected.length) {
-    h += '<div class="filter-combo-opt" onclick="clearMsFilter(\'' + kind + '\')" style="color:#ef4444;font-weight:600;">✕ ' + (currentLang === 'fr' ? 'Effacer' : 'Clear') + '</div>';
-  }
-  opts.forEach(function(o) {
-    var on = selected.indexOf(o.value) !== -1;
-    h += '<div class="filter-combo-opt' + (on ? ' selected' : '') + '" onclick="toggleMsOption(\'' + kind + '\',\'' + sanitize(o.value).replace(/'/g, "\\'") + '\')">';
-    h += '<span style="display:inline-block;width:16px;">' + (on ? '✓' : '') + '</span>' + sanitize(o.label) + '</div>';
-  });
-  h += '</div></div>';
-  // Préserver l'état ouvert si le menu l'était avant reconstruction
-  var prevDd = document.getElementById(containerId + '-dd');
-  var wasOpen = prevDd && prevDd.classList.contains('show');
-  c.innerHTML = h;
-  if (wasOpen) {
-    var newDd = document.getElementById(containerId + '-dd');
-    var newBtn = document.getElementById(containerId + '-btn');
-    if (newDd) newDd.classList.add('show');
-    if (newBtn) newBtn.classList.add('open');
-  }
-}
-
-function toggleMsFilter(containerId) {
-  var dd = document.getElementById(containerId + '-dd');
-  var btn = document.getElementById(containerId + '-btn');
-  if (!dd) return;
-  var isOpen = dd.classList.contains('show');
-  document.querySelectorAll('.filter-combo-dd.show').forEach(function(d) { d.classList.remove('show'); });
-  document.querySelectorAll('.filter-combo-btn.open').forEach(function(b) { b.classList.remove('open'); });
-  if (!isOpen) {
-    dd.classList.add('show');
-    if (btn) btn.classList.add('open');
-    setTimeout(function() {
-      document.addEventListener('mousedown', function hideMs(e) {
-        var box = document.getElementById(containerId);
-        // Re-query : les éléments sont recréés à chaque renderMultiFilter
-        if (box && !box.contains(e.target)) {
-          var dd2 = document.getElementById(containerId + '-dd');
-          var btn2 = document.getElementById(containerId + '-btn');
-          if (dd2) dd2.classList.remove('show');
-          if (btn2) btn2.classList.remove('open');
-          document.removeEventListener('mousedown', hideMs);
-        }
-      });
-    }, 0);
-  }
-}
-
-function toggleMsOption(kind, value) {
-  var arr = kind === 'status' ? tableFilterStatuses : tableFilterPriorities;
-  var i = arr.indexOf(value);
-  if (i === -1) arr.push(value); else arr.splice(i, 1);
-  renderTableView(); // reconstruit le filtre (état ouvert préservé) + le tableau
-}
-
-function clearMsFilter(kind) {
-  if (kind === 'status') tableFilterStatuses = []; else tableFilterPriorities = [];
-  renderMultiFilter(kind);
-  renderTableView();
-}
-
 function toggleFilterCombo(id) {
   var dd = document.getElementById('fc-dd-' + id);
   var btn = document.getElementById('fc-btn-' + id);
@@ -2302,13 +2219,13 @@ export function getFilteredTasks() {
   return result;
 }
 
-function getProjectName(projectId) {
+export function getProjectName(projectId) {
   if (!projectId) return '';
   var proj = state.projects.find(function(p) { return p.id === projectId; });
   return proj ? proj.Name : '';
 }
 
-function getProjectColor(projectId) {
+export function getProjectColor(projectId) {
   if (!projectId) return '#94a3b8';
   var proj = state.projects.find(function(p) { return p.id === projectId; });
   return proj ? (proj.Color || '#6366f1') : '#94a3b8';
@@ -3357,159 +3274,6 @@ async function onDrop(e) {
 // =============================================================================
 // TABLE VIEW
 // =============================================================================
-
-var tableSortField = null;
-var tableSortAsc = true;
-function sortTable(field) {
-  if (tableSortField === field) { tableSortAsc = !tableSortAsc; }
-  else { tableSortField = field; tableSortAsc = true; }
-  renderTableView();
-}
-export function renderTableView() {
-  // B3 : mémoriser l'état avant reconstruction (sous-tâches dépliées + scroll)
-  var _prevView = document.getElementById('table-view');
-  var _expandedParents = [];
-  if (_prevView) {
-    _prevView.querySelectorAll('.toggle-btn.expanded').forEach(function(b) {
-      _expandedParents.push(b.id.replace('toggle-', ''));
-    });
-  }
-  var _scrollEl = document.scrollingElement || document.documentElement;
-  var _scrollTop = _scrollEl ? _scrollEl.scrollTop : (window.scrollY || 0);
-
-  // B2 : (re)construire les multi-filtres statut/priorité
-  renderMultiFilter('status');
-  renderMultiFilter('priority');
-
-  var search = (document.getElementById('table-search').value || '').toLowerCase();
-
-  var filtered = getFilteredTasks().filter(function(task) {
-    if (tableFilterStatuses.length && tableFilterStatuses.indexOf(task.Status) === -1) return false;
-    if (tableFilterPriorities.length && tableFilterPriorities.indexOf(task.Priority) === -1) return false;
-    if (search) {
-      var text = (task.Title + ' ' + task.Description + ' ' + task.Assignee + ' ' + getTaskCustomFieldsText(task.id)).toLowerCase();
-      if (text.indexOf(search) === -1) return false;
-    }
-    return true;
-  });
-
-  if (tableSortField) {
-    var dir = tableSortAsc ? 1 : -1;
-    filtered.sort(function(a, b) {
-      var va, vb;
-      switch (tableSortField) {
-        case 'Title': va = (a.Title || '').toLowerCase(); vb = (b.Title || '').toLowerCase(); break;
-        case 'Project': va = getProjectName(a.Project_Id).toLowerCase(); vb = getProjectName(b.Project_Id).toLowerCase(); break;
-        case 'Status': va = a.Status || ''; vb = b.Status || ''; break;
-        case 'Priority': var po = {high:0,medium:1,low:2}; va = po[a.Priority] !== undefined ? po[a.Priority] : 3; vb = po[b.Priority] !== undefined ? po[b.Priority] : 3; break;
-        case 'Assignee': va = (a.Assignee || '').toLowerCase(); vb = (b.Assignee || '').toLowerCase(); break;
-        case 'Start_Date': va = a.Start_Date || 0; vb = b.Start_Date || 0; break;
-        case 'Due_Date': va = a.Due_Date || 0; vb = b.Due_Date || 0; break;
-        default: va = ''; vb = '';
-      }
-      if (va < vb) return -1 * dir;
-      if (va > vb) return 1 * dir;
-      return 0;
-    });
-  }
-
-  function sortIcon(field) { return tableSortField === field ? (tableSortAsc ? ' ▲' : ' ▼') : ' ⇅'; }
-  var thStyle = 'cursor:pointer;user-select:none;';
-  var html = '<table class="data-table">';
-  html += '<thead><tr>';
-  html += '<th style="' + thStyle + '" onclick="sortTable(\'Title\')">' + t('colTaskName') + sortIcon('Title') + '</th>';
-  html += '<th style="' + thStyle + '" onclick="sortTable(\'Project\')">' + (currentLang === 'fr' ? 'Projet' : 'Project') + sortIcon('Project') + '</th>';
-  html += '<th style="' + thStyle + '" onclick="sortTable(\'Status\')">' + t('colStatus') + sortIcon('Status') + '</th>';
-  html += '<th style="' + thStyle + '" onclick="sortTable(\'Priority\')">' + t('colPriority') + sortIcon('Priority') + '</th>';
-  html += '<th style="' + thStyle + '" onclick="sortTable(\'Assignee\')">' + t('colAssignee') + sortIcon('Assignee') + '</th>';
-  html += '<th style="' + thStyle + '" onclick="sortTable(\'Start_Date\')">' + t('colStartDate') + sortIcon('Start_Date') + '</th>';
-  html += '<th style="' + thStyle + '" onclick="sortTable(\'Due_Date\')">' + t('colDueDate') + sortIcon('Due_Date') + '</th>';
-  html += '<th>' + t('colActions') + '</th>';
-  html += '</tr></thead><tbody>';
-
-  for (var i = 0; i < filtered.length; i++) {
-    var task = filtered[i];
-    var statusClass = 'status-' + task.Status;
-    var overdueHtml = isOverdue(task) ? ' ⚠️' : '';
-    var dotClass = task.Priority === 'high' ? 'dot-high' : (task.Priority === 'medium' ? 'dot-medium' : 'dot-low');
-
-    var taskSubtasks = getTaskSubtasks(task.id);
-    var completedSt = taskSubtasks.filter(function(st) { return st.Completed; }).length;
-
-    var taskProjColor = getProjectColor(task.Project_Id);
-    var taskProjName = getProjectName(task.Project_Id);
-    html += '<tr class="task-row clickable-row" onclick="openEditTaskModal(' + task.id + ')">';
-    html += '<td><div style="display:flex;align-items:center;gap:8px;border-left:3px solid ' + taskProjColor + ';padding-left:6px;">';
-    if (taskSubtasks.length > 0) {
-      html += '<button class="toggle-btn" onclick="event.stopPropagation(); toggleSubtasks(' + task.id + ')" id="toggle-' + task.id + '">▶</button>';
-    } else {
-      html += '<span style="width:18px;"></span>';
-    }
-    html += '<div><div style="font-weight:700;">' + sanitize(task.Title) + '</div>';
-    if (task.Description) html += '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + sanitize(task.Description).substring(0, 80) + '</div>';
-    html += '</div></div></td>';
-    html += '<td>' + (taskProjName ? '<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:' + taskProjColor + ';display:inline-block;"></span>' + sanitize(taskProjName) + '</span>' : '') + '</td>';
-    html += '<td><span class="status-badge ' + statusClass + '">● ' + statusLabel(task.Status) + '</span>';
-    if (taskSubtasks.length > 0) html += ' <span class="st-badge">' + completedSt + '/' + taskSubtasks.length + '</span>';
-    html += '</td>';
-    html += '<td><span class="priority-dot ' + dotClass + '"></span> ' + priorityLabel(task.Priority) + '</td>';
-    var assigneeDisplay = task.Assignee ? task.Assignee.split(',').map(function(a) { return getUserDisplayName(a.trim()); }).join(', ') : '';
-    html += '<td>' + (assigneeDisplay ? '<span class="assignee-chip">👤 ' + sanitize(assigneeDisplay) + '</span>' : '') + '</td>';
-    html += '<td>' + (task.Start_Date ? formatDate(task.Start_Date) : t('notDefined')) + '</td>';
-    html += '<td style="' + (isOverdue(task) ? 'color:#dc2626;font-weight:700;' : '') + '">' + (task.Due_Date ? formatDate(task.Due_Date) + overdueHtml : t('noDate')) + '</td>';
-    html += '<td onclick="event.stopPropagation();">';
-    if (state.isOwner) html += '<button class="btn-icon" onclick="deleteTask(' + task.id + ')">🗑️</button>';
-    html += '</td>';
-    html += '</tr>';
-
-    // Subtasks rows (hidden by default) — B1 : colonnes enrichies, sans pastille près du titre
-    var _nowSec = Math.floor(Date.now() / 1000);
-    for (var si = 0; si < taskSubtasks.length; si++) {
-      var st = taskSubtasks[si];
-      html += '<tr class="subtask-row clickable-row" data-parent="' + task.id + '" style="display:none;cursor:pointer;" onclick="openEditTaskModal(' + task.id + ', true); setTimeout(function(){startEditSubtask(' + st.id + ')},100);">';
-      var stStatus = st.Status || (st.Completed ? 'done' : 'todo');
-      var stDotClass = st.Priority === 'high' ? 'dot-high' : (st.Priority === 'medium' ? 'dot-medium' : 'dot-low');
-      var stAssignee = st.Assignee ? st.Assignee.split(',').map(function(a) { return getUserDisplayName(a.trim()); }).join(', ') : '';
-      var stOverdue = st.Due_Date && !st.Completed && st.Due_Date < _nowSec;
-      // Colonne Tâche (titre)
-      var stMilestoneMark = (st.Type === 'milestone') ? '<span title="Jalon" style="color:#7c3aed;margin-right:3px;">◆</span>' : '';
-      html += '<td><div class="subtask-indent"><span class="subtask-arrow">└</span><input type="checkbox" class="subtask-checkbox" ' + (st.Completed ? 'checked' : '') + ' onclick="event.stopPropagation();toggleSubtask(' + st.id + ', ' + !st.Completed + ')" style="cursor:pointer;width:14px;height:14px;margin-right:6px;flex-shrink:0;" />' + stMilestoneMark + '<span class="subtask-name' + (st.Completed ? ' completed' : '') + '">' + sanitize(st.Title) + '</span></div></td>';
-      // Projet (vide : hérité du parent)
-      html += '<td></td>';
-      // Statut (couleur réelle du statut personnalisé)
-      var stStatusDef = getKanbanStatuses().find(function(s) { return s.key === stStatus; });
-      var stStatusColor = stStatusDef && stStatusDef.color ? stStatusDef.color : '#94a3b8';
-      html += '<td><span class="status-badge" style="background:' + stStatusColor + '20;color:' + stStatusColor + ';">● ' + statusLabel(stStatus) + '</span></td>';
-      // Priorité
-      html += '<td><span class="priority-dot ' + stDotClass + '"></span> ' + priorityLabel(st.Priority) + '</td>';
-      // Assigné à
-      html += '<td>' + (stAssignee ? '<span class="assignee-chip">👤 ' + sanitize(stAssignee) + '</span>' : '') + '</td>';
-      // Date de début
-      html += '<td>' + (st.Start_Date ? formatDate(st.Start_Date) : '') + '</td>';
-      // Échéance
-      html += '<td style="' + (stOverdue ? 'color:#dc2626;font-weight:700;' : '') + '">' + (st.Due_Date ? formatDate(st.Due_Date) + (stOverdue ? ' ⚠️' : '') : '') + '</td>';
-      // Actions
-      html += '<td></td>';
-      html += '</tr>';
-    }
-  }
-
-  if (filtered.length === 0) {
-    html += '<tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8;">' + t('noTasks') + '</td></tr>';
-  }
-
-  html += '</tbody></table>';
-  document.getElementById('table-view').innerHTML = html;
-
-  // B3 : restaurer le dépliage des sous-tâches puis la position de scroll
-  _expandedParents.forEach(function(pid) {
-    var rows = document.querySelectorAll('.subtask-row[data-parent="' + pid + '"]');
-    var btn = document.getElementById('toggle-' + pid);
-    for (var i = 0; i < rows.length; i++) rows[i].style.display = 'table-row';
-    if (btn) { btn.textContent = '▼'; btn.classList.add('expanded'); }
-  });
-  if (_scrollEl && _scrollTop) _scrollEl.scrollTop = _scrollTop;
-}
 
 // =============================================================================
 // GANTT VIEW
@@ -6358,128 +6122,6 @@ async function deleteComment(commentId, taskId) {
     restoreTaskFormState(formState);
   } catch (e) {
     console.error('Error deleting comment:', e);
-  }
-}
-
-// =============================================================================
-// RECURRENCE HANDLING
-// =============================================================================
-
-// Génère toutes les occurrences d'une tâche récurrente sur le mois ou l'année en cours.
-// N'écrase pas les occurrences déjà existantes (vérifie par titre + date).
-async function generateOccurrences(taskId, period) {
-  var task = state.tasks.find(function(t) { return t.id === taskId; });
-  if (!task || !task.Recurrence || task.Recurrence === 'none') return;
-
-  var now = Math.floor(Date.now() / 1000);
-  var periodEnd;
-  if (period === 'month') {
-    var endOfMonth = new Date(); endOfMonth.setDate(1); endOfMonth.setMonth(endOfMonth.getMonth() + 1); endOfMonth.setDate(0); endOfMonth.setHours(23, 59, 59);
-    periodEnd = Math.floor(endOfMonth.getTime() / 1000);
-  } else {
-    var endOfYear = new Date(new Date().getFullYear(), 11, 31, 23, 59, 59);
-    periodEnd = Math.floor(endOfYear.getTime() / 1000);
-  }
-
-  var stepSeconds = task.Recurrence === 'daily' ? 86400 : task.Recurrence === 'weekly' ? 604800 : 2592000;
-
-  // Trouver la dernière date d'échéance parmi les occurrences existantes du même titre
-  var existingDates = state.tasks
-    .filter(function(t) { return t.Title === task.Title && t.Due_Date; })
-    .map(function(t) { return t.Due_Date; });
-  var cursor = existingDates.length > 0 ? Math.max.apply(null, existingDates) : (task.Due_Date || now);
-
-  var actions = [];
-  var count = 0;
-  var safety = 0;
-  while (cursor + stepSeconds <= periodEnd && safety < 100) {
-    cursor += stepSeconds;
-    safety++;
-    // Ne pas créer en double
-    var alreadyExists = state.tasks.some(function(t) {
-      return t.Title === task.Title && t.Due_Date && Math.abs(t.Due_Date - cursor) < 43200;
-    });
-    if (alreadyExists) continue;
-    var record = {};
-    setField(record, 'tasks', 'title', task.Title);
-    setField(record, 'tasks', 'description', task.Description);
-    setField(record, 'tasks', 'status', 'todo');
-    setField(record, 'tasks', 'priority', task.Priority);
-    setField(record, 'tasks', 'assignee', task.Assignee);
-    setField(record, 'tasks', 'group', task.Group_Name);
-    var startOffset = (task.Start_Date && task.Due_Date) ? (task.Due_Date - task.Start_Date) : 0;
-    setField(record, 'tasks', 'startDate', cursor - startOffset);
-    setField(record, 'tasks', 'dueDate', cursor);
-    setField(record, 'tasks', 'category', task.Category);
-    setField(record, 'tasks', 'tag', task.Tag);
-    setField(record, 'tasks', 'recurrence', task.Recurrence);
-    setField(record, 'tasks', 'estimatedHours', task.Estimated_Hours);
-    setField(record, 'tasks', 'projectId', task.Project_Id);
-    setField(record, 'tasks', 'createdAt', now);
-    actions.push(['AddRecord', state.TASKS_TABLE, null, record]);
-    count++;
-  }
-
-  if (actions.length === 0) {
-    showToast('Aucune occurrence à générer pour cette période', 'info');
-    return;
-  }
-  try {
-    await grist.docApi.applyUserActions(actions);
-    showToast(count + ' ' + t('occurrencesGenerated'), 'success');
-    await loadAllData();
-    renderCurrentView();
-  } catch (e) {
-    console.error('Error generating occurrences:', e);
-    showToast('Erreur : ' + e.message, 'error');
-  }
-}
-
-// B1 : avance une date (epoch s) selon la récurrence (calcul calendaire exact)
-function addRecurrenceToEpoch(epoch, rec) {
-  if (!epoch) return null;
-  var d = new Date(epoch * 1000);
-  switch (rec) {
-    case 'daily': d.setDate(d.getDate() + 1); break;
-    case 'weekly': d.setDate(d.getDate() + 7); break;
-    case 'biweekly': d.setDate(d.getDate() + 14); break;
-    case 'monthly': d.setMonth(d.getMonth() + 1); break;
-    case 'quarterly': d.setMonth(d.getMonth() + 3); break;
-    case 'yearly': d.setFullYear(d.getFullYear() + 1); break;
-    default: return epoch;
-  }
-  return Math.floor(d.getTime() / 1000);
-}
-
-async function createNextOccurrence(task) {
-  if (!task.Recurrence || task.Recurrence === 'none') return;
-
-  var newStartDate = addRecurrenceToEpoch(task.Start_Date, task.Recurrence);
-  var newDueDate = addRecurrenceToEpoch(task.Due_Date, task.Recurrence);
-  var now = Math.floor(Date.now() / 1000);
-
-  try {
-    var record = {};
-    setField(record, 'tasks', 'title', task.Title);
-    setField(record, 'tasks', 'description', task.Description);
-    setField(record, 'tasks', 'status', 'todo');
-    setField(record, 'tasks', 'priority', task.Priority);
-    setField(record, 'tasks', 'assignee', task.Assignee);
-    setField(record, 'tasks', 'group', task.Group_Name);
-    setField(record, 'tasks', 'startDate', newStartDate);
-    setField(record, 'tasks', 'dueDate', newDueDate);
-    setField(record, 'tasks', 'category', task.Category);
-    setField(record, 'tasks', 'tag', task.Tag);
-    setField(record, 'tasks', 'recurrence', task.Recurrence);
-    setField(record, 'tasks', 'estimatedHours', task.Estimated_Hours);
-    setField(record, 'tasks', 'createdAt', now);
-    
-    await grist.docApi.applyUserActions([
-      ['AddRecord', state.TASKS_TABLE, null, record]
-    ]);
-    showToast(t('nextOccurrence'), 'success');
-  } catch (e) {
-    console.error('Error creating next occurrence:', e);
   }
 }
 

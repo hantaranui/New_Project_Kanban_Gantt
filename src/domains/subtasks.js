@@ -2,13 +2,13 @@ import { t, currentLang } from '../i18n.js';
 import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
+import { renderTableView } from './table-view.js';
 // Temporary backwards imports: none of these are extracted yet
 // (loadAllData -> data loader, openEditTaskModal/closeModalForce -> task-modal,
-// openCardSubtasksModal/renderKanbanView -> kanban, renderTableView -> table-view,
-// getKanbanStatuses -> kanban domain).
+// openCardSubtasksModal/renderKanbanView -> kanban, getKanbanStatuses -> kanban domain).
 import {
   loadAllData, openEditTaskModal, closeModalForce, openCardSubtasksModal,
-  renderKanbanView, renderTableView, getKanbanStatuses
+  renderKanbanView, getKanbanStatuses
 } from '../main.js';
 
 export function getTaskSubtasks(taskId) {
