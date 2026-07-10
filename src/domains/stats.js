@@ -3,10 +3,10 @@ import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
 import { renderActivityLog } from './activity-log.js';
 import { getFilteredTasks, showArchivedTasks } from './filters.js';
+import { getOverdueTasks } from './notifications.js';
 // Temporary backwards imports: none of these are extracted yet
-// (getOverdueTasks -> notifications domain, getKanbanStatuses -> kanban domain,
-// getUserDisplayName -> team domain).
-import { getKanbanStatuses, getUserDisplayName, getOverdueTasks } from '../main.js';
+// (getKanbanStatuses -> kanban domain, getUserDisplayName -> team domain).
+import { getKanbanStatuses, getUserDisplayName } from '../main.js';
 
 export function updateStats() {
   var container = document.getElementById('stats-row');
