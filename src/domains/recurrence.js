@@ -11,6 +11,20 @@ import { setField } from '../config.js';
 // RECURRENCE HANDLING
 // =============================================================================
 
+// Résout task.Assignee (chaîne d'emails/noms normalisée par data-loader.js)
+// vers des ids Utilisateurs, pour l'écriture dans la colonne Assignee
+// (Reference List) - même logique que task-modal.js (nom distinct : ce sont
+// deux implémentations locales indépendantes, non partagées entre modules).
+function resolveRecurrenceAssigneeIds(assigneeStr) {
+  var names = (assigneeStr || '').split(',').map(function(a) { return a.trim(); }).filter(Boolean);
+  var ids = [];
+  names.forEach(function(val) {
+    var u = state.users.find(function(usr) { return usr.Email === val || usr.Name === val; });
+    if (u && ids.indexOf(u.id) === -1) ids.push(u.id);
+  });
+  return ids;
+}
+
 // Génère toutes les occurrences d'une tâche récurrente sur le mois ou l'année en cours.
 // N'écrase pas les occurrences déjà existantes (vérifie par titre + date).
 export async function generateOccurrences(taskId, period) {
@@ -51,13 +65,13 @@ export async function generateOccurrences(taskId, period) {
     setField(record, 'tasks', 'description', task.Description);
     setField(record, 'tasks', 'status', 'todo');
     setField(record, 'tasks', 'priority', task.Priority);
-    setField(record, 'tasks', 'assignee', task.Assignee);
+    setField(record, 'tasks', 'assignee', ['L'].concat(resolveRecurrenceAssigneeIds(task.Assignee)));
     setField(record, 'tasks', 'group', task.Group_Name);
     var startOffset = (task.Start_Date && task.Due_Date) ? (task.Due_Date - task.Start_Date) : 0;
     setField(record, 'tasks', 'startDate', cursor - startOffset);
     setField(record, 'tasks', 'dueDate', cursor);
     setField(record, 'tasks', 'category', task.Category);
-    setField(record, 'tasks', 'tag', task.Tag);
+    setField(record, 'tasks', 'tag', ['L'].concat(Array.isArray(task.Tag) ? task.Tag : []));
     setField(record, 'tasks', 'recurrence', task.Recurrence);
     setField(record, 'tasks', 'estimatedHours', task.Estimated_Hours);
     setField(record, 'tasks', 'projectId', task.Project_Id);
@@ -110,12 +124,12 @@ export async function createNextOccurrence(task) {
     setField(record, 'tasks', 'description', task.Description);
     setField(record, 'tasks', 'status', 'todo');
     setField(record, 'tasks', 'priority', task.Priority);
-    setField(record, 'tasks', 'assignee', task.Assignee);
+    setField(record, 'tasks', 'assignee', ['L'].concat(resolveRecurrenceAssigneeIds(task.Assignee)));
     setField(record, 'tasks', 'group', task.Group_Name);
     setField(record, 'tasks', 'startDate', newStartDate);
     setField(record, 'tasks', 'dueDate', newDueDate);
     setField(record, 'tasks', 'category', task.Category);
-    setField(record, 'tasks', 'tag', task.Tag);
+    setField(record, 'tasks', 'tag', ['L'].concat(Array.isArray(task.Tag) ? task.Tag : []));
     setField(record, 'tasks', 'recurrence', task.Recurrence);
     setField(record, 'tasks', 'estimatedHours', task.Estimated_Hours);
     setField(record, 'tasks', 'createdAt', now);

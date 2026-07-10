@@ -186,8 +186,6 @@ export function applyOwnerRestrictions() {
 export function getAclRules() {
   return [
     { tableId: state.SETTINGS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: state.CATEGORIES_TABLE,      ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
-    { tableId: state.TAGS_TABLE,            ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
     { tableId: state.CONFIG_TABLE,          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
     { tableId: state.TASKS_TABLE,           ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
     { tableId: state.SUBTASKS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },

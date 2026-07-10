@@ -18,8 +18,6 @@ export function applyFrenchTableNames(updateDefaults) {
   state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
   state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
   state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
-  state.CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
-  state.TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
   state.PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
   state.CONFIG_TABLE = CLIENT_TABLE_NAMES.config;
   state.SETTINGS_TABLE = CLIENT_TABLE_NAMES.settings;
@@ -31,8 +29,6 @@ export function applyFrenchTableNames(updateDefaults) {
     state.DEFAULT_TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
     state.DEFAULT_USERS_TABLE = CLIENT_TABLE_NAMES.users;
     state.DEFAULT_PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
-    state.DEFAULT_CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
-    state.DEFAULT_TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
   }
 }
 
@@ -80,12 +76,7 @@ export function buildDefaultConfigRecords() {
     ['project_name', state.PROJECTS_TABLE, 'Name', 'Nom', true, 'Name'],
     ['project_description', state.PROJECTS_TABLE, 'Description', 'Description', false, 'Description'],
     ['project_color', state.PROJECTS_TABLE, 'Color', 'Couleur', false, 'Color'],
-    ['project_status', state.PROJECTS_TABLE, 'Status', 'Statut', false, 'Status'],
-    ['category_name', state.CATEGORIES_TABLE, 'Name', 'Nom', true, 'Name'],
-    ['category_color', state.CATEGORIES_TABLE, 'Color', 'Couleur', false, 'Color'],
-    ['category_order', state.CATEGORIES_TABLE, 'Order', 'Ordre', false, 'Order'],
-    ['tag_name', state.TAGS_TABLE, 'Name', 'Nom', true, 'Name'],
-    ['tag_color', state.TAGS_TABLE, 'Color', 'Couleur', false, 'Color']
+    ['project_status', state.PROJECTS_TABLE, 'Status', 'Statut', false, 'Status']
   ];
   return defaultConfig.map(function(row) {
     return { Config_Key: row[0], Table_Name: row[1], Column_Name: row[2], Display_Label: row[3], Required: row[4], Default_Value: row[5] };
@@ -301,26 +292,6 @@ export async function ensureTables() {
 
     // Only auto-create a table when it (a) still has its default PM_* name
     // (meaning it has not been remapped) AND (b) does not yet exist.
-    if (!skipAutoCreateWorkTables && (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE && existingTables.indexOf(state.TASKS_TABLE) === -1)) {
-      await grist.docApi.applyUserActions([
-        ['AddTable', state.TASKS_TABLE, [
-          { id: 'Title', type: 'Text' },
-          { id: 'Description', type: 'Text' },
-          { id: 'Status', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['todo', 'progress', 'done', 'archived'] }) },
-          { id: 'Priority', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['high', 'medium', 'low'] }) },
-          { id: 'Assignee', type: 'Text' },
-          { id: 'Group_Name', type: 'Text' },
-          { id: 'Start_Date', type: 'Date' },
-          { id: 'Due_Date', type: 'Date' },
-          { id: 'Category', type: 'Text' },
-          { id: 'Tag', type: 'Text' },
-          { id: 'Recurrence', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['none', 'daily', 'weekly', 'monthly'] }) },
-          { id: 'Estimated_Hours', type: 'Numeric' },
-          { id: 'Created_At', type: 'Date' }
-        ]]
-      ]);
-    }
-
     if (!skipAutoCreateWorkTables && (state.USERS_TABLE === state.DEFAULT_USERS_TABLE && existingTables.indexOf(state.USERS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', state.USERS_TABLE, [
@@ -328,6 +299,29 @@ export async function ensureTables() {
           { id: 'Email', type: 'Text' },
           { id: 'Role', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['admin', 'member', 'viewer'] }) },
           { id: 'Group_Name', type: 'Text' }
+        ]]
+      ]);
+    }
+
+    // Créée après USERS_TABLE : Assignee référence directement la table des
+    // utilisateurs (Reference List, plusieurs assignés possibles). Category/Tag
+    // natifs (Choice/Choice List) dès la création - pas de table séparée.
+    if (!skipAutoCreateWorkTables && (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE && existingTables.indexOf(state.TASKS_TABLE) === -1)) {
+      await grist.docApi.applyUserActions([
+        ['AddTable', state.TASKS_TABLE, [
+          { id: 'Title', type: 'Text' },
+          { id: 'Description', type: 'Text' },
+          { id: 'Status', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['todo', 'progress', 'done', 'archived'] }) },
+          { id: 'Priority', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['high', 'medium', 'low'] }) },
+          { id: 'Assignee', type: 'RefList:' + state.USERS_TABLE },
+          { id: 'Group_Name', type: 'Text' },
+          { id: 'Start_Date', type: 'Date' },
+          { id: 'Due_Date', type: 'Date' },
+          { id: 'Category', type: 'Choice' },
+          { id: 'Tag', type: 'ChoiceList' },
+          { id: 'Recurrence', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['none', 'daily', 'weekly', 'monthly'] }) },
+          { id: 'Estimated_Hours', type: 'Numeric' },
+          { id: 'Created_At', type: 'Date' }
         ]]
       ]);
     }
@@ -389,25 +383,6 @@ export async function ensureTables() {
           { id: 'End_Time', type: 'Date' },
           { id: 'Duration', type: 'Int' },
           { id: 'Description', type: 'Text' }
-        ]]
-      ]);
-    }
-
-    if (!skipAutoCreateWorkTables && (state.CATEGORIES_TABLE === state.DEFAULT_CATEGORIES_TABLE && existingTables.indexOf(state.CATEGORIES_TABLE) === -1)) {
-      await grist.docApi.applyUserActions([
-        ['AddTable', state.CATEGORIES_TABLE, [
-          { id: 'Name', type: 'Text' },
-          { id: 'Color', type: 'Text' },
-          { id: 'Order', type: 'Int' }
-        ]]
-      ]);
-    }
-
-    if (!skipAutoCreateWorkTables && (state.TAGS_TABLE === state.DEFAULT_TAGS_TABLE && existingTables.indexOf(state.TAGS_TABLE) === -1)) {
-      await grist.docApi.applyUserActions([
-        ['AddTable', state.TAGS_TABLE, [
-          { id: 'Name', type: 'Text' },
-          { id: 'Color', type: 'Text' }
         ]]
       ]);
     }
@@ -524,14 +499,7 @@ export async function ensureTables() {
         ['project_name', state.PROJECTS_TABLE, 'Name', 'Nom', true, 'Name'],
         ['project_description', state.PROJECTS_TABLE, 'Description', 'Description', false, 'Description'],
         ['project_color', state.PROJECTS_TABLE, 'Color', 'Couleur', false, 'Color'],
-        ['project_status', state.PROJECTS_TABLE, 'Status', 'Statut', false, 'Status'],
-        // Categories mapping
-        ['category_name', state.CATEGORIES_TABLE, 'Name', 'Nom', true, 'Name'],
-        ['category_color', state.CATEGORIES_TABLE, 'Color', 'Couleur', false, 'Color'],
-        ['category_order', state.CATEGORIES_TABLE, 'Order', 'Ordre', false, 'Order'],
-        // Tags mapping
-        ['tag_name', state.TAGS_TABLE, 'Name', 'Nom', true, 'Name'],
-        ['tag_color', state.TAGS_TABLE, 'Color', 'Couleur', false, 'Color']
+        ['project_status', state.PROJECTS_TABLE, 'Status', 'Statut', false, 'Status']
       ];
       
       var configRecords = [];
@@ -605,7 +573,7 @@ export async function ensureTables() {
         }
         if (existingCols.indexOf('Tag') === -1) {
           await grist.docApi.applyUserActions([
-            ['AddColumn', state.TASKS_TABLE, 'Tag', { type: 'Text' }]
+            ['AddColumn', state.TASKS_TABLE, 'Tag', { type: 'ChoiceList' }]
           ]);
         }
         // RACI columns

@@ -10,8 +10,6 @@ export const CLIENT_TABLE_NAMES = {
   dependencies: 'Dependances',
   comments: 'Commentaires',
   timeEntries: 'Suivi_temps',
-  categories: 'Categories',
-  tags: 'Etiquettes',
   projects: 'Projets',
   config: 'Configuration_widget',
   settings: 'Parametres_widget',
@@ -67,24 +65,12 @@ export async function loadColumnMapping() {
         if (state.columnMapping.projects[field] !== undefined) {
           state.columnMapping.projects[field] = columnName;
         }
-      } else if (key.startsWith('category_')) {
-        var field = toCamel(key.slice(9));
-        if (state.columnMapping.categories[field] !== undefined) {
-          state.columnMapping.categories[field] = columnName;
-        }
-      } else if (key.startsWith('tag_')) {
-        var field = toCamel(key.slice(4));
-        if (state.columnMapping.tags[field] !== undefined) {
-          state.columnMapping.tags[field] = columnName;
-        }
       }
 
       // Also update table names if they differ
       if (key === 'task_title') state.TASKS_TABLE = tableName;
       else if (key === 'user_name') state.USERS_TABLE = tableName;
       else if (key === 'project_name') state.PROJECTS_TABLE = tableName;
-      else if (key === 'category_name') state.CATEGORIES_TABLE = tableName;
-      else if (key === 'tag_name') state.TAGS_TABLE = tableName;
     }
   } catch (e) {
     console.log('Column mapping not loaded, using defaults:', e);

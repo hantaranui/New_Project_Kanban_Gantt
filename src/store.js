@@ -14,8 +14,6 @@ export const state = {
   dependencies: [],
   comments: [],
   timeEntries: [],
-  categories: [],
-  tags: [],
   projects: [],
   currentProjectId: null,
   currentFilterRole: null,
@@ -36,8 +34,6 @@ export const state = {
   DEPENDENCIES_TABLE: 'PM_Dependencies',
   COMMENTS_TABLE: 'PM_Comments',
   TIME_ENTRIES_TABLE: 'PM_TimeEntries',
-  CATEGORIES_TABLE: 'PM_Categories',
-  TAGS_TABLE: 'PM_Tags',
   PROJECTS_TABLE: 'PM_Projects',
   CONFIG_TABLE: 'PM_Config',
   SETTINGS_TABLE: 'PM_Settings',
@@ -51,8 +47,6 @@ export const state = {
   DEFAULT_TASKS_TABLE: 'PM_Tasks',
   DEFAULT_USERS_TABLE: 'PM_Users',
   DEFAULT_PROJECTS_TABLE: 'PM_Projects',
-  DEFAULT_CATEGORIES_TABLE: 'PM_Categories',
-  DEFAULT_TAGS_TABLE: 'PM_Tags',
   taskTableColumns: null,
   columnMapping: {
     tasks: {
@@ -83,15 +77,6 @@ export const state = {
       color: 'Color',
       status: 'Status',
       lead: 'Lead'
-    },
-    categories: {
-      name: 'Name',
-      color: 'Color',
-      order: 'Order'
-    },
-    tags: {
-      name: 'Name',
-      color: 'Color'
     }
   },
   isOwner: false,

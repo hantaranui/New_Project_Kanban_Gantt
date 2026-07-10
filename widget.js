@@ -392,8 +392,6 @@
     dependencies: [],
     comments: [],
     timeEntries: [],
-    categories: [],
-    tags: [],
     projects: [],
     currentProjectId: null,
     currentFilterRole: null,
@@ -414,8 +412,6 @@
     DEPENDENCIES_TABLE: "PM_Dependencies",
     COMMENTS_TABLE: "PM_Comments",
     TIME_ENTRIES_TABLE: "PM_TimeEntries",
-    CATEGORIES_TABLE: "PM_Categories",
-    TAGS_TABLE: "PM_Tags",
     PROJECTS_TABLE: "PM_Projects",
     CONFIG_TABLE: "PM_Config",
     SETTINGS_TABLE: "PM_Settings",
@@ -429,8 +425,6 @@
     DEFAULT_TASKS_TABLE: "PM_Tasks",
     DEFAULT_USERS_TABLE: "PM_Users",
     DEFAULT_PROJECTS_TABLE: "PM_Projects",
-    DEFAULT_CATEGORIES_TABLE: "PM_Categories",
-    DEFAULT_TAGS_TABLE: "PM_Tags",
     taskTableColumns: null,
     columnMapping: {
       tasks: {
@@ -461,15 +455,6 @@
         color: "Color",
         status: "Status",
         lead: "Lead"
-      },
-      categories: {
-        name: "Name",
-        color: "Color",
-        order: "Order"
-      },
-      tags: {
-        name: "Name",
-        color: "Color"
       }
     },
     isOwner: false,
@@ -486,8 +471,6 @@
     dependencies: "Dependances",
     comments: "Commentaires",
     timeEntries: "Suivi_temps",
-    categories: "Categories",
-    tags: "Etiquettes",
     projects: "Projets",
     config: "Configuration_widget",
     settings: "Parametres_widget",
@@ -536,22 +519,10 @@
           if (state.columnMapping.projects[field] !== void 0) {
             state.columnMapping.projects[field] = columnName;
           }
-        } else if (key.startsWith("category_")) {
-          var field = toCamel(key.slice(9));
-          if (state.columnMapping.categories[field] !== void 0) {
-            state.columnMapping.categories[field] = columnName;
-          }
-        } else if (key.startsWith("tag_")) {
-          var field = toCamel(key.slice(4));
-          if (state.columnMapping.tags[field] !== void 0) {
-            state.columnMapping.tags[field] = columnName;
-          }
         }
         if (key === "task_title") state.TASKS_TABLE = tableName;
         else if (key === "user_name") state.USERS_TABLE = tableName;
         else if (key === "project_name") state.PROJECTS_TABLE = tableName;
-        else if (key === "category_name") state.CATEGORIES_TABLE = tableName;
-        else if (key === "tag_name") state.TAGS_TABLE = tableName;
       }
     } catch (e) {
       console.log("Column mapping not loaded, using defaults:", e);
@@ -1627,6 +1598,19 @@
   }
 
   // src/domains/recurrence.js
+  function resolveRecurrenceAssigneeIds(assigneeStr) {
+    var names = (assigneeStr || "").split(",").map(function(a) {
+      return a.trim();
+    }).filter(Boolean);
+    var ids = [];
+    names.forEach(function(val) {
+      var u = state.users.find(function(usr) {
+        return usr.Email === val || usr.Name === val;
+      });
+      if (u && ids.indexOf(u.id) === -1) ids.push(u.id);
+    });
+    return ids;
+  }
   async function generateOccurrences(taskId, period) {
     var task = state.tasks.find(function(t2) {
       return t2.id === taskId;
@@ -1667,13 +1651,13 @@
       setField(record, "tasks", "description", task.Description);
       setField(record, "tasks", "status", "todo");
       setField(record, "tasks", "priority", task.Priority);
-      setField(record, "tasks", "assignee", task.Assignee);
+      setField(record, "tasks", "assignee", ["L"].concat(resolveRecurrenceAssigneeIds(task.Assignee)));
       setField(record, "tasks", "group", task.Group_Name);
       var startOffset = task.Start_Date && task.Due_Date ? task.Due_Date - task.Start_Date : 0;
       setField(record, "tasks", "startDate", cursor - startOffset);
       setField(record, "tasks", "dueDate", cursor);
       setField(record, "tasks", "category", task.Category);
-      setField(record, "tasks", "tag", task.Tag);
+      setField(record, "tasks", "tag", ["L"].concat(Array.isArray(task.Tag) ? task.Tag : []));
       setField(record, "tasks", "recurrence", task.Recurrence);
       setField(record, "tasks", "estimatedHours", task.Estimated_Hours);
       setField(record, "tasks", "projectId", task.Project_Id);
@@ -1733,12 +1717,12 @@
       setField(record, "tasks", "description", task.Description);
       setField(record, "tasks", "status", "todo");
       setField(record, "tasks", "priority", task.Priority);
-      setField(record, "tasks", "assignee", task.Assignee);
+      setField(record, "tasks", "assignee", ["L"].concat(resolveRecurrenceAssigneeIds(task.Assignee)));
       setField(record, "tasks", "group", task.Group_Name);
       setField(record, "tasks", "startDate", newStartDate);
       setField(record, "tasks", "dueDate", newDueDate);
       setField(record, "tasks", "category", task.Category);
-      setField(record, "tasks", "tag", task.Tag);
+      setField(record, "tasks", "tag", ["L"].concat(Array.isArray(task.Tag) ? task.Tag : []));
       setField(record, "tasks", "recurrence", task.Recurrence);
       setField(record, "tasks", "estimatedHours", task.Estimated_Hours);
       setField(record, "tasks", "createdAt", now);
@@ -3805,7 +3789,283 @@
     applyBusinessRoleRestrictions();
   }
 
+  // src/domains/categories.js
+  var customCategories = [];
+  function getCategories() {
+    return customCategories;
+  }
+  function setCategoriesFromSettings(raw) {
+    var parsed = [];
+    try {
+      parsed = JSON.parse(raw) || [];
+    } catch (e) {
+    }
+    customCategories.length = 0;
+    Array.prototype.push.apply(customCategories, parsed);
+  }
+  async function saveCategories() {
+    await saveSetting("categories", JSON.stringify(customCategories));
+    await syncCategoryChoices();
+  }
+  async function syncCategoryChoices() {
+    try {
+      var choices = customCategories.map(function(c) {
+        return c.name;
+      });
+      var choiceOptions = {};
+      customCategories.forEach(function(c) {
+        if (c.color) choiceOptions[c.name] = { fillColor: c.color, textColor: "#ffffff" };
+      });
+      var categoryCol = getColumnName("tasks", "category");
+      await grist.docApi.applyUserActions([
+        ["ModifyColumn", state.TASKS_TABLE, categoryCol, { widgetOptions: JSON.stringify({ choices, choiceOptions }) }]
+      ]);
+      state.taskTableColumns = null;
+    } catch (e) {
+      console.log("syncCategoryChoices:", e.message);
+    }
+  }
+  function renderCategoriesList() {
+    var container = document.getElementById("categories-list");
+    if (!container) return;
+    if (customCategories.length === 0) {
+      container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === "fr" ? "Aucune cat\xE9gorie" : "No categories") + "</div>";
+      return;
+    }
+    var html = '<div class="settings-items">';
+    customCategories.forEach(function(cat, i) {
+      html += '<div class="settings-item">';
+      html += '<span class="settings-item-dot" style="background:' + (cat.color || "#6366f1") + ';"></span>';
+      html += '<div class="settings-item-info"><strong>' + sanitize(cat.name) + "</strong></div>";
+      html += '<div class="settings-item-actions">';
+      html += '<button class="btn-icon" onclick="editCategorySetting(' + i + ')" title="' + (currentLang === "fr" ? "Modifier" : "Edit") + '">\u270F\uFE0F</button>';
+      if (state.isOwner) html += '<button class="btn-icon" onclick="removeCategorySetting(' + i + ')" title="' + t("delete") + '">\u{1F5D1}\uFE0F</button>';
+      html += "</div>";
+      html += "</div>";
+    });
+    html += "</div>";
+    container.innerHTML = html;
+  }
+  async function addCategorySetting() {
+    var result = await showPromptModal(
+      currentLang === "fr" ? "Nouvelle cat\xE9gorie" : "New category",
+      [
+        { label: currentLang === "fr" ? "Nom" : "Name", placeholder: currentLang === "fr" ? "Ex: Discovery" : "Ex: Discovery" },
+        { label: currentLang === "fr" ? "Couleur" : "Color", type: "color" }
+      ],
+      ["", "#6366f1"]
+    );
+    if (!result || !result[0]) return;
+    var name = result[0].trim();
+    if (!name) return;
+    if (customCategories.some(function(c) {
+      return c.name === name;
+    })) {
+      showToast(currentLang === "fr" ? "Cette cat\xE9gorie existe d\xE9j\xE0" : "This category already exists", "error");
+      return;
+    }
+    customCategories.push({ name, color: result[1] || "#6366f1" });
+    await saveCategories();
+    renderCategoriesList();
+    refreshAllViews();
+    showToast(currentLang === "fr" ? "Cat\xE9gorie ajout\xE9e" : "Category added", "success");
+  }
+  async function editCategorySetting(index) {
+    var cat = customCategories[index];
+    if (!cat) return;
+    var result = await showPromptModal(
+      currentLang === "fr" ? "Modifier la cat\xE9gorie" : "Edit category",
+      [
+        { label: currentLang === "fr" ? "Nom" : "Name" },
+        { label: currentLang === "fr" ? "Couleur" : "Color", type: "color" }
+      ],
+      [cat.name, cat.color || "#6366f1"]
+    );
+    if (!result || !result[0]) return;
+    var oldName = cat.name;
+    cat.name = result[0].trim();
+    cat.color = result[1] || cat.color;
+    if (oldName !== cat.name) {
+      var categoryCol = getColumnName("tasks", "category");
+      var affected = state.tasks.filter(function(tsk) {
+        return tsk.Category === oldName;
+      });
+      if (affected.length > 0) {
+        var actions = affected.map(function(tsk) {
+          return ["UpdateRecord", state.TASKS_TABLE, tsk.id, { [categoryCol]: cat.name }];
+        });
+        try {
+          await grist.docApi.applyUserActions(actions);
+        } catch (e) {
+          console.log("rename category on tasks:", e.message);
+        }
+      }
+    }
+    await saveCategories();
+    renderCategoriesList();
+    refreshAllViews();
+  }
+  async function removeCategorySetting(index) {
+    var cat = customCategories[index];
+    if (!cat) return;
+    var confirmed = await showConfirmModal(
+      currentLang === "fr" ? "Supprimer la cat\xE9gorie \xAB " + cat.name + " \xBB ?" : 'Delete category "' + cat.name + '"?',
+      currentLang === "fr" ? "Supprimer" : "Delete"
+    );
+    if (!confirmed) return;
+    customCategories.splice(index, 1);
+    await saveCategories();
+    renderCategoriesList();
+    refreshAllViews();
+    showToast(currentLang === "fr" ? "Cat\xE9gorie supprim\xE9e" : "Category removed", "info");
+  }
+
+  // src/domains/tags.js
+  var customTags = [];
+  function getTags() {
+    return customTags;
+  }
+  function setTagsFromSettings(raw) {
+    var parsed = [];
+    try {
+      parsed = JSON.parse(raw) || [];
+    } catch (e) {
+    }
+    customTags.length = 0;
+    Array.prototype.push.apply(customTags, parsed);
+  }
+  async function saveTags() {
+    await saveSetting("tags", JSON.stringify(customTags));
+    await syncTagChoices();
+  }
+  async function syncTagChoices() {
+    try {
+      var choices = customTags.map(function(tg) {
+        return tg.name;
+      });
+      var choiceOptions = {};
+      customTags.forEach(function(tg) {
+        if (tg.color) choiceOptions[tg.name] = { fillColor: tg.color, textColor: "#ffffff" };
+      });
+      var tagCol = getColumnName("tasks", "tag");
+      await grist.docApi.applyUserActions([
+        ["ModifyColumn", state.TASKS_TABLE, tagCol, { widgetOptions: JSON.stringify({ choices, choiceOptions }) }]
+      ]);
+      state.taskTableColumns = null;
+    } catch (e) {
+      console.log("syncTagChoices:", e.message);
+    }
+  }
+  function renderTagsList() {
+    var container = document.getElementById("tags-list");
+    if (!container) return;
+    if (customTags.length === 0) {
+      container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === "fr" ? "Aucun tag" : "No tags") + "</div>";
+      return;
+    }
+    var html = '<div class="settings-items">';
+    customTags.forEach(function(tg, i) {
+      html += '<div class="settings-item">';
+      html += '<span class="settings-item-dot" style="background:' + (tg.color || "#6366f1") + ';"></span>';
+      html += '<div class="settings-item-info"><strong>' + sanitize(tg.name) + "</strong></div>";
+      html += '<div class="settings-item-actions">';
+      html += '<button class="btn-icon" onclick="editTagSetting(' + i + ')" title="' + (currentLang === "fr" ? "Modifier" : "Edit") + '">\u270F\uFE0F</button>';
+      if (state.isOwner) html += '<button class="btn-icon" onclick="removeTagSetting(' + i + ')" title="' + t("delete") + '">\u{1F5D1}\uFE0F</button>';
+      html += "</div>";
+      html += "</div>";
+    });
+    html += "</div>";
+    container.innerHTML = html;
+  }
+  async function addTagSetting() {
+    var result = await showPromptModal(
+      currentLang === "fr" ? "Nouveau tag" : "New tag",
+      [
+        { label: currentLang === "fr" ? "Nom" : "Name", placeholder: currentLang === "fr" ? "Ex: Urgent" : "Ex: Urgent" },
+        { label: currentLang === "fr" ? "Couleur" : "Color", type: "color" }
+      ],
+      ["", "#6366f1"]
+    );
+    if (!result || !result[0]) return;
+    var name = result[0].trim();
+    if (!name) return;
+    if (customTags.some(function(tg) {
+      return tg.name === name;
+    })) {
+      showToast(currentLang === "fr" ? "Ce tag existe d\xE9j\xE0" : "This tag already exists", "error");
+      return;
+    }
+    customTags.push({ name, color: result[1] || "#6366f1" });
+    await saveTags();
+    renderTagsList();
+    refreshAllViews();
+    showToast(currentLang === "fr" ? "Tag ajout\xE9" : "Tag added", "success");
+  }
+  async function editTagSetting(index) {
+    var tg = customTags[index];
+    if (!tg) return;
+    var result = await showPromptModal(
+      currentLang === "fr" ? "Modifier le tag" : "Edit tag",
+      [
+        { label: currentLang === "fr" ? "Nom" : "Name" },
+        { label: currentLang === "fr" ? "Couleur" : "Color", type: "color" }
+      ],
+      [tg.name, tg.color || "#6366f1"]
+    );
+    if (!result || !result[0]) return;
+    var oldName = tg.name;
+    tg.name = result[0].trim();
+    tg.color = result[1] || tg.color;
+    if (oldName !== tg.name) {
+      var tagCol = getColumnName("tasks", "tag");
+      var actions = [];
+      state.tasks.forEach(function(tsk) {
+        var list = Array.isArray(tsk.Tag) ? tsk.Tag : [];
+        var idx = list.indexOf(oldName);
+        if (idx !== -1) {
+          var updated = list.slice();
+          updated[idx] = tg.name;
+          actions.push(["UpdateRecord", state.TASKS_TABLE, tsk.id, { [tagCol]: ["L"].concat(updated) }]);
+        }
+      });
+      if (actions.length > 0) {
+        try {
+          await grist.docApi.applyUserActions(actions);
+        } catch (e) {
+          console.log("rename tag on tasks:", e.message);
+        }
+      }
+    }
+    await saveTags();
+    renderTagsList();
+    refreshAllViews();
+  }
+  async function removeTagSetting(index) {
+    var tg = customTags[index];
+    if (!tg) return;
+    var confirmed = await showConfirmModal(
+      currentLang === "fr" ? "Supprimer le tag \xAB " + tg.name + " \xBB ?" : 'Delete tag "' + tg.name + '"?',
+      currentLang === "fr" ? "Supprimer" : "Delete"
+    );
+    if (!confirmed) return;
+    customTags.splice(index, 1);
+    await saveTags();
+    renderTagsList();
+    refreshAllViews();
+    showToast(currentLang === "fr" ? "Tag supprim\xE9" : "Tag removed", "info");
+  }
+
   // src/domains/task-modal.js
+  function resolveAssigneeIds(list) {
+    var ids = [];
+    (list || []).forEach(function(val) {
+      var u = state.users.find(function(usr) {
+        return usr.Email === val || usr.Name === val;
+      });
+      if (u && ids.indexOf(u.id) === -1) ids.push(u.id);
+    });
+    return ids;
+  }
   function getInputValue(id, fallback) {
     var el = document.getElementById(id);
     if (!el) return fallback || "";
@@ -3902,7 +4162,7 @@
     setField(record, "tasks", "description", getInputValue("task-desc").trim());
     setField(record, "tasks", "status", getInputValue("task-status"));
     setField(record, "tasks", "priority", getInputValue("task-priority"));
-    setField(record, "tasks", "assignee", editAssignees.join(", "));
+    setField(record, "tasks", "assignee", ["L"].concat(resolveAssigneeIds(editAssignees)));
     setField(record, "tasks", "group", getInputValue("task-group"));
     setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
     setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
@@ -3910,8 +4170,7 @@
     setField(record, "tasks", "projectId", projectId);
     setField(record, "tasks", "recurrence", getInputValue("task-recurrence", "none"));
     setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
-    var tagEl = document.getElementById("task-tag");
-    if (tagEl) setField(record, "tasks", "tag", tagEl.value.trim());
+    setField(record, "tasks", "tag", ["L"].concat(editTags));
     if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
       record.Accountable = editAccountable.join(", ");
       record.Consulted = editConsulted.join(", ");
@@ -3935,7 +4194,6 @@
       due: getInputValue("task-due"),
       category: getInputValue("task-category"),
       project: getInputValue("task-project"),
-      tag: getInputValue("task-tag"),
       recurrence: getInputValue("task-recurrence", "none"),
       estimatedHours: getInputValue("task-estimated-hours"),
       extensionDate: getInputValue("task-extension-date"),
@@ -3954,7 +4212,6 @@
       ["task-due", state2.due],
       ["task-category", state2.category],
       ["task-project", state2.project],
-      ["task-tag", state2.tag],
       ["task-recurrence", state2.recurrence],
       ["task-estimated-hours", state2.estimatedHours],
       ["task-extension-date", state2.extensionDate]
@@ -4065,23 +4322,16 @@
     html += '<div class="detail-field-value"><select id="task-project">' + projectOptions + "</select></div>";
     html += "</div>";
     var newCategoryOptions = '<option value="">--</option>';
-    for (var nci = 0; nci < state.categories.length; nci++) {
-      newCategoryOptions += '<option value="' + sanitize(state.categories[nci].Name) + '">' + sanitize(state.categories[nci].Name) + "</option>";
+    var newCategories = getCategories();
+    for (var nci = 0; nci < newCategories.length; nci++) {
+      newCategoryOptions += '<option value="' + sanitize(newCategories[nci].name) + '">' + sanitize(newCategories[nci].name) + "</option>";
     }
     html += '<div class="detail-field">';
     html += '<span class="detail-field-icon">\u{1F4C1}</span>';
     html += '<span class="detail-field-label">' + t("fieldCategory") + "</span>";
     html += '<div class="detail-field-value"><select id="task-category">' + newCategoryOptions + "</select></div>";
     html += "</div>";
-    var newTagOptions = '<option value="">--</option>';
-    for (var nti = 0; nti < state.tags.length; nti++) {
-      newTagOptions += '<option value="' + sanitize(state.tags[nti].Name) + '">' + sanitize(state.tags[nti].Name) + "</option>";
-    }
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F3F7}\uFE0F</span>';
-    html += '<span class="detail-field-label">' + t("tag") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-tag">' + newTagOptions + "</select></div>";
-    html += "</div>";
+    html += renderTagField();
     html += "</div>";
     html += "</div>";
     html += '<div class="modal-detail-footer">';
@@ -4097,7 +4347,50 @@
   var editAccountable = [];
   var editConsulted = [];
   var editInformed = [];
+  var editTags = [];
   var draftTaskId = null;
+  function renderTagChips() {
+    var html = "";
+    for (var i = 0; i < editTags.length; i++) {
+      var tagObj = getTags().find(function(tg) {
+        return tg.name === editTags[i];
+      });
+      var color = tagObj ? tagObj.color : "#94a3b8";
+      html += '<span class="assignee-chip-tag" style="border-color:' + color + ";color:" + color + ';">' + sanitize(editTags[i]) + ' <span class="chip-remove" onclick="removeTagChip(' + i + ')">\u2715</span></span>';
+    }
+    return html;
+  }
+  function renderTagField() {
+    var tagSelectOptions = '<option value="">-- ' + t("tag") + " --</option>";
+    getTags().forEach(function(tg) {
+      tagSelectOptions += '<option value="' + sanitize(tg.name) + '">' + sanitize(tg.name) + "</option>";
+    });
+    var html = '<div class="detail-field">';
+    html += '<span class="detail-field-icon">\u{1F3F7}\uFE0F</span>';
+    html += '<span class="detail-field-label">' + t("tag") + "</span>";
+    html += '<div class="detail-field-value">';
+    html += '<div class="assignee-chips" id="tag-chips">' + renderTagChips() + "</div>";
+    html += '<div class="assignee-add-row">';
+    html += '<select id="tag-select">' + tagSelectOptions + "</select>";
+    html += '<button class="assignee-add-btn" onclick="addTagChip()">' + (currentLang === "fr" ? "Ajouter" : "Add") + "</button>";
+    html += "</div></div></div>";
+    return html;
+  }
+  function addTagChip() {
+    var sel = document.getElementById("tag-select");
+    if (!sel) return;
+    var val = sel.value;
+    if (!val || editTags.indexOf(val) !== -1) return;
+    editTags.push(val);
+    var container = document.getElementById("tag-chips");
+    if (container) container.innerHTML = renderTagChips();
+    sel.value = "";
+  }
+  function removeTagChip(index) {
+    editTags.splice(index, 1);
+    var container = document.getElementById("tag-chips");
+    if (container) container.innerHTML = renderTagChips();
+  }
   async function startNewTask(defaultStatus, dateStr, prefill) {
     prefill = prefill || {};
     var statuses = getKanbanStatuses();
@@ -4112,10 +4405,10 @@
     if (prefill.description) setField(record, "tasks", "description", prefill.description);
     if (prefill.category) setField(record, "tasks", "category", prefill.category);
     if (prefill.group) setField(record, "tasks", "group", prefill.group);
-    if (prefill.tag) setField(record, "tasks", "tag", prefill.tag);
+    if (prefill.tag) setField(record, "tasks", "tag", ["L", prefill.tag]);
     if (prefill.recurrence && prefill.recurrence !== "none") setField(record, "tasks", "recurrence", prefill.recurrence);
     if (prefill.estimatedHours) setField(record, "tasks", "estimatedHours", prefill.estimatedHours);
-    if (editAssignees.length > 0) setField(record, "tasks", "assignee", editAssignees.join(", "));
+    if (editAssignees.length > 0) setField(record, "tasks", "assignee", ["L"].concat(resolveAssigneeIds(editAssignees)));
     if (state.currentProjectId) setField(record, "tasks", "projectId", state.currentProjectId);
     setField(record, "tasks", "createdAt", Math.floor(Date.now() / 1e3));
     if (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
@@ -4158,6 +4451,7 @@
       editInformed = task.Informed ? task.Informed.split(",").map(function(a) {
         return a.trim();
       }).filter(Boolean) : [];
+      editTags = Array.isArray(task.Tag) ? task.Tag.slice() : [];
     }
     var groupOptions = '<option value="">--</option>';
     for (var i = 0; i < state.groups.length; i++) {
@@ -4254,25 +4548,17 @@
     html += '<div class="detail-field-value"><select id="task-project" onchange="refreshDependencyTaskOptions(' + task.id + ', true)">' + projectOptions + "</select></div>";
     html += "</div>";
     var categoryOptions = '<option value="">--</option>';
-    for (var ci = 0; ci < state.categories.length; ci++) {
-      var catSel = state.categories[ci].Name === task.Category ? " selected" : "";
-      categoryOptions += '<option value="' + sanitize(state.categories[ci].Name) + '"' + catSel + ">" + sanitize(state.categories[ci].Name) + "</option>";
+    var editCategories = getCategories();
+    for (var ci = 0; ci < editCategories.length; ci++) {
+      var catSel = editCategories[ci].name === task.Category ? " selected" : "";
+      categoryOptions += '<option value="' + sanitize(editCategories[ci].name) + '"' + catSel + ">" + sanitize(editCategories[ci].name) + "</option>";
     }
     html += '<div class="detail-field">';
     html += '<span class="detail-field-icon">\u{1F4C1}</span>';
     html += '<span class="detail-field-label">' + t("fieldCategory") + "</span>";
     html += '<div class="detail-field-value"><select id="task-category">' + categoryOptions + "</select></div>";
     html += "</div>";
-    var tagOptions = '<option value="">--</option>';
-    for (var ti = 0; ti < state.tags.length; ti++) {
-      var tagSel = state.tags[ti].Name === task.Tag ? " selected" : "";
-      tagOptions += '<option value="' + sanitize(state.tags[ti].Name) + '"' + tagSel + ">" + sanitize(state.tags[ti].Name) + "</option>";
-    }
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F3F7}\uFE0F</span>';
-    html += '<span class="detail-field-label">' + t("tag") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-tag">' + tagOptions + "</select></div>";
-    html += "</div>";
+    html += renderTagField();
     var taskSubtasks = getTaskSubtasks(task.id);
     html += '<div class="subtasks-section">';
     html += '<div class="subtasks-header">';
@@ -4728,6 +5014,7 @@
     if (!title) return;
     var formState = captureTaskFormState();
     var savedAssignees = editAssignees.slice();
+    var savedTags = editTags.slice();
     var savedAccountable = editAccountable.slice();
     var savedConsulted = editConsulted.slice();
     var savedInformed = editInformed.slice();
@@ -4751,6 +5038,7 @@
       input.value = "";
       await loadAllData();
       editAssignees = savedAssignees;
+      editTags = savedTags;
       editAccountable = savedAccountable;
       editConsulted = savedConsulted;
       editInformed = savedInformed;
@@ -4774,6 +5062,7 @@
   }
   async function toggleSubtask(subtaskId, completed) {
     var savedAssignees = editAssignees.slice();
+    var savedTags = editTags.slice();
     var savedAccountable = editAccountable.slice();
     var savedConsulted = editConsulted.slice();
     var savedInformed = editInformed.slice();
@@ -4796,6 +5085,7 @@
       });
       if (subtask) {
         editAssignees = savedAssignees;
+        editTags = savedTags;
         editAccountable = savedAccountable;
         editConsulted = savedConsulted;
         editInformed = savedInformed;
@@ -4814,6 +5104,7 @@
     if (!confirmed) return;
     var formState = captureTaskFormState();
     var savedAssignees = editAssignees.slice();
+    var savedTags = editTags.slice();
     var savedAccountable = editAccountable.slice();
     var savedConsulted = editConsulted.slice();
     var savedInformed = editInformed.slice();
@@ -4829,6 +5120,7 @@
       showToast(t("subtaskDeleted"), "info");
       await loadAllData();
       editAssignees = savedAssignees;
+      editTags = savedTags;
       editAccountable = savedAccountable;
       editConsulted = savedConsulted;
       editInformed = savedInformed;
@@ -4881,6 +5173,7 @@
     });
     var previousAssignee = existingSubtask ? existingSubtask.Assignee : "";
     var savedAssignees = editAssignees.slice();
+    var savedTags = editTags.slice();
     var savedAccountable = editAccountable.slice();
     var savedConsulted = editConsulted.slice();
     var savedInformed = editInformed.slice();
@@ -4903,6 +5196,7 @@
       }
       await loadAllData();
       editAssignees = savedAssignees;
+      editTags = savedTags;
       editAccountable = savedAccountable;
       editConsulted = savedConsulted;
       editInformed = savedInformed;
@@ -4947,11 +5241,13 @@
       await grist.docApi.applyUserActions(actions);
       showToast(currentLang === "fr" ? count + " occurrence(s) cr\xE9\xE9e(s)" : count + " occurrence(s) created", "success");
       var savedAssignees = editAssignees.slice();
+      var savedTags = editTags.slice();
       var savedAccountable = editAccountable.slice();
       var savedConsulted = editConsulted.slice();
       var savedInformed = editInformed.slice();
       await loadAllData();
       editAssignees = savedAssignees;
+      editTags = savedTags;
       editAccountable = savedAccountable;
       editConsulted = savedConsulted;
       editInformed = savedInformed;
@@ -4977,6 +5273,7 @@
     }
     var formState = captureTaskFormState();
     var savedAssignees = editAssignees.slice();
+    var savedTags = editTags.slice();
     var savedAccountable = editAccountable.slice();
     var savedConsulted = editConsulted.slice();
     var savedInformed = editInformed.slice();
@@ -4991,6 +5288,7 @@
       showToast(t("dependencyAdded"), "success");
       await loadAllData();
       editAssignees = savedAssignees;
+      editTags = savedTags;
       editAccountable = savedAccountable;
       editConsulted = savedConsulted;
       editInformed = savedInformed;
@@ -5014,6 +5312,7 @@
     if (!confirmed) return;
     var formState = captureTaskFormState();
     var savedAssignees = editAssignees.slice();
+    var savedTags = editTags.slice();
     var savedAccountable = editAccountable.slice();
     var savedConsulted = editConsulted.slice();
     var savedInformed = editInformed.slice();
@@ -5024,6 +5323,7 @@
       showToast(t("dependencyRemoved"), "info");
       await loadAllData();
       editAssignees = savedAssignees;
+      editTags = savedTags;
       editAccountable = savedAccountable;
       editConsulted = savedConsulted;
       editInformed = savedInformed;
@@ -5039,6 +5339,7 @@
     if (!content) return;
     var formState = captureTaskFormState();
     var savedAssignees = editAssignees.slice();
+    var savedTags = editTags.slice();
     var savedAccountable = editAccountable.slice();
     var savedConsulted = editConsulted.slice();
     var savedInformed = editInformed.slice();
@@ -5063,6 +5364,7 @@
       }
       await loadAllData();
       editAssignees = savedAssignees;
+      editTags = savedTags;
       editAccountable = savedAccountable;
       editConsulted = savedConsulted;
       editInformed = savedInformed;
@@ -5083,6 +5385,7 @@
     if (!confirmed) return;
     var formState = captureTaskFormState();
     var savedAssignees = editAssignees.slice();
+    var savedTags = editTags.slice();
     var savedAccountable = editAccountable.slice();
     var savedConsulted = editConsulted.slice();
     var savedInformed = editInformed.slice();
@@ -5093,6 +5396,7 @@
       showToast(t("commentDeleted"), "info");
       await loadAllData();
       editAssignees = savedAssignees;
+      editTags = savedTags;
       editAccountable = savedAccountable;
       editConsulted = savedConsulted;
       editInformed = savedInformed;
@@ -5139,7 +5443,7 @@
     setField(record, "tasks", "description", getInputValue("task-desc").trim());
     setField(record, "tasks", "status", getInputValue("task-status"));
     setField(record, "tasks", "priority", getInputValue("task-priority"));
-    setField(record, "tasks", "assignee", editAssignees.join(", "));
+    setField(record, "tasks", "assignee", ["L"].concat(resolveAssigneeIds(editAssignees)));
     if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
       record.Accountable = editAccountable.join(", ");
       record.Consulted = editConsulted.join(", ");
@@ -5152,11 +5456,8 @@
     setField(record, "tasks", "projectId", projectId);
     setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
     setField(record, "tasks", "createdAt", Math.floor(Date.now() / 1e3));
+    setField(record, "tasks", "tag", ["L"].concat(editTags));
     if (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
-    var tagEl = document.getElementById("task-tag");
-    if (tagEl) {
-      setField(record, "tasks", "tag", tagEl.value.trim());
-    }
     try {
       record = await keepExistingTaskColumns(record);
       var createResult = await grist.docApi.applyUserActions([
@@ -5210,7 +5511,7 @@
     setField(record, "tasks", "description", getInputValue("task-desc").trim());
     setField(record, "tasks", "status", newStatus);
     setField(record, "tasks", "priority", getInputValue("task-priority"));
-    setField(record, "tasks", "assignee", editAssignees.join(", "));
+    setField(record, "tasks", "assignee", ["L"].concat(resolveAssigneeIds(editAssignees)));
     if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
       record.Accountable = editAccountable.join(", ");
       record.Consulted = editConsulted.join(", ");
@@ -5223,10 +5524,7 @@
     setField(record, "tasks", "projectId", projectId);
     setField(record, "tasks", "recurrence", newRecurrence);
     setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
-    var tagEl = document.getElementById("task-tag");
-    if (tagEl) {
-      setField(record, "tasks", "tag", tagEl.value.trim());
-    }
+    setField(record, "tasks", "tag", ["L"].concat(editTags));
     var extDateEl = document.getElementById("task-extension-date");
     if (extDateEl) record.Extension_Date = toEpoch(extDateEl.value);
     var autoExtEl = document.getElementById("task-auto-extend");
@@ -5334,112 +5632,6 @@
       await loadAllData();
     } catch (e) {
       console.error("Error deleting task:", e);
-    }
-  }
-
-  // src/domains/categories.js
-  function renderCategoriesList() {
-    var container = document.getElementById("categories-list");
-    if (!container) return;
-    if (state.categories.length === 0) {
-      container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">' + t("noCategories") + "</div>";
-      return;
-    }
-    var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
-    for (var i = 0; i < state.categories.length; i++) {
-      var cat = state.categories[i];
-      html += '<span class="category-chip" style="background:' + (cat.Color || "#6366f1") + "20;color:" + (cat.Color || "#6366f1") + ";border:1px solid " + (cat.Color || "#6366f1") + '40;">';
-      html += sanitize(cat.Name);
-      html += "</span>";
-    }
-    html += "</div>";
-    container.innerHTML = html;
-  }
-  function openCategoriesModal() {
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal modal-cf" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>\u{1F3F7}\uFE0F ' + t("manageCategories") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="cf-list">';
-    if (state.categories.length === 0) {
-      html += '<div class="cf-empty-modal">' + t("noCategories") + "</div>";
-    } else {
-      for (var i = 0; i < state.categories.length; i++) {
-        var cat = state.categories[i];
-        html += '<div class="cf-list-item">';
-        html += '<span class="category-color-dot" style="background:' + (cat.Color || "#6366f1") + ';"></span>';
-        html += '<span class="cf-list-name">' + sanitize(cat.Name) + "</span>";
-        html += '<button class="cf-delete-btn" onclick="editCategory(' + cat.id + ",'" + sanitize(cat.Name).replace(/'/g, "\\'") + "','" + (cat.Color || "#6366f1") + `')">\u270F\uFE0F</button>`;
-        html += '<button class="cf-delete-btn" onclick="deleteCategory(' + cat.id + ')">\u{1F5D1}\uFE0F</button>';
-        html += "</div>";
-      }
-    }
-    html += "</div>";
-    html += '<div class="cf-add-form">';
-    html += '<h4 id="cat-form-title">' + t("addCategory") + "</h4>";
-    html += '<input type="hidden" id="edit-cat-id" value="" />';
-    html += '<div class="cf-form-row">';
-    html += '<input type="text" id="new-cat-name" placeholder="' + t("fieldName") + '" class="cf-form-input" />';
-    html += '<input type="color" id="new-cat-color" value="#6366f1" style="width:40px;height:36px;border:none;cursor:pointer;" />';
-    html += '<button class="btn btn-primary" onclick="saveCategory()">' + t("save") + "</button>";
-    html += "</div>";
-    html += "</div>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function editCategory(catId, name, color) {
-    document.getElementById("edit-cat-id").value = catId;
-    document.getElementById("new-cat-name").value = name;
-    document.getElementById("new-cat-color").value = color;
-    document.getElementById("cat-form-title").textContent = t("edit");
-  }
-  async function saveCategory() {
-    var name = document.getElementById("new-cat-name").value.trim();
-    var color = document.getElementById("new-cat-color").value;
-    var editId = document.getElementById("edit-cat-id").value;
-    if (!name) return;
-    try {
-      if (editId) {
-        var updateRec = {};
-        setField(updateRec, "categories", "name", name);
-        setField(updateRec, "categories", "color", color);
-        await grist.docApi.applyUserActions([["UpdateRecord", state.CATEGORIES_TABLE, parseInt(editId), updateRec]]);
-        showToast(t("saved"), "success");
-      } else {
-        var maxOrder = state.categories.length > 0 ? Math.max.apply(null, state.categories.map(function(c) {
-          return c.Order || 0;
-        })) : 0;
-        var record = {};
-        setField(record, "categories", "name", name);
-        setField(record, "categories", "color", color);
-        setField(record, "categories", "order", maxOrder + 1);
-        await grist.docApi.applyUserActions([["AddRecord", state.CATEGORIES_TABLE, null, record]]);
-        showToast(t("categoryCreated"), "success");
-      }
-      closeModalForce();
-      await loadAllData();
-      refreshAllViews();
-      renderSettingsCategoriesList();
-    } catch (e) {
-      console.error("Error adding category:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function deleteCategory(categoryId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(currentLang === "fr" ? "Supprimer cette cat\xE9gorie ?" : "Delete this category?", currentLang === "fr" ? "Supprimer" : "Delete");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.CATEGORIES_TABLE, categoryId]
-      ]);
-      showToast(t("categoryDeleted"), "info");
-      closeModalForce();
-      await loadAllData();
-      refreshAllViews();
-      renderSettingsCategoriesList();
-    } catch (e) {
-      console.error("Error deleting category:", e);
     }
   }
 
@@ -6762,24 +6954,22 @@
       html += '<span class="task-card-recurrence">' + recLabel + "</span>";
     }
     html += "</div>";
-    if (cd.category && task.Category || cd.tags && task.Tag) {
+    var tagList = Array.isArray(task.Tag) ? task.Tag : [];
+    if (cd.category && task.Category || cd.tags && tagList.length > 0) {
       html += '<div class="task-card-row task-card-taxonomy">';
       if (cd.category && task.Category) {
-        var catObj = state.categories.find(function(c) {
-          return c.Name === task.Category;
+        var catObj = getCategories().find(function(c) {
+          return c.name === task.Category;
         });
-        var catColor = catObj ? catObj.Color : "#6366f1";
+        var catColor = catObj ? catObj.color : "#6366f1";
         html += '<span class="task-card-category" style="color:' + catColor + ';">' + sanitize(task.Category) + "</span>";
       }
-      if (cd.tags && task.Tag) {
-        var tagList = task.Tag.split(",").map(function(tg) {
-          return tg.trim();
-        }).filter(Boolean);
+      if (cd.tags) {
         for (var ti = 0; ti < tagList.length; ti++) {
-          var tagObj = state.tags.find(function(tg) {
-            return tg.Name === tagList[ti];
+          var tagObj = getTags().find(function(tg) {
+            return tg.name === tagList[ti];
           });
-          var tagColor = tagObj ? tagObj.Color : "#94a3b8";
+          var tagColor = tagObj ? tagObj.color : "#94a3b8";
           html += '<span class="task-card-tag" style="border-color:' + tagColor + "80;color:" + tagColor + ';">' + sanitize(tagList[ti]) + "</span>";
         }
       }
@@ -7017,8 +7207,8 @@
   }
   function renderSettingsView() {
     renderSettingsProjectsList();
-    renderSettingsCategoriesList();
-    renderSettingsTagsList();
+    renderCategoriesList();
+    renderTagsList();
     renderCardDisplaySettings();
     renderKanbanStatusesList();
     renderRaciToggle();
@@ -7497,131 +7687,6 @@
       showToast("Error: " + e.message, "error");
     }
   }
-  function renderSettingsCategoriesList() {
-    var container = document.getElementById("categories-list");
-    if (!container) return;
-    var html = "";
-    if (state.categories.length === 0) {
-      html = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === "fr" ? "Aucune cat\xE9gorie" : "No categories") + "</div>";
-    } else {
-      html = '<div class="settings-chips">';
-      state.categories.forEach(function(cat) {
-        html += '<span class="settings-chip" style="background:' + (cat.Color || "#6366f1") + ';color:white;">' + sanitize(cat.Name) + "</span>";
-      });
-      html += "</div>";
-    }
-    container.innerHTML = html;
-  }
-  function renderSettingsTagsList() {
-    var container = document.getElementById("tags-list");
-    if (!container) return;
-    var html = "";
-    if (state.tags.length === 0) {
-      html = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === "fr" ? "Aucun tag" : "No tags") + "</div>";
-    } else {
-      html = '<div class="settings-chips">';
-      state.tags.forEach(function(tag) {
-        html += '<span class="settings-chip" style="background:' + (tag.Color || "#6366f1") + ';color:white;">' + sanitize(tag.Name) + "</span>";
-      });
-      html += "</div>";
-    }
-    container.innerHTML = html;
-  }
-  function openTagsModal() {
-    document.getElementById("tags-modal").style.display = "flex";
-    document.getElementById("edit-tag-id").value = "";
-    document.getElementById("tag-name").value = "";
-    document.getElementById("tag-color").value = "#6366f1";
-    document.getElementById("tag-form-title").textContent = t("addTag");
-    renderTagsModalList();
-  }
-  function closeTagsModal() {
-    document.getElementById("tags-modal").style.display = "none";
-  }
-  function renderTagsModalList() {
-    var html = "";
-    if (state.tags.length === 0) {
-      html = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === "fr" ? "Aucun tag" : "No tags") + "</div>";
-    } else {
-      html = '<div class="project-items">';
-      state.tags.forEach(function(tag) {
-        html += '<div class="project-item" style="border-left: 4px solid ' + (tag.Color || "#6366f1") + ';">';
-        html += '<div class="project-item-info">';
-        html += "<strong>" + sanitize(tag.Name) + "</strong>";
-        html += "</div>";
-        html += '<div class="project-item-actions">';
-        html += '<button class="btn-icon" onclick="editTag(' + tag.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
-        html += '<button class="btn-icon" onclick="deleteTag(' + tag.id + ')" title="' + t("delete") + '">\u{1F5D1}\uFE0F</button>';
-        html += "</div>";
-        html += "</div>";
-      });
-      html += "</div>";
-    }
-    document.getElementById("tags-modal-list").innerHTML = html;
-  }
-  function editTag(tagId) {
-    var tag = state.tags.find(function(t2) {
-      return t2.id === tagId;
-    });
-    if (!tag) return;
-    document.getElementById("edit-tag-id").value = tag.id;
-    document.getElementById("tag-name").value = tag.Name || "";
-    document.getElementById("tag-color").value = tag.Color || "#6366f1";
-    document.getElementById("tag-form-title").textContent = currentLang === "fr" ? "Modifier le tag" : "Edit tag";
-  }
-  async function saveTag() {
-    var tagId = document.getElementById("edit-tag-id").value;
-    var name = document.getElementById("tag-name").value.trim();
-    var color = document.getElementById("tag-color").value;
-    if (!name) {
-      showToast(currentLang === "fr" ? "Nom du tag requis" : "Tag name required", "error");
-      return;
-    }
-    try {
-      var record = {};
-      setField(record, "tags", "name", name);
-      setField(record, "tags", "color", color);
-      if (tagId) {
-        await grist.docApi.applyUserActions([
-          ["UpdateRecord", state.TAGS_TABLE, parseInt(tagId), record]
-        ]);
-        showToast((currentLang === "fr" ? "Tag modifi\xE9" : "Tag updated") + " \u2713", "success");
-      } else {
-        await grist.docApi.applyUserActions([
-          ["AddRecord", state.TAGS_TABLE, null, record]
-        ]);
-        showToast((currentLang === "fr" ? "Tag ajout\xE9" : "Tag added") + " \u2713", "success");
-      }
-      closeTagsModal();
-      await loadAllData();
-      refreshAllViews();
-      renderSettingsTagsList();
-      document.getElementById("edit-tag-id").value = "";
-      document.getElementById("tag-name").value = "";
-      document.getElementById("tag-color").value = "#6366f1";
-      document.getElementById("tag-form-title").textContent = t("addTag");
-    } catch (e) {
-      console.error("Error saving tag:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function deleteTag(tagId) {
-    var confirmed = await showConfirmModal(currentLang === "fr" ? "Supprimer ce tag ?" : "Delete this tag?", currentLang === "fr" ? "Supprimer le tag" : "Delete tag");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.TAGS_TABLE, tagId]
-      ]);
-      showToast((currentLang === "fr" ? "Tag supprim\xE9" : "Tag deleted") + " \u2713", "success");
-      await loadAllData();
-      refreshAllViews();
-      renderTagsModalList();
-      renderSettingsTagsList();
-    } catch (e) {
-      console.error("Error deleting tag:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
 
   // src/domains/permissions.js
   function getUserRoles(u) {
@@ -7782,8 +7847,6 @@
   function getAclRules() {
     return [
       { tableId: state.SETTINGS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
-      { tableId: state.CATEGORIES_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
-      { tableId: state.TAGS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
       { tableId: state.CONFIG_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
       { tableId: state.TASKS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" },
       { tableId: state.SUBTASKS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" },
@@ -8025,17 +8088,12 @@
       });
       html += buildFilterCombo("person", currentLang === "fr" ? "\u2014 Personne \u2014" : "\u2014 Person \u2014", personOptions, state.currentFilterAssignee, filterByAssignee);
     }
-    var allCategories = [];
-    state.tasks.forEach(function(t2) {
-      if (t2.Category && allCategories.indexOf(t2.Category) === -1) allCategories.push(t2.Category);
-    });
-    allCategories.sort();
-    var catOptions = allCategories.map(function(c) {
-      return { value: c, label: c };
+    var catOptions = getCategories().map(function(c) {
+      return { value: c.name, label: c.name };
     });
     html += buildFilterCombo("category", currentLang === "fr" ? "\u2014 Cat\xE9gorie \u2014" : "\u2014 Category \u2014", catOptions, state.currentFilterCategory, filterByCategory);
-    var tagOptions = state.tags.map(function(tag) {
-      return { value: tag.Name, label: tag.Name };
+    var tagOptions = getTags().map(function(tag) {
+      return { value: tag.name, label: tag.name };
     });
     html += buildFilterCombo("tag", "\u2014 Tag \u2014", tagOptions, state.currentFilterTag, filterByTag);
     var selProj = state.currentProjectId ? state.projects.find(function(p) {
@@ -8445,7 +8503,7 @@
     }
     if (state.currentFilterTag) {
       result = result.filter(function(t2) {
-        return t2.Tag === state.currentFilterTag;
+        return Array.isArray(t2.Tag) && t2.Tag.indexOf(state.currentFilterTag) !== -1;
       });
     }
     if ((state.mineOnly || shouldLimitToMyProjects()) && !state.currentProjectId) {
@@ -8504,12 +8562,12 @@
           task.Description = taskData[descCol] ? taskData[descCol][i] : "";
           task.Status = taskData[statusCol] ? taskData[statusCol][i] : "todo";
           task.Priority = taskData[priorityCol] ? taskData[priorityCol][i] : "medium";
-          task.Assignee = taskData[assigneeCol] ? taskData[assigneeCol][i] : "";
+          task.Assignee = taskData[assigneeCol] ? taskData[assigneeCol][i] : null;
           task.Group_Name = taskData[groupCol] ? taskData[groupCol][i] : "";
           task.Start_Date = taskData[startDateCol] ? taskData[startDateCol][i] : null;
           task.Due_Date = taskData[dueDateCol] ? taskData[dueDateCol][i] : null;
           task.Category = taskData[categoryCol] ? taskData[categoryCol][i] : "";
-          task.Tag = taskData[tagCol] ? taskData[tagCol][i] : "";
+          task.Tag = taskData[tagCol] ? taskData[tagCol][i] : null;
           task.Recurrence = taskData[recurrenceCol] ? taskData[recurrenceCol][i] : "none";
           task.Estimated_Hours = taskData[estimatedHoursCol] ? taskData[estimatedHoursCol][i] : 0;
           task.Created_At = taskData[createdAtCol] ? taskData[createdAtCol][i] : null;
@@ -8547,6 +8605,26 @@
     } catch (e) {
       state.users = [];
     }
+    state.tasks.forEach(function(task2) {
+      var rawAssignee = task2.Assignee;
+      var assigneeIds = Array.isArray(rawAssignee) ? rawAssignee[0] === "L" ? rawAssignee.slice(1) : rawAssignee : [];
+      task2.Assignee = assigneeIds.map(function(id) {
+        var u = state.users.find(function(usr) {
+          return usr.id === id;
+        });
+        return u ? u.Email || u.Name : null;
+      }).filter(Boolean).join(", ");
+      var rawTag = task2.Tag;
+      if (Array.isArray(rawTag)) {
+        task2.Tag = (rawTag[0] === "L" ? rawTag.slice(1) : rawTag).filter(function(v) {
+          return typeof v === "string";
+        });
+      } else if (typeof rawTag === "string" && rawTag) {
+        task2.Tag = [rawTag];
+      } else {
+        task2.Tag = [];
+      }
+    });
     try {
       var groupData = await grist.docApi.fetchTable(state.GROUPS_TABLE);
       state.groups = [];
@@ -8666,45 +8744,6 @@
     } catch (e) {
       state.timeEntries = [];
       state.activeTimers = {};
-    }
-    try {
-      var catData = await grist.docApi.fetchTable(state.CATEGORIES_TABLE);
-      state.categories = [];
-      if (catData && catData.id) {
-        var nameCol = getColumnName("categories", "name");
-        var colorCol = getColumnName("categories", "color");
-        var orderCol = getColumnName("categories", "order");
-        for (var i = 0; i < catData.id.length; i++) {
-          state.categories.push({
-            id: catData.id[i],
-            Name: catData[nameCol] ? catData[nameCol][i] : "",
-            Color: catData[colorCol] ? catData[colorCol][i] : "#6366f1",
-            Order: catData[orderCol] ? catData[orderCol][i] : 0
-          });
-        }
-      }
-      state.categories.sort(function(a, b) {
-        return (a.Order || 0) - (b.Order || 0);
-      });
-    } catch (e) {
-      state.categories = [];
-    }
-    try {
-      var tagData = await grist.docApi.fetchTable(state.TAGS_TABLE);
-      state.tags = [];
-      if (tagData && tagData.id) {
-        var nameCol = getColumnName("tags", "name");
-        var colorCol = getColumnName("tags", "color");
-        for (var i = 0; i < tagData.id.length; i++) {
-          state.tags.push({
-            id: tagData.id[i],
-            Name: tagData[nameCol] ? tagData[nameCol][i] : "",
-            Color: tagData[colorCol] ? tagData[colorCol][i] : "#6366f1"
-          });
-        }
-      }
-    } catch (e) {
-      state.tags = [];
     }
     try {
       var projData = await grist.docApi.fetchTable(state.PROJECTS_TABLE);
@@ -9144,8 +9183,6 @@
     state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
     state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
     state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
-    state.CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
-    state.TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
     state.PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
     state.CONFIG_TABLE = CLIENT_TABLE_NAMES.config;
     state.SETTINGS_TABLE = CLIENT_TABLE_NAMES.settings;
@@ -9157,8 +9194,6 @@
       state.DEFAULT_TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
       state.DEFAULT_USERS_TABLE = CLIENT_TABLE_NAMES.users;
       state.DEFAULT_PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
-      state.DEFAULT_CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
-      state.DEFAULT_TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
     }
   }
   function hasFrenchClientTables(tableIds) {
@@ -9205,12 +9240,7 @@
       ["project_name", state.PROJECTS_TABLE, "Name", "Nom", true, "Name"],
       ["project_description", state.PROJECTS_TABLE, "Description", "Description", false, "Description"],
       ["project_color", state.PROJECTS_TABLE, "Color", "Couleur", false, "Color"],
-      ["project_status", state.PROJECTS_TABLE, "Status", "Statut", false, "Status"],
-      ["category_name", state.CATEGORIES_TABLE, "Name", "Nom", true, "Name"],
-      ["category_color", state.CATEGORIES_TABLE, "Color", "Couleur", false, "Color"],
-      ["category_order", state.CATEGORIES_TABLE, "Order", "Ordre", false, "Order"],
-      ["tag_name", state.TAGS_TABLE, "Name", "Nom", true, "Name"],
-      ["tag_color", state.TAGS_TABLE, "Color", "Couleur", false, "Color"]
+      ["project_status", state.PROJECTS_TABLE, "Status", "Statut", false, "Status"]
     ];
     return defaultConfig.map(function(row) {
       return { Config_Key: row[0], Table_Name: row[1], Column_Name: row[2], Display_Label: row[3], Required: row[4], Default_Value: row[5] };
@@ -9415,25 +9445,6 @@
       if (existingTables.indexOf(state.CONFIG_TABLE) !== -1) {
         await loadColumnMapping();
       }
-      if (!skipAutoCreateWorkTables && (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE && existingTables.indexOf(state.TASKS_TABLE) === -1)) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.TASKS_TABLE, [
-            { id: "Title", type: "Text" },
-            { id: "Description", type: "Text" },
-            { id: "Status", type: "Choice", widgetOptions: JSON.stringify({ choices: ["todo", "progress", "done", "archived"] }) },
-            { id: "Priority", type: "Choice", widgetOptions: JSON.stringify({ choices: ["high", "medium", "low"] }) },
-            { id: "Assignee", type: "Text" },
-            { id: "Group_Name", type: "Text" },
-            { id: "Start_Date", type: "Date" },
-            { id: "Due_Date", type: "Date" },
-            { id: "Category", type: "Text" },
-            { id: "Tag", type: "Text" },
-            { id: "Recurrence", type: "Choice", widgetOptions: JSON.stringify({ choices: ["none", "daily", "weekly", "monthly"] }) },
-            { id: "Estimated_Hours", type: "Numeric" },
-            { id: "Created_At", type: "Date" }
-          ]]
-        ]);
-      }
       if (!skipAutoCreateWorkTables && (state.USERS_TABLE === state.DEFAULT_USERS_TABLE && existingTables.indexOf(state.USERS_TABLE) === -1)) {
         await grist.docApi.applyUserActions([
           ["AddTable", state.USERS_TABLE, [
@@ -9441,6 +9452,25 @@
             { id: "Email", type: "Text" },
             { id: "Role", type: "Choice", widgetOptions: JSON.stringify({ choices: ["admin", "member", "viewer"] }) },
             { id: "Group_Name", type: "Text" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE && existingTables.indexOf(state.TASKS_TABLE) === -1)) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.TASKS_TABLE, [
+            { id: "Title", type: "Text" },
+            { id: "Description", type: "Text" },
+            { id: "Status", type: "Choice", widgetOptions: JSON.stringify({ choices: ["todo", "progress", "done", "archived"] }) },
+            { id: "Priority", type: "Choice", widgetOptions: JSON.stringify({ choices: ["high", "medium", "low"] }) },
+            { id: "Assignee", type: "RefList:" + state.USERS_TABLE },
+            { id: "Group_Name", type: "Text" },
+            { id: "Start_Date", type: "Date" },
+            { id: "Due_Date", type: "Date" },
+            { id: "Category", type: "Choice" },
+            { id: "Tag", type: "ChoiceList" },
+            { id: "Recurrence", type: "Choice", widgetOptions: JSON.stringify({ choices: ["none", "daily", "weekly", "monthly"] }) },
+            { id: "Estimated_Hours", type: "Numeric" },
+            { id: "Created_At", type: "Date" }
           ]]
         ]);
       }
@@ -9497,23 +9527,6 @@
             { id: "End_Time", type: "Date" },
             { id: "Duration", type: "Int" },
             { id: "Description", type: "Text" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && (state.CATEGORIES_TABLE === state.DEFAULT_CATEGORIES_TABLE && existingTables.indexOf(state.CATEGORIES_TABLE) === -1)) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.CATEGORIES_TABLE, [
-            { id: "Name", type: "Text" },
-            { id: "Color", type: "Text" },
-            { id: "Order", type: "Int" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && (state.TAGS_TABLE === state.DEFAULT_TAGS_TABLE && existingTables.indexOf(state.TAGS_TABLE) === -1)) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.TAGS_TABLE, [
-            { id: "Name", type: "Text" },
-            { id: "Color", type: "Text" }
           ]]
         ]);
       }
@@ -9619,14 +9632,7 @@
           ["project_name", state.PROJECTS_TABLE, "Name", "Nom", true, "Name"],
           ["project_description", state.PROJECTS_TABLE, "Description", "Description", false, "Description"],
           ["project_color", state.PROJECTS_TABLE, "Color", "Couleur", false, "Color"],
-          ["project_status", state.PROJECTS_TABLE, "Status", "Statut", false, "Status"],
-          // Categories mapping
-          ["category_name", state.CATEGORIES_TABLE, "Name", "Nom", true, "Name"],
-          ["category_color", state.CATEGORIES_TABLE, "Color", "Couleur", false, "Color"],
-          ["category_order", state.CATEGORIES_TABLE, "Order", "Ordre", false, "Order"],
-          // Tags mapping
-          ["tag_name", state.TAGS_TABLE, "Name", "Nom", true, "Name"],
-          ["tag_color", state.TAGS_TABLE, "Color", "Couleur", false, "Color"]
+          ["project_status", state.PROJECTS_TABLE, "Status", "Statut", false, "Status"]
         ];
         var configRecords = [];
         for (var i = 0; i < defaultConfig.length; i++) {
@@ -9693,7 +9699,7 @@
           }
           if (existingCols.indexOf("Tag") === -1) {
             await grist.docApi.applyUserActions([
-              ["AddColumn", state.TASKS_TABLE, "Tag", { type: "Text" }]
+              ["AddColumn", state.TASKS_TABLE, "Tag", { type: "ChoiceList" }]
             ]);
           }
           var raciCols = ["Accountable", "Consulted", "Informed"];
@@ -10031,6 +10037,7 @@
 
   // src/main.js
   Object.assign(window, {
+    addCategorySetting,
     addComment,
     addDefaultAutomationRules,
     addDependency,
@@ -10039,6 +10046,8 @@
     addRaciChip,
     addRoleChoice,
     addSubtask,
+    addTagChip,
+    addTagSetting,
     applySecurityRules,
     archiveTask,
     calendarNav,
@@ -10055,19 +10064,16 @@
     closeNotifications,
     closeProjectModal,
     closePromptModal,
-    closeTagsModal,
     collapseAllSubtasks,
     createGroup,
     createTask,
     createUser,
     deleteAttachment,
     deleteAutomationRule,
-    deleteCategory,
     deleteComment,
     deleteGroup,
     deleteProject,
     deleteSubtask,
-    deleteTag,
     deleteTask,
     deleteUser,
     detectProjectColumns,
@@ -10076,10 +10082,10 @@
     dismissNotification,
     dismissAllNotifications,
     downloadAttachment,
-    editCategory,
+    editCategorySetting,
     editKanbanStatus,
     editProject,
-    editTag,
+    editTagSetting,
     expandActivityLog,
     expandAllSubtasks,
     exportGanttPdf,
@@ -10109,7 +10115,6 @@
     openCardAttachmentsModal,
     openCardCommentsModal,
     openCardSubtasksModal,
-    openCategoriesModal,
     openColumnMappingModal,
     openDependencyTaskOptions,
     openEditAutomationRuleModal,
@@ -10125,15 +10130,17 @@
     openProjectModal,
     openProjectModalForEdit,
     openSubtaskDepModal,
-    openTagsModal,
     pauseTimer,
     quickAction,
     refreshDependencyTaskOptions,
+    removeCategorySetting,
     removeDependency,
     removeKanbanStatus,
     removeRaciChip,
     removeRoleChoice,
     removeSecurityRules,
+    removeTagChip,
+    removeTagSetting,
     renderActivityLog,
     renderBurndownChart,
     renderEmojiPicker,
@@ -10145,13 +10152,11 @@
     restoreTask,
     runSetupDiagnostic,
     saveAutomationRuleFromModal,
-    saveCategory,
     saveColumnMapping,
     saveEditSubtask,
     saveInlineProjectEdit,
     saveProject,
     saveRoleChoices,
-    saveTag,
     saveTaskFromFooter,
     saveUiLabelSettings,
     selectEmoji,
@@ -10223,6 +10228,8 @@
         } catch (e) {
         }
       }
+      if (state._settingsCache.categories) setCategoriesFromSettings(state._settingsCache.categories.value);
+      if (state._settingsCache.tags) setTagsFromSettings(state._settingsCache.tags.value);
       if (state._settingsCache.card_display) {
         try {
           cardDisplaySettings = Object.assign({}, defaultCardDisplay, JSON.parse(state._settingsCache.card_display.value));

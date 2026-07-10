@@ -18,6 +18,8 @@ import { refreshAllViews } from '../ui/tabs.js';
 import { getColumnName } from '../config.js';
 import { getUserDisplayName } from './team.js';
 import { isOverdue } from './tasks.js';
+import { getCategories } from './categories.js';
+import { getTags } from './tags.js';
 // Temporary backwards imports: kanbanSort/cardDisplaySettings/
 // customKanbanStatuses stay in main.js because loadSettings() reassigns
 // them - and, for customKanbanStatuses, ensureCustomStatuses() also
@@ -388,18 +390,18 @@ export function renderTaskCard(task) {
   }
   html += '</div>';
 
-  if ((cd.category && task.Category) || (cd.tags && task.Tag)) {
+  var tagList = Array.isArray(task.Tag) ? task.Tag : [];
+  if ((cd.category && task.Category) || (cd.tags && tagList.length > 0)) {
     html += '<div class="task-card-row task-card-taxonomy">';
     if (cd.category && task.Category) {
-      var catObj = state.categories.find(function(c) { return c.Name === task.Category; });
-      var catColor = catObj ? catObj.Color : '#6366f1';
+      var catObj = getCategories().find(function(c) { return c.name === task.Category; });
+      var catColor = catObj ? catObj.color : '#6366f1';
       html += '<span class="task-card-category" style="color:' + catColor + ';">' + sanitize(task.Category) + '</span>';
     }
-    if (cd.tags && task.Tag) {
-      var tagList = task.Tag.split(',').map(function(tg) { return tg.trim(); }).filter(Boolean);
+    if (cd.tags) {
       for (var ti = 0; ti < tagList.length; ti++) {
-        var tagObj = state.tags.find(function(tg) { return tg.Name === tagList[ti]; });
-        var tagColor = tagObj ? tagObj.Color : '#94a3b8';
+        var tagObj = getTags().find(function(tg) { return tg.name === tagList[ti]; });
+        var tagColor = tagObj ? tagObj.color : '#94a3b8';
         html += '<span class="task-card-tag" style="border-color:' + tagColor + '80;color:' + tagColor + ';">' + sanitize(tagList[ti]) + '</span>';
       }
     }

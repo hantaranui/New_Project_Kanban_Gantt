@@ -89,8 +89,7 @@ import {
   openAddAutomationRuleModal, openEditAutomationRuleModal, closeAutomationModal,
   onAutoTriggerChange, onAutoActionChange, saveAutomationRuleFromModal, deleteAutomationRule,
   toggleAutomationRule, addDefaultAutomationRules, renderSecuritySection, renderSettingsProjectsList,
-  openProjectModalForEdit, saveInlineProjectEdit, renderSettingsCategoriesList, renderSettingsTagsList,
-  openTagsModal, closeTagsModal, renderTagsModalList, editTag, saveTag, deleteTag
+  openProjectModalForEdit, saveInlineProjectEdit
 } from './domains/settings.js';
 import {
   getKanbanStatuses, saveKanbanStatuses, syncSubtaskStatusChoices, getStatusLabel,
@@ -100,6 +99,7 @@ import {
 } from './domains/kanban.js';
 import {
   openNewTaskModal, openEditTaskModal, saveTaskFromFooter, addRaciChip, removeRaciChip,
+  addTagChip, removeTagChip,
   quickAction, addSubtask, toggleSubtask, deleteSubtask, saveEditSubtask, generateSubtaskOccurrences,
   addDependency, removeDependency, addComment, deleteComment, closeModal, closeModalForce,
   createTask, updateTask, deleteTask
@@ -115,7 +115,8 @@ import {
   setupCreateFrenchTables, setupUseExistingTables
 } from './bootstrap/ensure-tables.js';
 import { switchTab, restoreActiveTab, refreshAllViews } from './ui/tabs.js';
-import { openCategoriesModal, editCategory, saveCategory, deleteCategory } from './domains/categories.js';
+import { addCategorySetting, editCategorySetting, removeCategorySetting, setCategoriesFromSettings } from './domains/categories.js';
+import { addTagSetting, editTagSetting, removeTagSetting, setTagsFromSettings } from './domains/tags.js';
 
 // index.html can't change and calls these ~182 functions via inline
 // onclick="..."/onchange="..." attributes (both in the static HTML and in
@@ -125,29 +126,30 @@ import { openCategoriesModal, editCategory, saveCategory, deleteCategory } from 
 // one of these handlers throws "X is not defined" the moment it's clicked.
 // Any new onclick handler added to generated HTML must be added here too.
 Object.assign(window, {
-  addComment, addDefaultAutomationRules, addDependency, addKanbanStatus, addManualTimeEntry,
-  addRaciChip, addRoleChoice, addSubtask, applySecurityRules, archiveTask, calendarNav,
+  addCategorySetting, addComment, addDefaultAutomationRules, addDependency, addKanbanStatus, addManualTimeEntry,
+  addRaciChip, addRoleChoice, addSubtask, addTagChip, addTagSetting, applySecurityRules, archiveTask, calendarNav,
   calendarToday, cancelEditSubtask, clearDependencyTaskSelection, clearMsFilter, closeAttachmentViewer, closeAutomationModal,
   closeConfirmModal, closeDependencyTaskOptions, closeModal, closeModalForce, closeNotifications, closeProjectModal, closePromptModal,
-  closeTagsModal, collapseAllSubtasks, createGroup, createTask, createUser,
-  deleteAttachment, deleteAutomationRule, deleteCategory, deleteComment, deleteGroup,
-  deleteProject, deleteSubtask, deleteTag, deleteTask, deleteUser,
+  collapseAllSubtasks, createGroup, createTask, createUser,
+  deleteAttachment, deleteAutomationRule, deleteComment, deleteGroup,
+  deleteProject, deleteSubtask, deleteTask, deleteUser,
   detectProjectColumns, detectTaskColumns, detectUserColumns, dismissNotification, dismissAllNotifications,
-  downloadAttachment, editCategory, editKanbanStatus,
-  editProject, editTag, expandActivityLog, expandAllSubtasks, exportGanttPdf, filterComboSearch, filterProjectDropdown,
+  downloadAttachment, editCategorySetting, editKanbanStatus,
+  editProject, editTagSetting, expandActivityLog, expandAllSubtasks, exportGanttPdf, filterComboSearch, filterProjectDropdown,
   filterStAssignees, focusGanttTask, ganttCollapseAll, ganttExpandAll, ganttNav, ganttToday,
   generateOccurrences, generateSubtaskOccurrences, hideGanttDependencyTooltip, onAutoActionChange,
   onAutoTriggerChange, onCalendarDayClick, onCalendarDragOver, onCalendarDrop, onCalendarTaskDragStart, onDragLeave,
   onDragOver, onDragStart, onDrop, openAddAutomationRuleModal, openAttachmentInNewTab, openCardAttachmentsModal,
-  openCardCommentsModal, openCardSubtasksModal, openCategoriesModal, openColumnMappingModal,
+  openCardCommentsModal, openCardSubtasksModal, openColumnMappingModal,
   openDependencyTaskOptions, openEditAutomationRuleModal, openEditGroupModal, openEditTaskModal, openEditUserModal, openManageRolesModal,
   openNewGroupModal, openNewTaskForDay, openNewTaskModal, openNewUserModal, openNotification,
-  openProjectModal, openProjectModalForEdit, openSubtaskDepModal, openTagsModal, pauseTimer, quickAction,
-  refreshDependencyTaskOptions, removeDependency, removeKanbanStatus, removeRaciChip, removeRoleChoice, removeSecurityRules,
+  openProjectModal, openProjectModalForEdit, openSubtaskDepModal, pauseTimer, quickAction,
+  refreshDependencyTaskOptions, removeCategorySetting, removeDependency, removeKanbanStatus, removeRaciChip, removeRoleChoice, removeSecurityRules,
+  removeTagChip, removeTagSetting,
   renderActivityLog, renderBurndownChart, renderEmojiPicker, renderProjectList, renderSettingsProjectsList, renderTableView,
   renderTimelineChart, resetFilters, restoreTask, runSetupDiagnostic, saveAutomationRuleFromModal,
-  saveCategory, saveColumnMapping, saveEditSubtask, saveInlineProjectEdit, saveProject, saveRoleChoices,
-  saveTag, saveTaskFromFooter, saveUiLabelSettings, selectEmoji, selectFilterCombo, selectProjectOption,
+  saveColumnMapping, saveEditSubtask, saveInlineProjectEdit, saveProject, saveRoleChoices,
+  saveTaskFromFooter, saveUiLabelSettings, selectEmoji, selectFilterCombo, selectProjectOption,
   setCalendarMode, setGanttCustomRange, setGanttMode, setGanttSort, setGanttYear, setKanbanGroupBy,
   setKanbanSort, setStPill, setStStatus, setStType, setupCreateFrenchTables, setupUseExistingTables,
   showGanttDependencyTooltip, showNotifications, sortTable, startEditSubtask, startTimer, submitPromptModal,
@@ -190,6 +192,8 @@ export async function loadSettings() {
     if (state._settingsCache.kanban_statuses) {
       try { customKanbanStatuses = JSON.parse(state._settingsCache.kanban_statuses.value); } catch (e) {}
     }
+    if (state._settingsCache.categories) setCategoriesFromSettings(state._settingsCache.categories.value);
+    if (state._settingsCache.tags) setTagsFromSettings(state._settingsCache.tags.value);
     if (state._settingsCache.card_display) {
       try { cardDisplaySettings = Object.assign({}, defaultCardDisplay, JSON.parse(state._settingsCache.card_display.value)); } catch (e) {}
     }

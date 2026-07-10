@@ -34,12 +34,14 @@ export async function loadAllData() {
         task.Description = taskData[descCol] ? taskData[descCol][i] : '';
         task.Status = taskData[statusCol] ? taskData[statusCol][i] : 'todo';
         task.Priority = taskData[priorityCol] ? taskData[priorityCol][i] : 'medium';
-        task.Assignee = taskData[assigneeCol] ? taskData[assigneeCol][i] : '';
+        // Bruts pour l'instant (RefList/ChoiceList au format Grist ['L', ...]) -
+        // normalisés juste après le chargement de state.users, plus bas.
+        task.Assignee = taskData[assigneeCol] ? taskData[assigneeCol][i] : null;
         task.Group_Name = taskData[groupCol] ? taskData[groupCol][i] : '';
         task.Start_Date = taskData[startDateCol] ? taskData[startDateCol][i] : null;
         task.Due_Date = taskData[dueDateCol] ? taskData[dueDateCol][i] : null;
         task.Category = taskData[categoryCol] ? taskData[categoryCol][i] : '';
-        task.Tag = taskData[tagCol] ? taskData[tagCol][i] : '';
+        task.Tag = taskData[tagCol] ? taskData[tagCol][i] : null;
         task.Recurrence = taskData[recurrenceCol] ? taskData[recurrenceCol][i] : 'none';
         task.Estimated_Hours = taskData[estimatedHoursCol] ? taskData[estimatedHoursCol][i] : 0;
         task.Created_At = taskData[createdAtCol] ? taskData[createdAtCol][i] : null;
@@ -81,6 +83,31 @@ export async function loadAllData() {
   } catch (e) {
     state.users = [];
   }
+
+  // Normalise Assignee (Reference List -> chaîne d'emails séparés par
+  // virgule, comme avant la migration) et Tag (Choice List -> tableau JS)
+  // ici, à la frontière : tout le reste du code continue de lire task.Assignee
+  // comme une chaîne et task.Tag comme un tableau sans aucun changement.
+  state.tasks.forEach(function(task) {
+    var rawAssignee = task.Assignee;
+    var assigneeIds = Array.isArray(rawAssignee) ? (rawAssignee[0] === 'L' ? rawAssignee.slice(1) : rawAssignee) : [];
+    task.Assignee = assigneeIds
+      .map(function(id) {
+        var u = state.users.find(function(usr) { return usr.id === id; });
+        return u ? (u.Email || u.Name) : null;
+      })
+      .filter(Boolean)
+      .join(', ');
+
+    var rawTag = task.Tag;
+    if (Array.isArray(rawTag)) {
+      task.Tag = (rawTag[0] === 'L' ? rawTag.slice(1) : rawTag).filter(function(v) { return typeof v === 'string'; });
+    } else if (typeof rawTag === 'string' && rawTag) {
+      task.Tag = [rawTag];
+    } else {
+      task.Tag = [];
+    }
+  });
 
   try {
     var groupData = await grist.docApi.fetchTable(state.GROUPS_TABLE);
@@ -206,47 +233,6 @@ export async function loadAllData() {
   } catch (e) {
     state.timeEntries = [];
     state.activeTimers = {};
-  }
-
-  try {
-    var catData = await grist.docApi.fetchTable(state.CATEGORIES_TABLE);
-    state.categories = [];
-    if (catData && catData.id) {
-      var nameCol = getColumnName('categories', 'name');
-      var colorCol = getColumnName('categories', 'color');
-      var orderCol = getColumnName('categories', 'order');
-      
-      for (var i = 0; i < catData.id.length; i++) {
-        state.categories.push({
-          id: catData.id[i],
-          Name: catData[nameCol] ? catData[nameCol][i] : '',
-          Color: catData[colorCol] ? catData[colorCol][i] : '#6366f1',
-          Order: catData[orderCol] ? catData[orderCol][i] : 0
-        });
-      }
-    }
-    state.categories.sort(function(a, b) { return (a.Order || 0) - (b.Order || 0); });
-  } catch (e) {
-    state.categories = [];
-  }
-
-  try {
-    var tagData = await grist.docApi.fetchTable(state.TAGS_TABLE);
-    state.tags = [];
-    if (tagData && tagData.id) {
-      var nameCol = getColumnName('tags', 'name');
-      var colorCol = getColumnName('tags', 'color');
-      
-      for (var i = 0; i < tagData.id.length; i++) {
-        state.tags.push({
-          id: tagData.id[i],
-          Name: tagData[nameCol] ? tagData[nameCol][i] : '',
-          Color: tagData[colorCol] ? tagData[colorCol][i] : '#6366f1'
-        });
-      }
-    }
-  } catch (e) {
-    state.tags = [];
   }
 
   try {

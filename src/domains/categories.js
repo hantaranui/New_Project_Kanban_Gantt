@@ -1,128 +1,144 @@
 import { t, currentLang } from '../i18n.js';
 import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
-import { setField } from '../config.js';
+import { getColumnName } from '../config.js';
 import { showToast } from '../ui/toast.js';
-import { showConfirmModal } from '../ui/confirm-modal.js';
-import { loadAllData } from './data-loader.js';
+import { showConfirmModal, showPromptModal } from '../ui/confirm-modal.js';
+import { saveSetting } from './settings.js';
 import { refreshAllViews } from '../ui/tabs.js';
-import { closeModalForce } from './task-modal.js';
-import { renderSettingsCategoriesList } from './settings.js';
 
+// Catégories des tâches : même patron que les statuts Kanban (kanban.js) -
+// persistées en PM_Settings (customCategories), jamais lues depuis une table
+// séparée. La colonne Grist Category (Choice) ne sert qu'à l'affichage natif
+// (couleurs), synchronisée en écriture seule par syncCategoryChoices().
+export var customCategories = [];
+
+export function getCategories() {
+  return customCategories;
+}
+
+export function setCategoriesFromSettings(raw) {
+  var parsed = [];
+  try { parsed = JSON.parse(raw) || []; } catch (e) {}
+  customCategories.length = 0;
+  Array.prototype.push.apply(customCategories, parsed);
+}
+
+export async function saveCategories() {
+  await saveSetting('categories', JSON.stringify(customCategories));
+  await syncCategoryChoices();
+}
+
+export async function syncCategoryChoices() {
+  try {
+    var choices = customCategories.map(function(c) { return c.name; });
+    var choiceOptions = {};
+    customCategories.forEach(function(c) {
+      if (c.color) choiceOptions[c.name] = { fillColor: c.color, textColor: '#ffffff' };
+    });
+    var categoryCol = getColumnName('tasks', 'category');
+    await grist.docApi.applyUserActions([
+      ['ModifyColumn', state.TASKS_TABLE, categoryCol, { widgetOptions: JSON.stringify({ choices: choices, choiceOptions: choiceOptions }) }]
+    ]);
+    state.taskTableColumns = null;
+  } catch (e) {
+    console.log('syncCategoryChoices:', e.message);
+  }
+}
+
+// Utilisée à la fois par l'onglet Équipe (aperçu) et l'onglet Paramètres
+// (gestion avec édition/suppression) : même conteneur DOM #categories-list.
 export function renderCategoriesList() {
   var container = document.getElementById('categories-list');
   if (!container) return;
 
-  if (state.categories.length === 0) {
-    container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">' + t('noCategories') + '</div>';
+  if (customCategories.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === 'fr' ? 'Aucune catégorie' : 'No categories') + '</div>';
     return;
   }
 
-  var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
-  for (var i = 0; i < state.categories.length; i++) {
-    var cat = state.categories[i];
-    html += '<span class="category-chip" style="background:' + (cat.Color || '#6366f1') + '20;color:' + (cat.Color || '#6366f1') + ';border:1px solid ' + (cat.Color || '#6366f1') + '40;">';
-    html += sanitize(cat.Name);
-    html += '</span>';
-  }
+  var html = '<div class="settings-items">';
+  customCategories.forEach(function(cat, i) {
+    html += '<div class="settings-item">';
+    html += '<span class="settings-item-dot" style="background:' + (cat.color || '#6366f1') + ';"></span>';
+    html += '<div class="settings-item-info"><strong>' + sanitize(cat.name) + '</strong></div>';
+    html += '<div class="settings-item-actions">';
+    html += '<button class="btn-icon" onclick="editCategorySetting(' + i + ')" title="' + (currentLang === 'fr' ? 'Modifier' : 'Edit') + '">✏️</button>';
+    if (state.isOwner) html += '<button class="btn-icon" onclick="removeCategorySetting(' + i + ')" title="' + t('delete') + '">🗑️</button>';
+    html += '</div>';
+    html += '</div>';
+  });
   html += '</div>';
   container.innerHTML = html;
 }
+export { renderCategoriesList as renderSettingsCategoriesList };
 
-export function openCategoriesModal() {
-  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-  html += '<div class="modal modal-cf" onclick="event.stopPropagation()">';
-  html += '<div class="modal-header"><h3>🏷️ ' + t('manageCategories') + '</h3><button class="modal-close" onclick="closeModalForce()">✕</button></div>';
-  html += '<div class="modal-body">';
-  
-  // Existing categories
-  html += '<div class="cf-list">';
-  if (state.categories.length === 0) {
-    html += '<div class="cf-empty-modal">' + t('noCategories') + '</div>';
-  } else {
-    for (var i = 0; i < state.categories.length; i++) {
-      var cat = state.categories[i];
-      html += '<div class="cf-list-item">';
-      html += '<span class="category-color-dot" style="background:' + (cat.Color || '#6366f1') + ';"></span>';
-      html += '<span class="cf-list-name">' + sanitize(cat.Name) + '</span>';
-      html += '<button class="cf-delete-btn" onclick="editCategory(' + cat.id + ',\'' + sanitize(cat.Name).replace(/'/g, "\\'") + '\',\'' + (cat.Color || '#6366f1') + '\')">✏️</button>';
-      html += '<button class="cf-delete-btn" onclick="deleteCategory(' + cat.id + ')">🗑️</button>';
-      html += '</div>';
-    }
-  }
-  html += '</div>';
-  
-  // Add / edit category form
-  html += '<div class="cf-add-form">';
-  html += '<h4 id="cat-form-title">' + t('addCategory') + '</h4>';
-  html += '<input type="hidden" id="edit-cat-id" value="" />';
-  html += '<div class="cf-form-row">';
-  html += '<input type="text" id="new-cat-name" placeholder="' + t('fieldName') + '" class="cf-form-input" />';
-  html += '<input type="color" id="new-cat-color" value="#6366f1" style="width:40px;height:36px;border:none;cursor:pointer;" />';
-  html += '<button class="btn btn-primary" onclick="saveCategory()">' + t('save') + '</button>';
-  html += '</div>';
-  html += '</div>';
-  
-  html += '</div></div></div>';
-  
-  document.getElementById('modal-container').innerHTML = html;
-}
-
-export function editCategory(catId, name, color) {
-  document.getElementById('edit-cat-id').value = catId;
-  document.getElementById('new-cat-name').value = name;
-  document.getElementById('new-cat-color').value = color;
-  document.getElementById('cat-form-title').textContent = t('edit');
-}
-
-export async function saveCategory() {
-  var name = document.getElementById('new-cat-name').value.trim();
-  var color = document.getElementById('new-cat-color').value;
-  var editId = document.getElementById('edit-cat-id').value;
-
+export async function addCategorySetting() {
+  var result = await showPromptModal(
+    currentLang === 'fr' ? 'Nouvelle catégorie' : 'New category',
+    [
+      { label: currentLang === 'fr' ? 'Nom' : 'Name', placeholder: currentLang === 'fr' ? 'Ex: Discovery' : 'Ex: Discovery' },
+      { label: currentLang === 'fr' ? 'Couleur' : 'Color', type: 'color' }
+    ],
+    ['', '#6366f1']
+  );
+  if (!result || !result[0]) return;
+  var name = result[0].trim();
   if (!name) return;
-
-  try {
-    if (editId) {
-      var updateRec = {};
-      setField(updateRec, 'categories', 'name', name);
-      setField(updateRec, 'categories', 'color', color);
-      await grist.docApi.applyUserActions([['UpdateRecord', state.CATEGORIES_TABLE, parseInt(editId), updateRec]]);
-      showToast(t('saved'), 'success');
-    } else {
-      var maxOrder = state.categories.length > 0 ? Math.max.apply(null, state.categories.map(function(c) { return c.Order || 0; })) : 0;
-      var record = {};
-      setField(record, 'categories', 'name', name);
-      setField(record, 'categories', 'color', color);
-      setField(record, 'categories', 'order', maxOrder + 1);
-      await grist.docApi.applyUserActions([['AddRecord', state.CATEGORIES_TABLE, null, record]]);
-      showToast(t('categoryCreated'), 'success');
-    }
-    closeModalForce();
-    await loadAllData();
-    refreshAllViews();
-    renderSettingsCategoriesList();
-  } catch (e) {
-    console.error('Error adding category:', e);
-    showToast('Error: ' + e.message, 'error');
+  if (customCategories.some(function(c) { return c.name === name; })) {
+    showToast(currentLang === 'fr' ? 'Cette catégorie existe déjà' : 'This category already exists', 'error');
+    return;
   }
+  customCategories.push({ name: name, color: result[1] || '#6366f1' });
+  await saveCategories();
+  renderCategoriesList();
+  refreshAllViews();
+  showToast(currentLang === 'fr' ? 'Catégorie ajoutée' : 'Category added', 'success');
 }
 
-export async function deleteCategory(categoryId) {
-  if (!state.isOwner) return;
-  var confirmed = await showConfirmModal(currentLang === 'fr' ? 'Supprimer cette catégorie ?' : 'Delete this category?', currentLang === 'fr' ? 'Supprimer' : 'Delete');
-  if (!confirmed) return;
+export async function editCategorySetting(index) {
+  var cat = customCategories[index];
+  if (!cat) return;
+  var result = await showPromptModal(
+    currentLang === 'fr' ? 'Modifier la catégorie' : 'Edit category',
+    [
+      { label: currentLang === 'fr' ? 'Nom' : 'Name' },
+      { label: currentLang === 'fr' ? 'Couleur' : 'Color', type: 'color' }
+    ],
+    [cat.name, cat.color || '#6366f1']
+  );
+  if (!result || !result[0]) return;
+  var oldName = cat.name;
+  cat.name = result[0].trim();
+  cat.color = result[1] || cat.color;
 
-  try {
-    await grist.docApi.applyUserActions([
-      ['RemoveRecord', state.CATEGORIES_TABLE, categoryId]
-    ]);
-    showToast(t('categoryDeleted'), 'info');
-    closeModalForce();
-    await loadAllData();
-    refreshAllViews();
-    renderSettingsCategoriesList();
-  } catch (e) {
-    console.error('Error deleting category:', e);
+  // Le nom de catégorie EST la valeur stockée dans la colonne Grist (Choice) :
+  // un renommage doit donc être propagé aux tâches existantes, sinon elles
+  // se retrouvent avec une valeur orpheline qui ne correspond plus à aucun choix.
+  if (oldName !== cat.name) {
+    var categoryCol = getColumnName('tasks', 'category');
+    var affected = state.tasks.filter(function(tsk) { return tsk.Category === oldName; });
+    if (affected.length > 0) {
+      var actions = affected.map(function(tsk) { return ['UpdateRecord', state.TASKS_TABLE, tsk.id, { [categoryCol]: cat.name }]; });
+      try { await grist.docApi.applyUserActions(actions); } catch (e) { console.log('rename category on tasks:', e.message); }
+    }
   }
+  await saveCategories();
+  renderCategoriesList();
+  refreshAllViews();
+}
+
+export async function removeCategorySetting(index) {
+  var cat = customCategories[index];
+  if (!cat) return;
+  var confirmed = await showConfirmModal(
+    currentLang === 'fr' ? 'Supprimer la catégorie « ' + cat.name + ' » ?' : 'Delete category "' + cat.name + '"?',
+    currentLang === 'fr' ? 'Supprimer' : 'Delete'
+  );
+  if (!confirmed) return;
+  customCategories.splice(index, 1);
+  await saveCategories();
+  renderCategoriesList();
+  refreshAllViews();
+  showToast(currentLang === 'fr' ? 'Catégorie supprimée' : 'Category removed', 'info');
 }

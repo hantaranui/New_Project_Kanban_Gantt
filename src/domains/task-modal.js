@@ -34,6 +34,22 @@ import { getKanbanStatuses } from './kanban.js';
 import { refreshAllViews } from '../ui/tabs.js';
 import { setField } from '../config.js';
 import { isOverdue, statusLabel } from './tasks.js';
+import { getCategories } from './categories.js';
+import { getTags } from './tags.js';
+
+// Résout les entrées d'editAssignees (emails/noms, buffer inchangé) vers des
+// ids de lignes Utilisateurs, pour l'écriture dans la colonne Assignee
+// (devenue Reference List) - lecture et logique de notification restent
+// basées sur la chaîne d'emails grâce à la normalisation faite dans
+// data-loader.js.
+function resolveAssigneeIds(list) {
+  var ids = [];
+  (list || []).forEach(function(val) {
+    var u = state.users.find(function(usr) { return usr.Email === val || usr.Name === val; });
+    if (u && ids.indexOf(u.id) === -1) ids.push(u.id);
+  });
+  return ids;
+}
 
 export function getInputValue(id, fallback) {
   var el = document.getElementById(id);
@@ -133,7 +149,7 @@ export async function saveTaskFormSilently(taskId) {
   setField(record, 'tasks', 'description', getInputValue('task-desc').trim());
   setField(record, 'tasks', 'status', getInputValue('task-status'));
   setField(record, 'tasks', 'priority', getInputValue('task-priority'));
-  setField(record, 'tasks', 'assignee', editAssignees.join(', '));
+  setField(record, 'tasks', 'assignee', ['L'].concat(resolveAssigneeIds(editAssignees)));
   setField(record, 'tasks', 'group', getInputValue('task-group'));
   setField(record, 'tasks', 'startDate', toEpoch(getInputValue('task-start')));
   setField(record, 'tasks', 'dueDate', toEpoch(getInputValue('task-due')));
@@ -141,8 +157,7 @@ export async function saveTaskFormSilently(taskId) {
   setField(record, 'tasks', 'projectId', projectId);
   setField(record, 'tasks', 'recurrence', getInputValue('task-recurrence', 'none'));
   setField(record, 'tasks', 'estimatedHours', getEstimatedHoursInput());
-  var tagEl = document.getElementById('task-tag');
-  if (tagEl) setField(record, 'tasks', 'tag', tagEl.value.trim());
+  setField(record, 'tasks', 'tag', ['L'].concat(editTags));
   if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
     record.Accountable = editAccountable.join(', ');
     record.Consulted = editConsulted.join(', ');
@@ -167,7 +182,6 @@ export function captureTaskFormState() {
     due: getInputValue('task-due'),
     category: getInputValue('task-category'),
     project: getInputValue('task-project'),
-    tag: getInputValue('task-tag'),
     recurrence: getInputValue('task-recurrence', 'none'),
     estimatedHours: getInputValue('task-estimated-hours'),
     extensionDate: getInputValue('task-extension-date'),
@@ -187,7 +201,6 @@ export function restoreTaskFormState(state) {
     ['task-due', state.due],
     ['task-category', state.category],
     ['task-project', state.project],
-    ['task-tag', state.tag],
     ['task-recurrence', state.recurrence],
     ['task-estimated-hours', state.estimatedHours],
     ['task-extension-date', state.extensionDate]
@@ -325,8 +338,9 @@ export function openNewTaskModal(defaultStatus) {
 
   // Category
   var newCategoryOptions = '<option value="">--</option>';
-  for (var nci = 0; nci < state.categories.length; nci++) {
-    newCategoryOptions += '<option value="' + sanitize(state.categories[nci].Name) + '">' + sanitize(state.categories[nci].Name) + '</option>';
+  var newCategories = getCategories();
+  for (var nci = 0; nci < newCategories.length; nci++) {
+    newCategoryOptions += '<option value="' + sanitize(newCategories[nci].name) + '">' + sanitize(newCategories[nci].name) + '</option>';
   }
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📁</span>';
@@ -334,16 +348,8 @@ export function openNewTaskModal(defaultStatus) {
   html += '<div class="detail-field-value"><select id="task-category">' + newCategoryOptions + '</select></div>';
   html += '</div>';
 
-  // Tag
-  var newTagOptions = '<option value="">--</option>';
-  for (var nti = 0; nti < state.tags.length; nti++) {
-    newTagOptions += '<option value="' + sanitize(state.tags[nti].Name) + '">' + sanitize(state.tags[nti].Name) + '</option>';
-  }
-  html += '<div class="detail-field">';
-  html += '<span class="detail-field-icon">🏷️</span>';
-  html += '<span class="detail-field-label">' + t('tag') + '</span>';
-  html += '<div class="detail-field-value"><select id="task-tag">' + newTagOptions + '</select></div>';
-  html += '</div>';
+  // Tag (multi-sélection par puces, sur le modèle des puces RACI)
+  html += renderTagField();
 
   html += '</div>'; // end left
   html += '</div>'; // end content
@@ -365,7 +371,52 @@ export var editAssignees = [];
 export var editAccountable = [];
 export var editConsulted = [];
 export var editInformed = [];
+export var editTags = [];
 export var draftTaskId = null; // id de la tâche brouillon en cours de création (approche "créer puis éditer")
+
+export function renderTagChips() {
+  var html = '';
+  for (var i = 0; i < editTags.length; i++) {
+    var tagObj = getTags().find(function(tg) { return tg.name === editTags[i]; });
+    var color = tagObj ? tagObj.color : '#94a3b8';
+    html += '<span class="assignee-chip-tag" style="border-color:' + color + ';color:' + color + ';">' + sanitize(editTags[i]) + ' <span class="chip-remove" onclick="removeTagChip(' + i + ')">✕</span></span>';
+  }
+  return html;
+}
+
+export function renderTagField() {
+  var tagSelectOptions = '<option value="">-- ' + t('tag') + ' --</option>';
+  getTags().forEach(function(tg) {
+    tagSelectOptions += '<option value="' + sanitize(tg.name) + '">' + sanitize(tg.name) + '</option>';
+  });
+  var html = '<div class="detail-field">';
+  html += '<span class="detail-field-icon">🏷️</span>';
+  html += '<span class="detail-field-label">' + t('tag') + '</span>';
+  html += '<div class="detail-field-value">';
+  html += '<div class="assignee-chips" id="tag-chips">' + renderTagChips() + '</div>';
+  html += '<div class="assignee-add-row">';
+  html += '<select id="tag-select">' + tagSelectOptions + '</select>';
+  html += '<button class="assignee-add-btn" onclick="addTagChip()">' + (currentLang === 'fr' ? 'Ajouter' : 'Add') + '</button>';
+  html += '</div></div></div>';
+  return html;
+}
+
+export function addTagChip() {
+  var sel = document.getElementById('tag-select');
+  if (!sel) return;
+  var val = sel.value;
+  if (!val || editTags.indexOf(val) !== -1) return;
+  editTags.push(val);
+  var container = document.getElementById('tag-chips');
+  if (container) container.innerHTML = renderTagChips();
+  sel.value = '';
+}
+
+export function removeTagChip(index) {
+  editTags.splice(index, 1);
+  var container = document.getElementById('tag-chips');
+  if (container) container.innerHTML = renderTagChips();
+}
 
 // Crée une tâche brouillon immédiatement puis ouvre l'éditeur COMPLET.
 // À la fermeture : si un titre a été saisi -> enregistrée ; sinon -> brouillon supprimé.
@@ -383,10 +434,10 @@ export async function startNewTask(defaultStatus, dateStr, prefill) {
   if (prefill.description) setField(record, 'tasks', 'description', prefill.description);
   if (prefill.category) setField(record, 'tasks', 'category', prefill.category);
   if (prefill.group) setField(record, 'tasks', 'group', prefill.group);
-  if (prefill.tag) setField(record, 'tasks', 'tag', prefill.tag);
+  if (prefill.tag) setField(record, 'tasks', 'tag', ['L', prefill.tag]);
   if (prefill.recurrence && prefill.recurrence !== 'none') setField(record, 'tasks', 'recurrence', prefill.recurrence);
   if (prefill.estimatedHours) setField(record, 'tasks', 'estimatedHours', prefill.estimatedHours);
-  if (editAssignees.length > 0) setField(record, 'tasks', 'assignee', editAssignees.join(', '));
+  if (editAssignees.length > 0) setField(record, 'tasks', 'assignee', ['L'].concat(resolveAssigneeIds(editAssignees)));
   if (state.currentProjectId) setField(record, 'tasks', 'projectId', state.currentProjectId);
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
   if (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
@@ -413,6 +464,7 @@ export function openEditTaskModal(taskId, preserveAssignees) {
     editAccountable = task.Accountable ? task.Accountable.split(',').map(function(a) { return a.trim(); }).filter(Boolean) : [];
     editConsulted = task.Consulted ? task.Consulted.split(',').map(function(a) { return a.trim(); }).filter(Boolean) : [];
     editInformed = task.Informed ? task.Informed.split(',').map(function(a) { return a.trim(); }).filter(Boolean) : [];
+    editTags = Array.isArray(task.Tag) ? task.Tag.slice() : [];
   }
 
   var groupOptions = '<option value="">--</option>';
@@ -539,9 +591,10 @@ export function openEditTaskModal(taskId, preserveAssignees) {
 
   // Category
   var categoryOptions = '<option value="">--</option>';
-  for (var ci = 0; ci < state.categories.length; ci++) {
-    var catSel = state.categories[ci].Name === task.Category ? ' selected' : '';
-    categoryOptions += '<option value="' + sanitize(state.categories[ci].Name) + '"' + catSel + '>' + sanitize(state.categories[ci].Name) + '</option>';
+  var editCategories = getCategories();
+  for (var ci = 0; ci < editCategories.length; ci++) {
+    var catSel = editCategories[ci].name === task.Category ? ' selected' : '';
+    categoryOptions += '<option value="' + sanitize(editCategories[ci].name) + '"' + catSel + '>' + sanitize(editCategories[ci].name) + '</option>';
   }
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📁</span>';
@@ -549,17 +602,8 @@ export function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-field-value"><select id="task-category">' + categoryOptions + '</select></div>';
   html += '</div>';
 
-  // Tag
-  var tagOptions = '<option value="">--</option>';
-  for (var ti = 0; ti < state.tags.length; ti++) {
-    var tagSel = state.tags[ti].Name === task.Tag ? ' selected' : '';
-    tagOptions += '<option value="' + sanitize(state.tags[ti].Name) + '"' + tagSel + '>' + sanitize(state.tags[ti].Name) + '</option>';
-  }
-  html += '<div class="detail-field">';
-  html += '<span class="detail-field-icon">🏷️</span>';
-  html += '<span class="detail-field-label">' + t('tag') + '</span>';
-  html += '<div class="detail-field-value"><select id="task-tag">' + tagOptions + '</select></div>';
-  html += '</div>';
+  // Tag (multi-sélection par puces, sur le modèle des puces RACI)
+  html += renderTagField();
 
   // === SUBTASKS SECTION ===
   var taskSubtasks = getTaskSubtasks(task.id);
@@ -1083,6 +1127,7 @@ export async function addSubtask(parentTaskId) {
 
   var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
+  var savedTags = editTags.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
@@ -1106,6 +1151,7 @@ export async function addSubtask(parentTaskId) {
     input.value = '';
     await loadAllData();
     editAssignees = savedAssignees;
+    editTags = savedTags;
     editAccountable = savedAccountable;
     editConsulted = savedConsulted;
     editInformed = savedInformed;
@@ -1132,6 +1178,7 @@ export function restoreModalScrollTop(pos) {
 
 export async function toggleSubtask(subtaskId, completed) {
   var savedAssignees = editAssignees.slice();
+  var savedTags = editTags.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
@@ -1152,6 +1199,7 @@ export async function toggleSubtask(subtaskId, completed) {
     var subtask = state.subtasks.find(function(st) { return st.id === subtaskId; });
     if (subtask) {
       editAssignees = savedAssignees;
+      editTags = savedTags;
       editAccountable = savedAccountable;
       editConsulted = savedConsulted;
       editInformed = savedInformed;
@@ -1171,6 +1219,7 @@ export async function deleteSubtask(subtaskId, parentTaskId) {
   if (!confirmed) return;
   var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
+  var savedTags = editTags.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
@@ -1184,6 +1233,7 @@ export async function deleteSubtask(subtaskId, parentTaskId) {
     showToast(t('subtaskDeleted'), 'info');
     await loadAllData();
     editAssignees = savedAssignees;
+    editTags = savedTags;
     editAccountable = savedAccountable;
     editConsulted = savedConsulted;
     editInformed = savedInformed;
@@ -1235,6 +1285,7 @@ export async function saveEditSubtask(subtaskId, parentTaskId) {
   var existingSubtask = state.subtasks.find(function(s) { return s.id === subtaskId; });
   var previousAssignee = existingSubtask ? existingSubtask.Assignee : '';
   var savedAssignees = editAssignees.slice();
+  var savedTags = editTags.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
@@ -1257,6 +1308,7 @@ export async function saveEditSubtask(subtaskId, parentTaskId) {
     }
     await loadAllData();
     editAssignees = savedAssignees;
+    editTags = savedTags;
     editAccountable = savedAccountable;
     editConsulted = savedConsulted;
     editInformed = savedInformed;
@@ -1301,11 +1353,13 @@ export async function generateSubtaskOccurrences(subtaskId, parentTaskId) {
     await grist.docApi.applyUserActions(actions);
     showToast((currentLang === 'fr' ? count + ' occurrence(s) créée(s)' : count + ' occurrence(s) created'), 'success');
     var savedAssignees = editAssignees.slice();
+    var savedTags = editTags.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
     await loadAllData();
     editAssignees = savedAssignees;
+    editTags = savedTags;
     editAccountable = savedAccountable;
     editConsulted = savedConsulted;
     editInformed = savedInformed;
@@ -1334,6 +1388,7 @@ export async function addDependency(taskId) {
   }
   var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
+  var savedTags = editTags.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
@@ -1349,6 +1404,7 @@ export async function addDependency(taskId) {
     showToast(t('dependencyAdded'), 'success');
     await loadAllData();
     editAssignees = savedAssignees;
+    editTags = savedTags;
     editAccountable = savedAccountable;
     editConsulted = savedConsulted;
     editInformed = savedInformed;
@@ -1373,6 +1429,7 @@ export async function removeDependency(taskId, dependsOnTaskId) {
   if (!confirmed) return;
   var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
+  var savedTags = editTags.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
@@ -1384,6 +1441,7 @@ export async function removeDependency(taskId, dependsOnTaskId) {
     showToast(t('dependencyRemoved'), 'info');
     await loadAllData();
     editAssignees = savedAssignees;
+    editTags = savedTags;
     editAccountable = savedAccountable;
     editConsulted = savedConsulted;
     editInformed = savedInformed;
@@ -1404,6 +1462,7 @@ export async function addComment(taskId) {
   if (!content) return;
   var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
+  var savedTags = editTags.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
@@ -1427,6 +1486,7 @@ export async function addComment(taskId) {
     }
     await loadAllData();
     editAssignees = savedAssignees;
+    editTags = savedTags;
     editAccountable = savedAccountable;
     editConsulted = savedConsulted;
     editInformed = savedInformed;
@@ -1448,6 +1508,7 @@ export async function deleteComment(commentId, taskId) {
   if (!confirmed) return;
   var formState = captureTaskFormState();
   var savedAssignees = editAssignees.slice();
+  var savedTags = editTags.slice();
   var savedAccountable = editAccountable.slice();
   var savedConsulted = editConsulted.slice();
   var savedInformed = editInformed.slice();
@@ -1458,6 +1519,7 @@ export async function deleteComment(commentId, taskId) {
     showToast(t('commentDeleted'), 'info');
     await loadAllData();
     editAssignees = savedAssignees;
+    editTags = savedTags;
     editAccountable = savedAccountable;
     editConsulted = savedConsulted;
     editInformed = savedInformed;
@@ -1510,7 +1572,7 @@ export async function createTask() {
   setField(record, 'tasks', 'description', getInputValue('task-desc').trim());
   setField(record, 'tasks', 'status', getInputValue('task-status'));
   setField(record, 'tasks', 'priority', getInputValue('task-priority'));
-  setField(record, 'tasks', 'assignee', editAssignees.join(', '));
+  setField(record, 'tasks', 'assignee', ['L'].concat(resolveAssigneeIds(editAssignees)));
   if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
     record.Accountable = editAccountable.join(', ');
     record.Consulted = editConsulted.join(', ');
@@ -1523,14 +1585,9 @@ export async function createTask() {
   setField(record, 'tasks', 'projectId', projectId);
   setField(record, 'tasks', 'estimatedHours', getEstimatedHoursInput());
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
+  setField(record, 'tasks', 'tag', ['L'].concat(editTags));
   // B4 : prolongation auto activée par défaut sur les nouvelles tâches (modifiable ensuite)
   if (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) record.Auto_Extend = true;
-
-  // Add Tag only if the element exists
-  var tagEl = document.getElementById('task-tag');
-  if (tagEl) {
-    setField(record, 'tasks', 'tag', tagEl.value.trim());
-  }
 
   try {
     record = await keepExistingTaskColumns(record);
@@ -1585,7 +1642,7 @@ export async function updateTask(taskId) {
   setField(record, 'tasks', 'description', getInputValue('task-desc').trim());
   setField(record, 'tasks', 'status', newStatus);
   setField(record, 'tasks', 'priority', getInputValue('task-priority'));
-  setField(record, 'tasks', 'assignee', editAssignees.join(', '));
+  setField(record, 'tasks', 'assignee', ['L'].concat(resolveAssigneeIds(editAssignees)));
   if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
     record.Accountable = editAccountable.join(', ');
     record.Consulted = editConsulted.join(', ');
@@ -1598,12 +1655,7 @@ export async function updateTask(taskId) {
   setField(record, 'tasks', 'projectId', projectId);
   setField(record, 'tasks', 'recurrence', newRecurrence);
   setField(record, 'tasks', 'estimatedHours', getEstimatedHoursInput());
-  
-  // Add Tag only if the element exists
-  var tagEl = document.getElementById('task-tag');
-  if (tagEl) {
-    setField(record, 'tasks', 'tag', tagEl.value.trim());
-  }
+  setField(record, 'tasks', 'tag', ['L'].concat(editTags));
 
   // Extension fields
   var extDateEl = document.getElementById('task-extension-date');

@@ -5,6 +5,8 @@ import {
   shouldLimitToMyProjects, taskConcernsCurrentUser, canSeeAllProjects, getUserRoles, userMatchesRole
 } from './permissions.js';
 import { refreshAllViews } from '../ui/tabs.js';
+import { getCategories } from './categories.js';
+import { getTags } from './tags.js';
 
 export function roleLabel(role) {
   if (role === 'admin') return t('roleAdmin');
@@ -63,14 +65,11 @@ export function renderProjectSelector() {
   }
 
   // Filtre Catégorie
-  var allCategories = [];
-  state.tasks.forEach(function(t) { if (t.Category && allCategories.indexOf(t.Category) === -1) allCategories.push(t.Category); });
-  allCategories.sort();
-  var catOptions = allCategories.map(function(c) { return { value: c, label: c }; });
+  var catOptions = getCategories().map(function(c) { return { value: c.name, label: c.name }; });
   html += buildFilterCombo('category', currentLang === 'fr' ? '— Catégorie —' : '— Category —', catOptions, state.currentFilterCategory, filterByCategory);
 
   // Filtre Tag
-  var tagOptions = state.tags.map(function(tag) { return { value: tag.Name, label: tag.Name }; });
+  var tagOptions = getTags().map(function(tag) { return { value: tag.name, label: tag.name }; });
   html += buildFilterCombo('tag', '— Tag —', tagOptions, state.currentFilterTag, filterByTag);
 
   // Filtre Projet — combobox moderne avec recherche intégrée
@@ -473,7 +472,7 @@ export function getFilteredTasks() {
     result = result.filter(function(t) { return t.Category === state.currentFilterCategory; });
   }
   if (state.currentFilterTag) {
-    result = result.filter(function(t) { return t.Tag === state.currentFilterTag; });
+    result = result.filter(function(t) { return Array.isArray(t.Tag) && t.Tag.indexOf(state.currentFilterTag) !== -1; });
   }
   if ((state.mineOnly || shouldLimitToMyProjects()) && !state.currentProjectId) {
     var myIds = myProjectIdSet();
