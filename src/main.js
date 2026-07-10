@@ -17,7 +17,6 @@ import {
   getTaskAttachments, formatFileSize, uploadTaskAttachments, downloadAttachment, deleteAttachment,
   viewAttachment, closeAttachmentViewer, renderAttachmentsSection, openAttachmentInNewTab
 } from './domains/attachments.js';
-import { logActivity, renderActivityLog, expandActivityLog } from './domains/activity-log.js';
 import {
   updateStats, renderStatsView, renderWorkloadChart, renderTimelineChart, renderBurndownChart
 } from './domains/stats.js';
@@ -29,12 +28,6 @@ import {
   getTaskTimeEntries, getTaskTotalTime, formatDuration, formatDurationShort,
   startTimer, pauseTimer, addManualTimeEntry
 } from './domains/time-tracking.js';
-import {
-  getTaskDependencies, getTasksDependingOn, isTaskBlocked, ganttDepBadge,
-  showGanttDependencyTooltip, hideGanttDependencyTooltip, normalizeDependencyProjectId,
-  getDependencyCandidates, refreshDependencyTaskOptions, clearDependencyTaskSelection,
-  openDependencyTaskOptions, closeDependencyTaskOptions, toggleDependencyTaskOptions, selectDependencyTask
-} from './domains/dependencies.js';
 import {
   getTaskSubtasks, getTaskProgress, isSubtaskBlocked, getSubtaskBlocker,
   toggleSubtaskFromPopup, toggleSubtaskFromCard, toggleSubtasks, expandAllSubtasks, collapseAllSubtasks,
@@ -101,7 +94,7 @@ import {
   openNewTaskModal, openEditTaskModal, saveTaskFromFooter, addRaciChip, removeRaciChip,
   addTagChip, removeTagChip,
   quickAction, addSubtask, toggleSubtask, deleteSubtask, saveEditSubtask, generateSubtaskOccurrences,
-  addDependency, removeDependency, addComment, deleteComment, closeModal, closeModalForce,
+  addComment, deleteComment, closeModal, closeModalForce,
   createTask, updateTask, deleteTask
 } from './domains/task-modal.js';
 import {
@@ -126,35 +119,35 @@ import { addTagSetting, editTagSetting, removeTagSetting, setTagsFromSettings } 
 // one of these handlers throws "X is not defined" the moment it's clicked.
 // Any new onclick handler added to generated HTML must be added here too.
 Object.assign(window, {
-  addCategorySetting, addComment, addDefaultAutomationRules, addDependency, addKanbanStatus, addManualTimeEntry,
+  addCategorySetting, addComment, addDefaultAutomationRules, addKanbanStatus, addManualTimeEntry,
   addRaciChip, addRoleChoice, addSubtask, addTagChip, addTagSetting, applySecurityRules, archiveTask, calendarNav,
-  calendarToday, cancelEditSubtask, clearDependencyTaskSelection, clearMsFilter, closeAttachmentViewer, closeAutomationModal,
-  closeConfirmModal, closeDependencyTaskOptions, closeModal, closeModalForce, closeNotifications, closeProjectModal, closePromptModal,
+  calendarToday, cancelEditSubtask, clearMsFilter, closeAttachmentViewer, closeAutomationModal,
+  closeConfirmModal, closeModal, closeModalForce, closeNotifications, closeProjectModal, closePromptModal,
   collapseAllSubtasks, createGroup, createTask, createUser,
   deleteAttachment, deleteAutomationRule, deleteComment, deleteGroup,
   deleteProject, deleteSubtask, deleteTask, deleteUser,
   detectProjectColumns, detectTaskColumns, detectUserColumns, dismissNotification, dismissAllNotifications,
   downloadAttachment, editCategorySetting, editKanbanStatus,
-  editProject, editTagSetting, expandActivityLog, expandAllSubtasks, exportGanttPdf, filterComboSearch, filterProjectDropdown,
+  editProject, editTagSetting, expandAllSubtasks, exportGanttPdf, filterComboSearch, filterProjectDropdown,
   filterStAssignees, focusGanttTask, ganttCollapseAll, ganttExpandAll, ganttNav, ganttToday,
-  generateOccurrences, generateSubtaskOccurrences, hideGanttDependencyTooltip, onAutoActionChange,
+  generateOccurrences, generateSubtaskOccurrences, onAutoActionChange,
   onAutoTriggerChange, onCalendarDayClick, onCalendarDragOver, onCalendarDrop, onCalendarTaskDragStart, onDragLeave,
   onDragOver, onDragStart, onDrop, openAddAutomationRuleModal, openAttachmentInNewTab, openCardAttachmentsModal,
   openCardCommentsModal, openCardSubtasksModal, openColumnMappingModal,
-  openDependencyTaskOptions, openEditAutomationRuleModal, openEditGroupModal, openEditTaskModal, openEditUserModal, openManageRolesModal,
+  openEditAutomationRuleModal, openEditGroupModal, openEditTaskModal, openEditUserModal, openManageRolesModal,
   openNewGroupModal, openNewTaskForDay, openNewTaskModal, openNewUserModal, openNotification,
   openProjectModal, openProjectModalForEdit, openSubtaskDepModal, pauseTimer, quickAction,
-  refreshDependencyTaskOptions, removeCategorySetting, removeDependency, removeKanbanStatus, removeRaciChip, removeRoleChoice, removeSecurityRules,
+  removeCategorySetting, removeKanbanStatus, removeRaciChip, removeRoleChoice, removeSecurityRules,
   removeTagChip, removeTagSetting,
-  renderActivityLog, renderBurndownChart, renderEmojiPicker, renderProjectList, renderSettingsProjectsList, renderTableView,
+  renderBurndownChart, renderEmojiPicker, renderProjectList, renderSettingsProjectsList, renderTableView,
   renderTimelineChart, resetFilters, restoreTask, runSetupDiagnostic, saveAutomationRuleFromModal,
   saveColumnMapping, saveEditSubtask, saveInlineProjectEdit, saveProject, saveRoleChoices,
   saveTaskFromFooter, saveUiLabelSettings, selectEmoji, selectFilterCombo, selectProjectOption,
   setCalendarMode, setGanttCustomRange, setGanttMode, setGanttSort, setGanttYear, setKanbanGroupBy,
   setKanbanSort, setStPill, setStStatus, setStType, setupCreateFrenchTables, setupUseExistingTables,
-  showGanttDependencyTooltip, showNotifications, sortTable, startEditSubtask, startTimer, submitPromptModal,
+  showNotifications, sortTable, startEditSubtask, startTimer, submitPromptModal,
   switchTab, toggleArchiveView, toggleAutomationRule, toggleCardDisplay, toggleCardExpand,
-  toggleDependencyTaskOptions, toggleEmojiPicker, toggleFilterCombo, toggleGanttFullscreen, toggleGanttSubtask, toggleKanbanCol,
+  toggleEmojiPicker, toggleFilterCombo, toggleGanttFullscreen, toggleGanttSubtask, toggleKanbanCol,
   toggleKanbanFullscreen, toggleMsFilter, toggleMsOption, toggleMyProjects, toggleNotifyConcerned, toggleProjectDropdown,
   toggleRaci, toggleSubtask, toggleSubtaskFromCard, toggleSubtaskFromPopup, toggleSubtasks,
   updateGroup, updateSubtaskDep, updateTask, updateUser, uploadTaskAttachments,

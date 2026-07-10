@@ -7,14 +7,12 @@ export const CLIENT_TABLE_NAMES = {
   users: 'Utilisateurs',
   groups: 'Equipes',
   subtasks: 'Sous_taches',
-  dependencies: 'Dependances',
   comments: 'Commentaires',
   timeEntries: 'Suivi_temps',
   projects: 'Projets',
   config: 'Configuration_widget',
   settings: 'Parametres_widget',
   notifications: 'Notifications',
-  activityLog: 'Journal_activite',
   attachments: 'Pieces_jointes',
   userInfo: 'Infos_utilisateurs'
 };

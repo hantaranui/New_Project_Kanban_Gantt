@@ -6,18 +6,12 @@ import { priorityLabel, recurrenceSymbol } from '../utils/labels.js';
 import { showToast } from '../ui/toast.js';
 import { showConfirmModal } from '../ui/confirm-modal.js';
 import { loadAllData } from './data-loader.js';
-import { logActivity } from './activity-log.js';
 import { getTaskAttachments, renderAttachmentsSection, uploadTaskAttachments } from './attachments.js';
 import { getTaskComments } from './comments.js';
 import {
   getTaskTimeEntries, getTaskTotalTime, formatDuration, formatDurationShort,
   pauseTimer, startTimer, addManualTimeEntry
 } from './time-tracking.js';
-import {
-  getTaskDependencies, getTasksDependingOn, isTaskBlocked, normalizeDependencyProjectId,
-  clearDependencyTaskSelection, refreshDependencyTaskOptions, openDependencyTaskOptions,
-  closeDependencyTaskOptions, toggleDependencyTaskOptions
-} from './dependencies.js';
 import {
   getTaskSubtasks, getTaskProgress, isSubtaskBlocked, getSubtaskBlocker,
   setStStatus, setStType, setStPill, startEditSubtask, cancelEditSubtask,
@@ -586,7 +580,7 @@ export function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📂</span>';
   html += '<span class="detail-field-label">' + t('project') + '</span>';
-  html += '<div class="detail-field-value"><select id="task-project" onchange="refreshDependencyTaskOptions(' + task.id + ', true)">' + projectOptions + '</select></div>';
+  html += '<div class="detail-field-value"><select id="task-project">' + projectOptions + '</select></div>';
   html += '</div>';
 
   // Category
@@ -759,62 +753,6 @@ export function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="subtask-add-row">';
   html += '<input type="text" id="new-subtask-input" class="subtask-input" placeholder="' + t('subtaskPlaceholder') + '" onkeypress="if(event.key===\'Enter\'){event.preventDefault();addSubtask(' + task.id + ');}" />';
   html += '<button type="button" class="subtask-add-btn" onclick="event.preventDefault();addSubtask(' + task.id + ')">+</button>';
-  html += '</div>';
-  html += '</div>';
-
-  // === DEPENDENCIES SECTION ===
-  var taskDeps = getTaskDependencies(task.id);
-  var taskBlocks = getTasksDependingOn(task.id);
-  html += '<div class="dependencies-section">';
-  html += '<div class="dependencies-header">';
-  html += '<span class="detail-field-icon">🔗</span>';
-  html += '<span class="detail-field-label">' + t('dependencies') + '</span>';
-  html += '</div>';
-  
-  // Blocked by
-  html += '<div class="dep-subsection">';
-  html += '<div class="dep-label">' + t('blockedBy') + ':</div>';
-  if (taskDeps.length === 0) {
-    html += '<div class="dep-empty">' + t('noDependencies') + '</div>';
-  } else {
-    html += '<div class="dep-list">';
-    for (var di = 0; di < taskDeps.length; di++) {
-      var dep = taskDeps[di];
-      var depDone = dep.Status === 'done';
-      html += '<div class="dep-item' + (depDone ? ' dep-done' : '') + '">';
-      html += '<span class="dep-status">' + (depDone ? '✅' : '⏳') + '</span>';
-      html += '<span class="dep-title">' + sanitize(dep.Title) + '</span>';
-      html += '<button class="dep-remove" onclick="removeDependency(' + task.id + ', ' + dep.id + ')">✕</button>';
-      html += '</div>';
-    }
-    html += '</div>';
-  }
-  html += '</div>';
-  
-  // Blocks (tasks depending on this one)
-  if (taskBlocks.length > 0) {
-    html += '<div class="dep-subsection">';
-    html += '<div class="dep-label">' + t('blocks') + ':</div>';
-    html += '<div class="dep-list">';
-    for (var bi = 0; bi < taskBlocks.length; bi++) {
-      var blk = taskBlocks[bi];
-      html += '<div class="dep-item dep-blocks">';
-      html += '<span class="dep-title">' + sanitize(blk.Title) + '</span>';
-      html += '</div>';
-    }
-    html += '</div>';
-    html += '</div>';
-  }
-  
-  // Add dependency
-  html += '<div class="dep-add-row">';
-  html += '<div class="dep-combobox" id="dep-combobox">';
-  html += '<input type="search" id="dep-search" class="dep-search-input" role="combobox" aria-autocomplete="list" aria-controls="dep-options" aria-expanded="false" placeholder="' + (currentLang === 'fr' ? 'Sélectionner ou rechercher une tâche...' : 'Select or search for a task...') + '" onfocus="openDependencyTaskOptions(' + task.id + ')" oninput="clearDependencyTaskSelection();openDependencyTaskOptions(' + task.id + ')" onkeydown="if(event.key===\'Escape\')closeDependencyTaskOptions()" autocomplete="off" />';
-  html += '<input type="hidden" id="dep-select" value="" />';
-  html += '<button type="button" class="dep-toggle-btn" onclick="toggleDependencyTaskOptions(' + task.id + ')" title="' + (currentLang === 'fr' ? 'Afficher les tâches' : 'Show tasks') + '">⌄</button>';
-  html += '<div id="dep-options" class="dep-options" role="listbox"></div>';
-  html += '</div>';
-  html += '<button type="button" class="dep-add-btn" onclick="addDependency(' + task.id + ')">+</button>';
   html += '</div>';
   html += '</div>';
 
@@ -1006,7 +944,6 @@ export function openEditTaskModal(taskId, preserveAssignees) {
   document.getElementById('modal-container').innerHTML = html;
   // D2 : remplir la liste des pièces jointes (token asynchrone à part)
   renderAttachmentsSection(task.id);
-  refreshDependencyTaskOptions(task.id);
 }
 
 export function saveTaskFromFooter(taskId, event) {
@@ -1371,88 +1308,6 @@ export async function generateSubtaskOccurrences(subtaskId, parentTaskId) {
 }
 
 // =============================================================================
-// DEPENDENCIES CRUD
-// =============================================================================
-
-export async function addDependency(taskId) {
-  var select = document.getElementById('dep-select');
-  var dependsOnId = parseInt(select.value);
-  if (!dependsOnId) return;
-  var projectEl = document.getElementById('task-project');
-  var selectedProjectId = normalizeDependencyProjectId(projectEl ? projectEl.value : 0);
-  var dependsOnTask = state.tasks.find(function(candidate) { return candidate.id === dependsOnId; });
-  if (!dependsOnTask || normalizeDependencyProjectId(dependsOnTask.Project_Id) !== selectedProjectId) {
-    showToast(currentLang === 'fr' ? 'La dépendance doit appartenir au même projet.' : 'The dependency must belong to the same project.', 'error');
-    refreshDependencyTaskOptions(taskId);
-    return;
-  }
-  var formState = captureTaskFormState();
-  var savedAssignees = editAssignees.slice();
-  var savedTags = editTags.slice();
-  var savedAccountable = editAccountable.slice();
-  var savedConsulted = editConsulted.slice();
-  var savedInformed = editInformed.slice();
-
-  try {
-    await grist.docApi.applyUserActions([
-      ['AddRecord', state.DEPENDENCIES_TABLE, null, {
-        Task_Id: taskId,
-        Depends_On_Task_Id: dependsOnId,
-        Created_At: Math.floor(Date.now() / 1000)
-      }]
-    ]);
-    showToast(t('dependencyAdded'), 'success');
-    await loadAllData();
-    editAssignees = savedAssignees;
-    editTags = savedTags;
-    editAccountable = savedAccountable;
-    editConsulted = savedConsulted;
-    editInformed = savedInformed;
-    openEditTaskModal(taskId, true);
-    restoreTaskFormState(formState);
-    refreshDependencyTaskOptions(taskId);
-  } catch (e) {
-    console.error('Error adding dependency:', e);
-    showToast('Error: ' + e.message, 'error');
-  }
-}
-
-export async function removeDependency(taskId, dependsOnTaskId) {
-  var dep = state.dependencies.find(function(d) {
-    return d.Task_Id === taskId && d.Depends_On_Task_Id === dependsOnTaskId;
-  });
-  if (!dep) return;
-  var confirmed = await showConfirmModal(
-    currentLang === 'fr' ? 'Supprimer cette dépendance ?' : 'Delete this dependency?',
-    currentLang === 'fr' ? 'Supprimer la dépendance' : 'Delete dependency'
-  );
-  if (!confirmed) return;
-  var formState = captureTaskFormState();
-  var savedAssignees = editAssignees.slice();
-  var savedTags = editTags.slice();
-  var savedAccountable = editAccountable.slice();
-  var savedConsulted = editConsulted.slice();
-  var savedInformed = editInformed.slice();
-
-  try {
-    await grist.docApi.applyUserActions([
-      ['RemoveRecord', state.DEPENDENCIES_TABLE, dep.id]
-    ]);
-    showToast(t('dependencyRemoved'), 'info');
-    await loadAllData();
-    editAssignees = savedAssignees;
-    editTags = savedTags;
-    editAccountable = savedAccountable;
-    editConsulted = savedConsulted;
-    editInformed = savedInformed;
-    openEditTaskModal(taskId, true);
-    restoreTaskFormState(formState);
-  } catch (e) {
-    console.error('Error removing dependency:', e);
-  }
-}
-
-// =============================================================================
 // COMMENTS CRUD
 // =============================================================================
 
@@ -1480,7 +1335,6 @@ export async function addComment(taskId) {
     textarea.value = '';
     showToast(t('commentAdded'), 'success');
     var commentTask = state.tasks.find(function(t2) { return t2.id === taskId; });
-    logActivity('comment_added', taskId, commentTask ? commentTask.Title : '', content.substring(0, 80));
     if (commentTask) {
       await notifyConcernedUsers(taskId, splitRecipientValues(commentTask.Assignee), 'comment_added', commentTask.Title || '');
     }
@@ -1596,7 +1450,6 @@ export async function createTask() {
     ]);
     var newTaskId = (createResult && createResult.retValues && createResult.retValues[0]) || null;
     showToast(t('taskCreated'), 'success');
-    logActivity('task_created', newTaskId, title, '');
     if (newTaskId) {
 	      await notifyConcernedUsers(newTaskId, editAssignees.slice(), 'task_assigned', title);
     }
@@ -1623,13 +1476,6 @@ export async function updateTask(taskId) {
   var task = state.tasks.find(function(t) { return t.id === taskId; });
   var wasNotDone = task && task.Status !== 'done';
   var newStatus = getInputValue('task-status');
-
-  if (newStatus === 'done' && isTaskBlocked(taskId)) {
-    var blockers = getTaskDependencies(taskId).filter(function(b) { return b && b.Status !== 'done'; });
-    var blockerNames = blockers.map(function(b) { return b.Title; }).join(', ');
-    showToast((currentLang === 'fr' ? 'Impossible : tâche bloquée par ' : 'Cannot complete: blocked by ') + blockerNames, 'error');
-    return;
-  }
 
   var recurrenceEl = document.getElementById('task-recurrence');
   var newRecurrence = recurrenceEl ? recurrenceEl.value : (task ? task.Recurrence : 'none');
@@ -1676,10 +1522,9 @@ export async function updateTask(taskId) {
     ]);
     if (wasDraft) draftTaskId = null; // ce brouillon devient une vraie tâche seulement après sauvegarde réussie
     showToast(t('taskUpdated'), 'success');
-    var logDetails = [];
     var autoChanges = {};
     if (task) {
-      if (task.Status !== newStatus) { autoChanges.status = { from: task.Status, to: newStatus }; logDetails.push(task.Status + ' → ' + newStatus); }
+      if (task.Status !== newStatus) { autoChanges.status = { from: task.Status, to: newStatus }; }
       var newPriority = document.getElementById('task-priority').value;
       if (task.Priority !== newPriority) autoChanges.priority = { from: task.Priority, to: newPriority };
       var newAssignee = editAssignees.join(', ');
@@ -1688,7 +1533,6 @@ export async function updateTask(taskId) {
     if (Object.keys(autoChanges).length > 0) {
       await evaluateAutomationRules(Object.assign({}, task, record, { id: taskId }), autoChanges);
     }
-    logActivity(autoChanges.status ? 'status_changed' : 'task_updated', taskId, title, logDetails.join(', '));
 
 	    if (autoChanges.assignee) {
 	      var previousAssignees = splitRecipientValues(task ? task.Assignee : '');
@@ -1730,7 +1574,6 @@ export async function deleteTask(taskId) {
   var confirmed = await showConfirmModal(confirmationMessage, currentLang === 'fr' ? 'Supprimer la tâche' : 'Delete task');
   if (!confirmed) return;
   try {
-    var deletedTask = state.tasks.find(function(t2) { return t2.id === taskId; });
     var deletedSubtaskIds = {};
     var actions = [];
     relatedSubtasks.forEach(function(st) { deletedSubtaskIds[st.id] = true; });
@@ -1739,9 +1582,6 @@ export async function deleteTask(taskId) {
       if (st.Parent_Task_Id !== taskId && deletedSubtaskIds[st.Blocked_By_Subtask_Id]) {
         actions.push(['UpdateRecord', state.SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }]);
       }
-    });
-    state.dependencies.forEach(function(dep) {
-      if (dep.Task_Id === taskId || dep.Depends_On_Task_Id === taskId) actions.push(['RemoveRecord', state.DEPENDENCIES_TABLE, dep.id]);
     });
     state.comments.forEach(function(comment) {
       if (comment.Task_Id === taskId) actions.push(['RemoveRecord', state.COMMENTS_TABLE, comment.id]);
@@ -1764,7 +1604,6 @@ export async function deleteTask(taskId) {
     if (draftTaskId === taskId) draftTaskId = null;
     document.getElementById('modal-container').innerHTML = '';
     showToast(t('taskDeleted'), 'info');
-    logActivity('task_deleted', taskId, deletedTask ? deletedTask.Title : '', '');
     await loadAllData();
   } catch (e) {
     console.error('Error deleting task:', e);

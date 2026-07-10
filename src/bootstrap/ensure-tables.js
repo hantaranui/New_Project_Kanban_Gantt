@@ -15,14 +15,12 @@ export function applyFrenchTableNames(updateDefaults) {
   state.USERS_TABLE = CLIENT_TABLE_NAMES.users;
   state.GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
   state.SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
-  state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
   state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
   state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
   state.PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
   state.CONFIG_TABLE = CLIENT_TABLE_NAMES.config;
   state.SETTINGS_TABLE = CLIENT_TABLE_NAMES.settings;
   state.NOTIFICATIONS_TABLE = CLIENT_TABLE_NAMES.notifications;
-  state.ACTIVITY_LOG_TABLE = CLIENT_TABLE_NAMES.activityLog;
   state.ATTACHMENTS_TABLE = CLIENT_TABLE_NAMES.attachments;
   state.USER_INFO_TABLE = CLIENT_TABLE_NAMES.userInfo;
   if (updateDefaults) {
@@ -353,16 +351,6 @@ export async function ensureTables() {
       ]);
     }
 
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.DEPENDENCIES_TABLE) === -1)) {
-      await grist.docApi.applyUserActions([
-        ['AddTable', state.DEPENDENCIES_TABLE, [
-          { id: 'Task_Id', type: 'Int' },
-          { id: 'Depends_On_Task_Id', type: 'Int' },
-          { id: 'Created_At', type: 'Date' }
-        ]]
-      ]);
-    }
-
     if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.COMMENTS_TABLE) === -1)) {
       await grist.docApi.applyUserActions([
         ['AddTable', state.COMMENTS_TABLE, [
@@ -538,19 +526,6 @@ export async function ensureTables() {
           { id: 'Message', type: 'Text' },
           { id: 'Created_At', type: 'Date' },
           { id: 'Rule_Id', type: 'Text' }
-        ]]
-      ]);
-    }
-
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.ACTIVITY_LOG_TABLE) === -1)) {
-      await grist.docApi.applyUserActions([
-        ['AddTable', state.ACTIVITY_LOG_TABLE, [
-          { id: 'Timestamp', type: 'Date' },
-          { id: 'User_Email', type: 'Text' },
-          { id: 'Action', type: 'Text' },
-          { id: 'Task_Id', type: 'Int' },
-          { id: 'Task_Title', type: 'Text' },
-          { id: 'Details', type: 'Text' }
         ]]
       ]);
     }

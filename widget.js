@@ -218,13 +218,8 @@
       noAssignee: "Non assign\xE9",
       dependencies: "D\xE9pendances",
       blockedBy: "Bloqu\xE9 par",
-      blocks: "Bloque",
-      addDependency: "Ajouter une d\xE9pendance",
       noDependencies: "Aucune d\xE9pendance",
       dependencyAdded: "D\xE9pendance ajout\xE9e",
-      dependencyRemoved: "D\xE9pendance supprim\xE9e",
-      selectTask: "S\xE9lectionner une t\xE2che...",
-      blockedWarning: "T\xE2che bloqu\xE9e",
       comments: "Commentaires",
       addComment: "Ajouter un commentaire",
       commentPlaceholder: "\xC9crire un commentaire...",
@@ -272,17 +267,6 @@
       burnRemaining: "Restantes",
       burnCompleted: "Termin\xE9es",
       burnIdeal: "Id\xE9al",
-      activityLog: "Journal d'activit\xE9",
-      activityLogSubtitle: "Historique des actions r\xE9centes",
-      actTaskCreated: "a cr\xE9\xE9 la t\xE2che",
-      actTaskUpdated: "a modifi\xE9 la t\xE2che",
-      actTaskDeleted: "a supprim\xE9 la t\xE2che",
-      actStatusChanged: "a chang\xE9 le statut de",
-      actTaskArchived: "a archiv\xE9 la t\xE2che",
-      actTaskRestored: "a restaur\xE9 la t\xE2che",
-      actCommentAdded: "a comment\xE9 sur",
-      actNoActivity: "Aucune activit\xE9 r\xE9cente",
-      actLoadMore: "Voir plus",
       edit: "Modifier",
       required: "requis",
       tag: "Tag",
@@ -389,7 +373,6 @@
     users: [],
     groups: [],
     subtasks: [],
-    dependencies: [],
     comments: [],
     timeEntries: [],
     projects: [],
@@ -409,18 +392,15 @@
     USERS_TABLE: "PM_Users",
     GROUPS_TABLE: "PM_Groups",
     SUBTASKS_TABLE: "PM_Subtasks",
-    DEPENDENCIES_TABLE: "PM_Dependencies",
     COMMENTS_TABLE: "PM_Comments",
     TIME_ENTRIES_TABLE: "PM_TimeEntries",
     PROJECTS_TABLE: "PM_Projects",
     CONFIG_TABLE: "PM_Config",
     SETTINGS_TABLE: "PM_Settings",
     NOTIFICATIONS_TABLE: "PM_Notifications",
-    ACTIVITY_LOG_TABLE: "PM_ActivityLog",
     ATTACHMENTS_TABLE: "PM_Attachments",
     USER_INFO_TABLE: "PM_UserInfo",
     attachments: [],
-    activityLog: [],
     uiLabels: Object.assign({}, defaultUiLabels),
     DEFAULT_TASKS_TABLE: "PM_Tasks",
     DEFAULT_USERS_TABLE: "PM_Users",
@@ -468,14 +448,12 @@
     users: "Utilisateurs",
     groups: "Equipes",
     subtasks: "Sous_taches",
-    dependencies: "Dependances",
     comments: "Commentaires",
     timeEntries: "Suivi_temps",
     projects: "Projets",
     config: "Configuration_widget",
     settings: "Parametres_widget",
     notifications: "Notifications",
-    activityLog: "Journal_activite",
     attachments: "Pieces_jointes",
     userInfo: "Infos_utilisateurs"
   };
@@ -1219,90 +1197,6 @@
     });
   }
 
-  // src/domains/activity-log.js
-  async function logActivity(action, taskId, taskTitle, details) {
-    try {
-      var record = {
-        Timestamp: Math.floor(Date.now() / 1e3),
-        User_Email: state.currentUserEmail || "unknown",
-        Action: action,
-        Task_Id: taskId || 0,
-        Task_Title: taskTitle || "",
-        Details: details || ""
-      };
-      await grist.docApi.applyUserActions([["AddRecord", state.ACTIVITY_LOG_TABLE, null, record]]);
-      state.activityLog.push(record);
-    } catch (e) {
-      console.log("[GristPM] Activity log skipped:", e.message);
-    }
-  }
-  var _activityLogLimit = 20;
-  function renderActivityLog() {
-    var container = document.getElementById("activity-log-list");
-    if (!container) return;
-    var sorted = state.activityLog.slice().sort(function(a, b) {
-      return (b.Timestamp || 0) - (a.Timestamp || 0);
-    });
-    var shown = sorted.slice(0, _activityLogLimit);
-    if (shown.length === 0) {
-      container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + t("actNoActivity") + "</div>";
-      return;
-    }
-    var ACTION_ICONS = {
-      task_created: "\u{1F195}",
-      task_updated: "\u270F\uFE0F",
-      task_deleted: "\u{1F5D1}\uFE0F",
-      status_changed: "\u{1F504}",
-      task_archived: "\u{1F4E6}",
-      task_restored: "\u267B\uFE0F",
-      comment_added: "\u{1F4AC}"
-    };
-    var ACTION_I18N = {
-      task_created: "actTaskCreated",
-      task_updated: "actTaskUpdated",
-      task_deleted: "actTaskDeleted",
-      status_changed: "actStatusChanged",
-      task_archived: "actTaskArchived",
-      task_restored: "actTaskRestored",
-      comment_added: "actCommentAdded"
-    };
-    var html = "";
-    var lastDateStr = "";
-    for (var i = 0; i < shown.length; i++) {
-      var entry = shown[i];
-      var dateObj = entry.Timestamp ? new Date(entry.Timestamp * 1e3) : /* @__PURE__ */ new Date();
-      var dateStr = dateObj.toLocaleDateString(currentLang === "fr" ? "fr-FR" : "en-US", { weekday: "long", day: "numeric", month: "long" });
-      if (dateStr !== lastDateStr) {
-        html += '<div style="font-size:11px;font-weight:700;color:#94a3b8;padding:8px 0 4px;border-bottom:1px solid #f1f5f9;text-transform:capitalize;">' + dateStr + "</div>";
-        lastDateStr = dateStr;
-      }
-      var icon = ACTION_ICONS[entry.Action] || "\u{1F4CB}";
-      var actionText = t(ACTION_I18N[entry.Action] || entry.Action);
-      var userName = getUserDisplayName(entry.User_Email);
-      var timeStr = dateObj.toLocaleTimeString(currentLang === "fr" ? "fr-FR" : "en-US", { hour: "2-digit", minute: "2-digit" });
-      html += '<div class="activity-entry" style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f8fafc;"';
-      if (entry.Task_Id) html += ' onclick="openEditTaskModal(' + entry.Task_Id + ')" style="cursor:pointer;"';
-      html += ">";
-      html += '<span style="font-size:16px;flex-shrink:0;margin-top:2px;">' + icon + "</span>";
-      html += '<div style="flex:1;min-width:0;">';
-      html += '<div style="font-size:13px;"><strong>' + sanitize(userName) + "</strong> " + actionText;
-      if (entry.Task_Title) html += ' <span style="color:#3b82f6;font-weight:600;">' + sanitize(entry.Task_Title) + "</span>";
-      html += "</div>";
-      if (entry.Details) html += '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + sanitize(entry.Details) + "</div>";
-      html += "</div>";
-      html += '<span style="font-size:10px;color:#94a3b8;white-space:nowrap;margin-top:3px;">' + timeStr + "</span>";
-      html += "</div>";
-    }
-    if (sorted.length > _activityLogLimit) {
-      html += '<div style="text-align:center;padding:12px;"><button class="btn btn-secondary btn-sm" onclick="expandActivityLog()">' + t("actLoadMore") + "</button></div>";
-    }
-    container.innerHTML = html;
-  }
-  function expandActivityLog() {
-    _activityLogLimit += 20;
-    renderActivityLog();
-  }
-
   // src/domains/time-tracking.js
   function getTaskTimeEntries(taskId) {
     return state.timeEntries.filter(function(te) {
@@ -1430,171 +1324,6 @@
       console.error("Error adding manual time entry:", e);
       showToast("Error: " + e.message, "error");
     }
-  }
-
-  // src/domains/dependencies.js
-  function getTaskDependencies(taskId) {
-    return state.dependencies.filter(function(d) {
-      return d.Task_Id === taskId;
-    }).map(function(d) {
-      return state.tasks.find(function(t2) {
-        return t2.id === d.Depends_On_Task_Id;
-      });
-    }).filter(Boolean);
-  }
-  function getTasksDependingOn(taskId) {
-    return state.dependencies.filter(function(d) {
-      return d.Depends_On_Task_Id === taskId;
-    }).map(function(d) {
-      return state.tasks.find(function(t2) {
-        return t2.id === d.Task_Id;
-      });
-    }).filter(Boolean);
-  }
-  function isTaskBlocked(taskId) {
-    var blockers = getTaskDependencies(taskId);
-    return blockers.some(function(blocker) {
-      return blocker && blocker.Status !== "done";
-    });
-  }
-  function ganttDepBadge(task) {
-    var deps = getTaskDependencies(task.id);
-    var blocks = getTasksDependingOn(task.id);
-    var html = "";
-    if (deps.length > 0) {
-      var dependsText = (currentLang === "fr" ? "Cette t\xE2che d\xE9pend de : " : "This task depends on: ") + deps.map(function(d) {
-        return d.Title;
-      }).join(", ") + ".";
-      html += ' <button type="button" class="gantt-dep-badge gantt-dep-depends" data-tooltip="' + sanitize(dependsText) + '" aria-label="' + sanitize(dependsText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">\u{1F517}' + deps.length + "</button>";
-    }
-    if (blocks.length > 0) {
-      var blocksText = (currentLang === "fr" ? "Cette t\xE2che bloque : " : "This task blocks: ") + blocks.map(function(d) {
-        return d.Title;
-      }).join(", ") + (currentLang === "fr" ? ". La t\xE2che indiqu\xE9e attend que celle-ci soit termin\xE9e." : ". The listed task is waiting for this one to be completed.");
-      html += ' <button type="button" class="gantt-dep-badge gantt-dep-blocks" data-tooltip="' + sanitize(blocksText) + '" aria-label="' + sanitize(blocksText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">\u23F3' + blocks.length + "</button>";
-    }
-    return html;
-  }
-  function showGanttDependencyTooltip(event) {
-    var target = event && event.currentTarget;
-    if (!target) return;
-    var message = target.getAttribute("data-tooltip");
-    if (!message) return;
-    var tooltip = document.getElementById("gantt-dependency-tooltip");
-    if (!tooltip) {
-      tooltip = document.createElement("div");
-      tooltip.id = "gantt-dependency-tooltip";
-      tooltip.setAttribute("role", "tooltip");
-      document.body.appendChild(tooltip);
-    }
-    tooltip.textContent = message;
-    tooltip.style.display = "block";
-    var rect = target.getBoundingClientRect();
-    var left = Math.min(Math.max(8, rect.left), window.innerWidth - tooltip.offsetWidth - 8);
-    var top = rect.bottom + 8;
-    if (top + tooltip.offsetHeight > window.innerHeight - 8) top = rect.top - tooltip.offsetHeight - 8;
-    tooltip.style.left = left + "px";
-    tooltip.style.top = Math.max(8, top) + "px";
-  }
-  function hideGanttDependencyTooltip() {
-    var tooltip = document.getElementById("gantt-dependency-tooltip");
-    if (tooltip) tooltip.style.display = "none";
-  }
-  function normalizeDependencyProjectId(value) {
-    var parsed = parseInt(value, 10);
-    return isNaN(parsed) ? 0 : parsed;
-  }
-  function getDependencyCandidates(taskId, projectId, query) {
-    var normalizedProjectId = normalizeDependencyProjectId(projectId);
-    if (!normalizedProjectId) return [];
-    var normalizedQuery = String(query || "").trim().toLowerCase();
-    var existingDependencyIds = {};
-    getTaskDependencies(taskId).forEach(function(dependency) {
-      existingDependencyIds[dependency.id] = true;
-    });
-    return state.tasks.filter(function(candidate) {
-      if (candidate.id === taskId || candidate.Status === "archived" || existingDependencyIds[candidate.id]) return false;
-      if (normalizeDependencyProjectId(candidate.Project_Id) !== normalizedProjectId) return false;
-      if (normalizedQuery && String(candidate.Title || "").toLowerCase().indexOf(normalizedQuery) === -1) return false;
-      if (shouldLimitToMyProjects()) {
-        var myIds = myProjectIdSet();
-        if (!(candidate.Project_Id && myIds[candidate.Project_Id] || taskConcernsCurrentUser(candidate))) return false;
-      }
-      return true;
-    }).sort(function(a, b) {
-      return String(a.Title || "").localeCompare(String(b.Title || ""));
-    });
-  }
-  function refreshDependencyTaskOptions(taskId, resetSelection) {
-    var selectedInput = document.getElementById("dep-select");
-    var optionsContainer = document.getElementById("dep-options");
-    if (!selectedInput || !optionsContainer) return;
-    var projectEl = document.getElementById("task-project");
-    var searchEl = document.getElementById("dep-search");
-    if (resetSelection) {
-      selectedInput.value = "";
-      if (searchEl) searchEl.value = "";
-    }
-    var candidates = getDependencyCandidates(taskId, projectEl ? projectEl.value : 0, searchEl ? searchEl.value : "");
-    optionsContainer.innerHTML = "";
-    if (!normalizeDependencyProjectId(projectEl ? projectEl.value : 0)) {
-      var noProject = document.createElement("div");
-      noProject.className = "dep-option-empty";
-      noProject.textContent = currentLang === "fr" ? "Choisissez d\u2019abord un projet." : "Choose a project first.";
-      optionsContainer.appendChild(noProject);
-      return;
-    }
-    if (!candidates.length) {
-      var empty = document.createElement("div");
-      empty.className = "dep-option-empty";
-      empty.textContent = currentLang === "fr" ? "Aucune t\xE2che correspondante." : "No matching task.";
-      optionsContainer.appendChild(empty);
-      return;
-    }
-    candidates.forEach(function(candidate) {
-      var option = document.createElement("button");
-      option.type = "button";
-      option.className = "dep-option";
-      option.setAttribute("role", "option");
-      option.textContent = candidate.Title || "";
-      option.onclick = function() {
-        selectDependencyTask(candidate.id);
-      };
-      optionsContainer.appendChild(option);
-    });
-  }
-  function clearDependencyTaskSelection() {
-    var selectedInput = document.getElementById("dep-select");
-    if (selectedInput) selectedInput.value = "";
-  }
-  function openDependencyTaskOptions(taskId) {
-    refreshDependencyTaskOptions(taskId);
-    var combobox = document.getElementById("dep-combobox");
-    var searchEl = document.getElementById("dep-search");
-    if (combobox) combobox.classList.add("open");
-    if (searchEl) searchEl.setAttribute("aria-expanded", "true");
-  }
-  function closeDependencyTaskOptions() {
-    var combobox = document.getElementById("dep-combobox");
-    var searchEl = document.getElementById("dep-search");
-    if (combobox) combobox.classList.remove("open");
-    if (searchEl) searchEl.setAttribute("aria-expanded", "false");
-  }
-  function toggleDependencyTaskOptions(taskId) {
-    var combobox = document.getElementById("dep-combobox");
-    if (combobox && combobox.classList.contains("open")) closeDependencyTaskOptions();
-    else openDependencyTaskOptions(taskId);
-  }
-  function selectDependencyTask(taskId) {
-    var selectedTask = state.tasks.find(function(candidate) {
-      return candidate.id === taskId;
-    });
-    var selectedInput = document.getElementById("dep-select");
-    var searchEl = document.getElementById("dep-search");
-    if (!selectedTask || !selectedInput || !searchEl) return;
-    selectedInput.value = String(selectedTask.id);
-    searchEl.value = selectedTask.Title || "";
-    closeDependencyTaskOptions();
   }
 
   // src/domains/recurrence.js
@@ -2598,7 +2327,7 @@
     html += '<input type="checkbox" class="gantt-focus-checkbox"' + checked + ' title="' + focusTitle + '" onclick="event.stopPropagation()" onchange="focusGanttTask(' + task.id + ', this.checked)">';
     html += '<span class="priority-dot ' + dotClass + '" title="' + priorityLabel(task.Priority) + '"></span>';
     html += '<button type="button" class="gantt-task-title-btn" onclick="openEditTaskModal(' + task.id + ')" title="' + openTitle + '">' + sanitize(task.Title) + "</button>";
-    html += ganttDepBadge(task) + "</div>";
+    html += "</div>";
     if (ganttProjName) {
       html += '<div class="gantt-project-line" style="--project-color:' + ganttProjColor + ';">' + sanitize(ganttProjName) + "</div>";
     }
@@ -3479,7 +3208,6 @@
     document.getElementById("stats-avg-time").textContent = avgHours + "h";
     renderWorkloadChart();
     renderBurndownChart();
-    renderActivityLog();
   }
   function renderWorkloadChart() {
     var workloadData = {};
@@ -4545,7 +4273,7 @@
     html += '<div class="detail-field">';
     html += '<span class="detail-field-icon">\u{1F4C2}</span>';
     html += '<span class="detail-field-label">' + t("project") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-project" onchange="refreshDependencyTaskOptions(' + task.id + ', true)">' + projectOptions + "</select></div>";
+    html += '<div class="detail-field-value"><select id="task-project">' + projectOptions + "</select></div>";
     html += "</div>";
     var categoryOptions = '<option value="">--</option>';
     var editCategories = getCategories();
@@ -4704,54 +4432,6 @@
     html += '<button type="button" class="subtask-add-btn" onclick="event.preventDefault();addSubtask(' + task.id + ')">+</button>';
     html += "</div>";
     html += "</div>";
-    var taskDeps = getTaskDependencies(task.id);
-    var taskBlocks = getTasksDependingOn(task.id);
-    html += '<div class="dependencies-section">';
-    html += '<div class="dependencies-header">';
-    html += '<span class="detail-field-icon">\u{1F517}</span>';
-    html += '<span class="detail-field-label">' + t("dependencies") + "</span>";
-    html += "</div>";
-    html += '<div class="dep-subsection">';
-    html += '<div class="dep-label">' + t("blockedBy") + ":</div>";
-    if (taskDeps.length === 0) {
-      html += '<div class="dep-empty">' + t("noDependencies") + "</div>";
-    } else {
-      html += '<div class="dep-list">';
-      for (var di = 0; di < taskDeps.length; di++) {
-        var dep = taskDeps[di];
-        var depDone = dep.Status === "done";
-        html += '<div class="dep-item' + (depDone ? " dep-done" : "") + '">';
-        html += '<span class="dep-status">' + (depDone ? "\u2705" : "\u23F3") + "</span>";
-        html += '<span class="dep-title">' + sanitize(dep.Title) + "</span>";
-        html += '<button class="dep-remove" onclick="removeDependency(' + task.id + ", " + dep.id + ')">\u2715</button>';
-        html += "</div>";
-      }
-      html += "</div>";
-    }
-    html += "</div>";
-    if (taskBlocks.length > 0) {
-      html += '<div class="dep-subsection">';
-      html += '<div class="dep-label">' + t("blocks") + ":</div>";
-      html += '<div class="dep-list">';
-      for (var bi = 0; bi < taskBlocks.length; bi++) {
-        var blk = taskBlocks[bi];
-        html += '<div class="dep-item dep-blocks">';
-        html += '<span class="dep-title">' + sanitize(blk.Title) + "</span>";
-        html += "</div>";
-      }
-      html += "</div>";
-      html += "</div>";
-    }
-    html += '<div class="dep-add-row">';
-    html += '<div class="dep-combobox" id="dep-combobox">';
-    html += '<input type="search" id="dep-search" class="dep-search-input" role="combobox" aria-autocomplete="list" aria-controls="dep-options" aria-expanded="false" placeholder="' + (currentLang === "fr" ? "S\xE9lectionner ou rechercher une t\xE2che..." : "Select or search for a task...") + '" onfocus="openDependencyTaskOptions(' + task.id + ')" oninput="clearDependencyTaskSelection();openDependencyTaskOptions(' + task.id + `)" onkeydown="if(event.key==='Escape')closeDependencyTaskOptions()" autocomplete="off" />`;
-    html += '<input type="hidden" id="dep-select" value="" />';
-    html += '<button type="button" class="dep-toggle-btn" onclick="toggleDependencyTaskOptions(' + task.id + ')" title="' + (currentLang === "fr" ? "Afficher les t\xE2ches" : "Show tasks") + '">\u2304</button>';
-    html += '<div id="dep-options" class="dep-options" role="listbox"></div>';
-    html += "</div>";
-    html += '<button type="button" class="dep-add-btn" onclick="addDependency(' + task.id + ')">+</button>';
-    html += "</div>";
-    html += "</div>";
     html += '<div class="attachments-section">';
     html += '<div class="comments-header">';
     html += '<span class="detail-field-icon">\u{1F4CE}</span>';
@@ -4905,7 +4585,6 @@
     html += "</div></div>";
     document.getElementById("modal-container").innerHTML = html;
     renderAttachmentsSection(task.id);
-    refreshDependencyTaskOptions(task.id);
   }
   function saveTaskFromFooter(taskId, event) {
     if (event) {
@@ -5257,82 +4936,6 @@
       showToast("Error: " + e.message, "error");
     }
   }
-  async function addDependency(taskId) {
-    var select = document.getElementById("dep-select");
-    var dependsOnId = parseInt(select.value);
-    if (!dependsOnId) return;
-    var projectEl = document.getElementById("task-project");
-    var selectedProjectId = normalizeDependencyProjectId(projectEl ? projectEl.value : 0);
-    var dependsOnTask = state.tasks.find(function(candidate) {
-      return candidate.id === dependsOnId;
-    });
-    if (!dependsOnTask || normalizeDependencyProjectId(dependsOnTask.Project_Id) !== selectedProjectId) {
-      showToast(currentLang === "fr" ? "La d\xE9pendance doit appartenir au m\xEAme projet." : "The dependency must belong to the same project.", "error");
-      refreshDependencyTaskOptions(taskId);
-      return;
-    }
-    var formState = captureTaskFormState();
-    var savedAssignees = editAssignees.slice();
-    var savedTags = editTags.slice();
-    var savedAccountable = editAccountable.slice();
-    var savedConsulted = editConsulted.slice();
-    var savedInformed = editInformed.slice();
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.DEPENDENCIES_TABLE, null, {
-          Task_Id: taskId,
-          Depends_On_Task_Id: dependsOnId,
-          Created_At: Math.floor(Date.now() / 1e3)
-        }]
-      ]);
-      showToast(t("dependencyAdded"), "success");
-      await loadAllData();
-      editAssignees = savedAssignees;
-      editTags = savedTags;
-      editAccountable = savedAccountable;
-      editConsulted = savedConsulted;
-      editInformed = savedInformed;
-      openEditTaskModal(taskId, true);
-      restoreTaskFormState(formState);
-      refreshDependencyTaskOptions(taskId);
-    } catch (e) {
-      console.error("Error adding dependency:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function removeDependency(taskId, dependsOnTaskId) {
-    var dep = state.dependencies.find(function(d) {
-      return d.Task_Id === taskId && d.Depends_On_Task_Id === dependsOnTaskId;
-    });
-    if (!dep) return;
-    var confirmed = await showConfirmModal(
-      currentLang === "fr" ? "Supprimer cette d\xE9pendance ?" : "Delete this dependency?",
-      currentLang === "fr" ? "Supprimer la d\xE9pendance" : "Delete dependency"
-    );
-    if (!confirmed) return;
-    var formState = captureTaskFormState();
-    var savedAssignees = editAssignees.slice();
-    var savedTags = editTags.slice();
-    var savedAccountable = editAccountable.slice();
-    var savedConsulted = editConsulted.slice();
-    var savedInformed = editInformed.slice();
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.DEPENDENCIES_TABLE, dep.id]
-      ]);
-      showToast(t("dependencyRemoved"), "info");
-      await loadAllData();
-      editAssignees = savedAssignees;
-      editTags = savedTags;
-      editAccountable = savedAccountable;
-      editConsulted = savedConsulted;
-      editInformed = savedInformed;
-      openEditTaskModal(taskId, true);
-      restoreTaskFormState(formState);
-    } catch (e) {
-      console.error("Error removing dependency:", e);
-    }
-  }
   async function addComment(taskId) {
     var textarea = document.getElementById("new-comment-input");
     var content = textarea.value.trim();
@@ -5358,7 +4961,6 @@
       var commentTask = state.tasks.find(function(t2) {
         return t2.id === taskId;
       });
-      logActivity("comment_added", taskId, commentTask ? commentTask.Title : "", content.substring(0, 80));
       if (commentTask) {
         await notifyConcernedUsers(taskId, splitRecipientValues(commentTask.Assignee), "comment_added", commentTask.Title || "");
       }
@@ -5465,7 +5067,6 @@
       ]);
       var newTaskId = createResult && createResult.retValues && createResult.retValues[0] || null;
       showToast(t("taskCreated"), "success");
-      logActivity("task_created", newTaskId, title, "");
       if (newTaskId) {
         await notifyConcernedUsers(newTaskId, editAssignees.slice(), "task_assigned", title);
       }
@@ -5492,16 +5093,6 @@
     });
     var wasNotDone = task && task.Status !== "done";
     var newStatus = getInputValue("task-status");
-    if (newStatus === "done" && isTaskBlocked(taskId)) {
-      var blockers = getTaskDependencies(taskId).filter(function(b) {
-        return b && b.Status !== "done";
-      });
-      var blockerNames = blockers.map(function(b) {
-        return b.Title;
-      }).join(", ");
-      showToast((currentLang === "fr" ? "Impossible : t\xE2che bloqu\xE9e par " : "Cannot complete: blocked by ") + blockerNames, "error");
-      return;
-    }
     var recurrenceEl = document.getElementById("task-recurrence");
     var newRecurrence = recurrenceEl ? recurrenceEl.value : task ? task.Recurrence : "none";
     var projectEl = document.getElementById("task-project");
@@ -5540,12 +5131,10 @@
       ]);
       if (wasDraft) draftTaskId = null;
       showToast(t("taskUpdated"), "success");
-      var logDetails = [];
       var autoChanges = {};
       if (task) {
         if (task.Status !== newStatus) {
           autoChanges.status = { from: task.Status, to: newStatus };
-          logDetails.push(task.Status + " \u2192 " + newStatus);
         }
         var newPriority = document.getElementById("task-priority").value;
         if (task.Priority !== newPriority) autoChanges.priority = { from: task.Priority, to: newPriority };
@@ -5555,7 +5144,6 @@
       if (Object.keys(autoChanges).length > 0) {
         await evaluateAutomationRules(Object.assign({}, task, record, { id: taskId }), autoChanges);
       }
-      logActivity(autoChanges.status ? "status_changed" : "task_updated", taskId, title, logDetails.join(", "));
       if (autoChanges.assignee) {
         var previousAssignees = splitRecipientValues(task ? task.Assignee : "");
         var previousKeys = {};
@@ -5592,9 +5180,6 @@
     var confirmed = await showConfirmModal(confirmationMessage, currentLang === "fr" ? "Supprimer la t\xE2che" : "Delete task");
     if (!confirmed) return;
     try {
-      var deletedTask = state.tasks.find(function(t2) {
-        return t2.id === taskId;
-      });
       var deletedSubtaskIds = {};
       var actions = [];
       relatedSubtasks.forEach(function(st) {
@@ -5604,9 +5189,6 @@
         if (st.Parent_Task_Id !== taskId && deletedSubtaskIds[st.Blocked_By_Subtask_Id]) {
           actions.push(["UpdateRecord", state.SUBTASKS_TABLE, st.id, { Blocked_By_Subtask_Id: null }]);
         }
-      });
-      state.dependencies.forEach(function(dep) {
-        if (dep.Task_Id === taskId || dep.Depends_On_Task_Id === taskId) actions.push(["RemoveRecord", state.DEPENDENCIES_TABLE, dep.id]);
       });
       state.comments.forEach(function(comment) {
         if (comment.Task_Id === taskId) actions.push(["RemoveRecord", state.COMMENTS_TABLE, comment.id]);
@@ -5628,7 +5210,6 @@
       if (draftTaskId === taskId) draftTaskId = null;
       document.getElementById("modal-container").innerHTML = "";
       showToast(t("taskDeleted"), "info");
-      logActivity("task_deleted", taskId, deletedTask ? deletedTask.Title : "", "");
       await loadAllData();
     } catch (e) {
       console.error("Error deleting task:", e);
@@ -6889,22 +6470,13 @@
     var completedCount = taskSubtasks.filter(function(st) {
       return st.Completed;
     }).length;
-    var blocked = isTaskBlocked(task.id);
     var taskComments = getTaskComments(task.id);
     var taskAttachments = getTaskAttachments(task.id);
     var priorityClass = "priority-" + (task.Priority || "medium");
     var projColor = getProjectColor(task.Project_Id);
     var projName = getProjectName(task.Project_Id);
-    var html = '<div class="task-card ' + priorityClass + (blocked ? " task-blocked" : "") + '" draggable="true" ondragstart="onDragStart(event, ' + task.id + ')" data-id="' + task.id + '" ondblclick="openEditTaskModal(' + task.id + ')" style="border-left:none;padding:0;overflow:visible;">';
+    var html = '<div class="task-card ' + priorityClass + '" draggable="true" ondragstart="onDragStart(event, ' + task.id + ')" data-id="' + task.id + '" ondblclick="openEditTaskModal(' + task.id + ')" style="border-left:none;padding:0;overflow:visible;">';
     html += '<div class="task-card-body">';
-    if (blocked) {
-      var blockers = getTaskDependencies(task.id).filter(function(b) {
-        return b && b.Status !== "done";
-      });
-      html += '<div class="blocked-badge">\u{1F512} ' + t("blockedBy") + " " + blockers.map(function(b) {
-        return sanitize(b.Title);
-      }).join(", ") + "</div>";
-    }
     html += '<div class="task-card-header">';
     html += '<div class="task-card-topline">';
     if (cd.priority) html += '<div class="task-card-priority-text priority-text-' + (task.Priority || "medium") + '">' + priorityLabel(task.Priority) + "</div>";
@@ -7060,7 +6632,6 @@
       await grist.docApi.applyUserActions([["UpdateRecord", state.TASKS_TABLE, taskId, { [statusCol]: "archived" }]]);
       if (task) task.Status = "archived";
       showToast(currentLang === "fr" ? "T\xE2che archiv\xE9e" : "Task archived", "success");
-      logActivity("task_archived", taskId, task ? task.Title : "", "");
       if (task && oldStatus !== "archived") {
         await evaluateAutomationRules(Object.assign({}, task, { Status: "archived" }), { status: { from: oldStatus, to: "archived" } });
       }
@@ -7079,7 +6650,6 @@
       await grist.docApi.applyUserActions([["UpdateRecord", state.TASKS_TABLE, taskId, { [statusCol]: "todo" }]]);
       if (task) task.Status = "todo";
       showToast(currentLang === "fr" ? "T\xE2che restaur\xE9e" : "Task restored", "success");
-      logActivity("task_restored", taskId, task ? task.Title : "", "");
       if (task && oldStatus !== "todo") {
         await evaluateAutomationRules(Object.assign({}, task, { Status: "todo" }), { status: { from: oldStatus, to: "todo" } });
       }
@@ -7119,17 +6689,6 @@
     var field = e.currentTarget.getAttribute("data-field") || "Status";
     var newValue = e.currentTarget.getAttribute("data-value");
     if (draggedTaskId && newValue) {
-      if (field === "Status" && newValue === "done" && isTaskBlocked(draggedTaskId)) {
-        var blockers = getTaskDependencies(draggedTaskId).filter(function(b) {
-          return b && b.Status !== "done";
-        });
-        var blockerNames = blockers.map(function(b) {
-          return b.Title;
-        }).join(", ");
-        showToast((currentLang === "fr" ? "Impossible : t\xE2che bloqu\xE9e par " : "Cannot move: blocked by ") + blockerNames, "error");
-        draggedTaskId = null;
-        return;
-      }
       try {
         var draggedTask = state.tasks.find(function(t2) {
           return t2.id === draggedTaskId;
@@ -7159,7 +6718,6 @@
           if (field === "Status" && newValue === "done" && oldVal !== "done") {
             await notifyTaskCompleted(Object.assign({}, draggedTask, record));
           }
-          logActivity("status_changed", draggedTaskId, draggedTask.Title, oldVal + " \u2192 " + newValue);
         }
         refreshAllViews();
       } catch (err) {
@@ -7852,13 +7410,11 @@
       { tableId: state.SUBTASKS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" },
       { tableId: state.COMMENTS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" },
       { tableId: state.TIME_ENTRIES_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" },
-      { tableId: state.DEPENDENCIES_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" },
       { tableId: state.USERS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
       { tableId: state.GROUPS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
       { tableId: state.PROJECTS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
       { tableId: state.USER_INFO_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCUD" },
       { tableId: state.NOTIFICATIONS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCUD" },
-      { tableId: state.ACTIVITY_LOG_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RC-UD" },
       { tableId: state.ATTACHMENTS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" }
     ].filter(function(rule, index, arr) {
       return rule.tableId && arr.findIndex(function(r) {
@@ -8669,22 +8225,6 @@
       state.subtasks = [];
     }
     try {
-      var depData = await grist.docApi.fetchTable(state.DEPENDENCIES_TABLE);
-      state.dependencies = [];
-      if (depData && depData.id) {
-        for (var i = 0; i < depData.id.length; i++) {
-          state.dependencies.push({
-            id: depData.id[i],
-            Task_Id: depData.Task_Id ? depData.Task_Id[i] : null,
-            Depends_On_Task_Id: depData.Depends_On_Task_Id ? depData.Depends_On_Task_Id[i] : null,
-            Created_At: depData.Created_At ? depData.Created_At[i] : null
-          });
-        }
-      }
-    } catch (e) {
-      state.dependencies = [];
-    }
-    try {
       var commentData = await grist.docApi.fetchTable(state.COMMENTS_TABLE);
       state.comments = [];
       if (commentData && commentData.id) {
@@ -8789,25 +8329,6 @@
       }
     } catch (e) {
       state.pmNotifications = [];
-    }
-    try {
-      var logData = await grist.docApi.fetchTable(state.ACTIVITY_LOG_TABLE);
-      state.activityLog = [];
-      if (logData && logData.id) {
-        for (var ai = 0; ai < logData.id.length; ai++) {
-          state.activityLog.push({
-            id: logData.id[ai],
-            Timestamp: logData.Timestamp ? logData.Timestamp[ai] : null,
-            User_Email: logData.User_Email ? logData.User_Email[ai] : "",
-            Action: logData.Action ? logData.Action[ai] : "",
-            Task_Id: logData.Task_Id ? logData.Task_Id[ai] : null,
-            Task_Title: logData.Task_Title ? logData.Task_Title[ai] : "",
-            Details: logData.Details ? logData.Details[ai] : ""
-          });
-        }
-      }
-    } catch (e) {
-      state.activityLog = [];
     }
     renderProjectSelector();
     refreshAllViews();
@@ -9180,14 +8701,12 @@
     state.USERS_TABLE = CLIENT_TABLE_NAMES.users;
     state.GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
     state.SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
-    state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
     state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
     state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
     state.PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
     state.CONFIG_TABLE = CLIENT_TABLE_NAMES.config;
     state.SETTINGS_TABLE = CLIENT_TABLE_NAMES.settings;
     state.NOTIFICATIONS_TABLE = CLIENT_TABLE_NAMES.notifications;
-    state.ACTIVITY_LOG_TABLE = CLIENT_TABLE_NAMES.activityLog;
     state.ATTACHMENTS_TABLE = CLIENT_TABLE_NAMES.attachments;
     state.USER_INFO_TABLE = CLIENT_TABLE_NAMES.userInfo;
     if (updateDefaults) {
@@ -9499,15 +9018,6 @@
           ]]
         ]);
       }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.DEPENDENCIES_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.DEPENDENCIES_TABLE, [
-            { id: "Task_Id", type: "Int" },
-            { id: "Depends_On_Task_Id", type: "Int" },
-            { id: "Created_At", type: "Date" }
-          ]]
-        ]);
-      }
       if (!skipAutoCreateWorkTables && existingTables.indexOf(state.COMMENTS_TABLE) === -1) {
         await grist.docApi.applyUserActions([
           ["AddTable", state.COMMENTS_TABLE, [
@@ -9668,18 +9178,6 @@
             { id: "Message", type: "Text" },
             { id: "Created_At", type: "Date" },
             { id: "Rule_Id", type: "Text" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.ACTIVITY_LOG_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.ACTIVITY_LOG_TABLE, [
-            { id: "Timestamp", type: "Date" },
-            { id: "User_Email", type: "Text" },
-            { id: "Action", type: "Text" },
-            { id: "Task_Id", type: "Int" },
-            { id: "Task_Title", type: "Text" },
-            { id: "Details", type: "Text" }
           ]]
         ]);
       }
@@ -10040,7 +9538,6 @@
     addCategorySetting,
     addComment,
     addDefaultAutomationRules,
-    addDependency,
     addKanbanStatus,
     addManualTimeEntry,
     addRaciChip,
@@ -10053,12 +9550,10 @@
     calendarNav,
     calendarToday,
     cancelEditSubtask,
-    clearDependencyTaskSelection,
     clearMsFilter,
     closeAttachmentViewer,
     closeAutomationModal,
     closeConfirmModal,
-    closeDependencyTaskOptions,
     closeModal,
     closeModalForce,
     closeNotifications,
@@ -10086,7 +9581,6 @@
     editKanbanStatus,
     editProject,
     editTagSetting,
-    expandActivityLog,
     expandAllSubtasks,
     exportGanttPdf,
     filterComboSearch,
@@ -10099,7 +9593,6 @@
     ganttToday,
     generateOccurrences,
     generateSubtaskOccurrences,
-    hideGanttDependencyTooltip,
     onAutoActionChange,
     onAutoTriggerChange,
     onCalendarDayClick,
@@ -10116,7 +9609,6 @@
     openCardCommentsModal,
     openCardSubtasksModal,
     openColumnMappingModal,
-    openDependencyTaskOptions,
     openEditAutomationRuleModal,
     openEditGroupModal,
     openEditTaskModal,
@@ -10132,16 +9624,13 @@
     openSubtaskDepModal,
     pauseTimer,
     quickAction,
-    refreshDependencyTaskOptions,
     removeCategorySetting,
-    removeDependency,
     removeKanbanStatus,
     removeRaciChip,
     removeRoleChoice,
     removeSecurityRules,
     removeTagChip,
     removeTagSetting,
-    renderActivityLog,
     renderBurndownChart,
     renderEmojiPicker,
     renderProjectList,
@@ -10174,7 +9663,6 @@
     setStType,
     setupCreateFrenchTables,
     setupUseExistingTables,
-    showGanttDependencyTooltip,
     showNotifications,
     sortTable,
     startEditSubtask,
@@ -10185,7 +9673,6 @@
     toggleAutomationRule,
     toggleCardDisplay,
     toggleCardExpand,
-    toggleDependencyTaskOptions,
     toggleEmojiPicker,
     toggleFilterCombo,
     toggleGanttFullscreen,

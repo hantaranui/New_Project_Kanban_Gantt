@@ -7,7 +7,6 @@ import { showToast } from '../ui/toast.js';
 import { getTaskAttachments } from './attachments.js';
 import { getTaskComments } from './comments.js';
 import { getTaskSubtasks, getSubtaskBlocker } from './subtasks.js';
-import { ganttDepBadge } from './dependencies.js';
 import { getFilteredTasks, getProjectName, getProjectColor } from './filters.js';
 import { getKanbanStatuses, openCardCommentsModal, openCardAttachmentsModal } from './kanban.js';
 import { openEditTaskModal } from './task-modal.js';
@@ -164,7 +163,7 @@ export function renderGanttTaskLabel(task) {
   html += '<input type="checkbox" class="gantt-focus-checkbox"' + checked + ' title="' + focusTitle + '" onclick="event.stopPropagation()" onchange="focusGanttTask(' + task.id + ', this.checked)">';
   html += '<span class="priority-dot ' + dotClass + '" title="' + priorityLabel(task.Priority) + '"></span>';
   html += '<button type="button" class="gantt-task-title-btn" onclick="openEditTaskModal(' + task.id + ')" title="' + openTitle + '">' + sanitize(task.Title) + '</button>';
-  html += ganttDepBadge(task) + '</div>';
+  html += '</div>';
   if (ganttProjName) {
     html += '<div class="gantt-project-line" style="--project-color:' + ganttProjColor + ';">' + sanitize(ganttProjName) + '</div>';
   }

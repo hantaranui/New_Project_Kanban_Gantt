@@ -191,13 +191,11 @@ export function getAclRules() {
     { tableId: state.SUBTASKS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
     { tableId: state.COMMENTS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
     { tableId: state.TIME_ENTRIES_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-    { tableId: state.DEPENDENCIES_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
     { tableId: state.USERS_TABLE,           ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
     { tableId: state.GROUPS_TABLE,          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
     { tableId: state.PROJECTS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
     { tableId: state.USER_INFO_TABLE,       ownerPerms: '+CRUDS', editorPerms: '+RCUD' },
     { tableId: state.NOTIFICATIONS_TABLE,   ownerPerms: '+CRUDS', editorPerms: '+RCUD' },
-    { tableId: state.ACTIVITY_LOG_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RC-UD' },
     { tableId: state.ATTACHMENTS_TABLE,     ownerPerms: '+CRUDS', editorPerms: '+RCU-D' }
   ].filter(function(rule, index, arr) {
     return rule.tableId && arr.findIndex(function(r) { return r.tableId === rule.tableId; }) === index;

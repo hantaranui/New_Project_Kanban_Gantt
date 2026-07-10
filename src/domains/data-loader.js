@@ -155,23 +155,6 @@ export async function loadAllData() {
   }
 
   try {
-    var depData = await grist.docApi.fetchTable(state.DEPENDENCIES_TABLE);
-    state.dependencies = [];
-    if (depData && depData.id) {
-      for (var i = 0; i < depData.id.length; i++) {
-        state.dependencies.push({
-          id: depData.id[i],
-          Task_Id: depData.Task_Id ? depData.Task_Id[i] : null,
-          Depends_On_Task_Id: depData.Depends_On_Task_Id ? depData.Depends_On_Task_Id[i] : null,
-          Created_At: depData.Created_At ? depData.Created_At[i] : null
-        });
-      }
-    }
-  } catch (e) {
-    state.dependencies = [];
-  }
-
-  try {
     var commentData = await grist.docApi.fetchTable(state.COMMENTS_TABLE);
     state.comments = [];
     if (commentData && commentData.id) {
@@ -281,26 +264,6 @@ export async function loadAllData() {
     }
   } catch (e) {
     state.pmNotifications = [];
-  }
-
-  try {
-    var logData = await grist.docApi.fetchTable(state.ACTIVITY_LOG_TABLE);
-    state.activityLog = [];
-    if (logData && logData.id) {
-      for (var ai = 0; ai < logData.id.length; ai++) {
-        state.activityLog.push({
-          id: logData.id[ai],
-          Timestamp: logData.Timestamp ? logData.Timestamp[ai] : null,
-          User_Email: logData.User_Email ? logData.User_Email[ai] : '',
-          Action: logData.Action ? logData.Action[ai] : '',
-          Task_Id: logData.Task_Id ? logData.Task_Id[ai] : null,
-          Task_Title: logData.Task_Title ? logData.Task_Title[ai] : '',
-          Details: logData.Details ? logData.Details[ai] : ''
-        });
-      }
-    }
-  } catch (e) {
-    state.activityLog = [];
   }
 
   renderProjectSelector();

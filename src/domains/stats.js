@@ -1,7 +1,6 @@
 import { t, currentLang } from '../i18n.js';
 import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
-import { renderActivityLog } from './activity-log.js';
 import { getFilteredTasks, showArchivedTasks } from './filters.js';
 import { getOverdueTasks } from './notifications.js';
 import { getKanbanStatuses } from './kanban.js';
@@ -159,7 +158,6 @@ export function renderStatsView() {
   // Workload chart - Risk of overload per user
   renderWorkloadChart();
   renderBurndownChart();
-  renderActivityLog();
 }
 
 export function renderWorkloadChart() {

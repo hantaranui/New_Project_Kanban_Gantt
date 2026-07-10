@@ -7,10 +7,8 @@ import { showToast } from '../ui/toast.js';
 import { getTaskAttachments, formatFileSize } from './attachments.js';
 import { getTaskComments } from './comments.js';
 import { getTaskSubtasks, getTaskProgress } from './subtasks.js';
-import { isTaskBlocked, getTaskDependencies } from './dependencies.js';
 import { getTaskTotalTime, formatDurationShort } from './time-tracking.js';
 import { getFilteredTasks, getProjectName, getProjectColor, showArchivedTasks } from './filters.js';
-import { logActivity } from './activity-log.js';
 import { notifyTaskCompleted, evaluateAutomationRules } from './notifications.js';
 import { saveSetting } from './settings.js';
 import { closeModalForce } from './task-modal.js';
@@ -321,20 +319,14 @@ export function renderTaskCard(task) {
   var taskSubtasks = getTaskSubtasks(task.id);
   var progressPct = getTaskProgress(task);
   var completedCount = taskSubtasks.filter(function(st) { return st.Completed; }).length;
-  var blocked = isTaskBlocked(task.id);
   var taskComments = getTaskComments(task.id);
   var taskAttachments = getTaskAttachments(task.id);
 
   var priorityClass = 'priority-' + (task.Priority || 'medium');
   var projColor = getProjectColor(task.Project_Id);
   var projName = getProjectName(task.Project_Id);
-  var html = '<div class="task-card ' + priorityClass + (blocked ? ' task-blocked' : '') + '" draggable="true" ondragstart="onDragStart(event, ' + task.id + ')" data-id="' + task.id + '" ondblclick="openEditTaskModal(' + task.id + ')" style="border-left:none;padding:0;overflow:visible;">';
+  var html = '<div class="task-card ' + priorityClass + '" draggable="true" ondragstart="onDragStart(event, ' + task.id + ')" data-id="' + task.id + '" ondblclick="openEditTaskModal(' + task.id + ')" style="border-left:none;padding:0;overflow:visible;">';
   html += '<div class="task-card-body">';
-
-  if (blocked) {
-    var blockers = getTaskDependencies(task.id).filter(function(b) { return b && b.Status !== 'done'; });
-    html += '<div class="blocked-badge">🔒 ' + t('blockedBy') + ' ' + blockers.map(function(b) { return sanitize(b.Title); }).join(', ') + '</div>';
-  }
 
   html += '<div class="task-card-header">';
   html += '<div class="task-card-topline">';
@@ -492,7 +484,6 @@ export async function archiveTask(taskId) {
     await grist.docApi.applyUserActions([['UpdateRecord', state.TASKS_TABLE, taskId, { [statusCol]: 'archived' }]]);
     if (task) task.Status = 'archived';
     showToast(currentLang === 'fr' ? 'Tâche archivée' : 'Task archived', 'success');
-    logActivity('task_archived', taskId, task ? task.Title : '', '');
     if (task && oldStatus !== 'archived') {
       await evaluateAutomationRules(Object.assign({}, task, { Status: 'archived' }), { status: { from: oldStatus, to: 'archived' } });
     }
@@ -510,7 +501,6 @@ export async function restoreTask(taskId) {
     await grist.docApi.applyUserActions([['UpdateRecord', state.TASKS_TABLE, taskId, { [statusCol]: 'todo' }]]);
     if (task) task.Status = 'todo';
     showToast(currentLang === 'fr' ? 'Tâche restaurée' : 'Task restored', 'success');
-    logActivity('task_restored', taskId, task ? task.Title : '', '');
     if (task && oldStatus !== 'todo') {
       await evaluateAutomationRules(Object.assign({}, task, { Status: 'todo' }), { status: { from: oldStatus, to: 'todo' } });
     }
@@ -559,13 +549,6 @@ export async function onDrop(e) {
   var field = e.currentTarget.getAttribute('data-field') || 'Status';
   var newValue = e.currentTarget.getAttribute('data-value');
   if (draggedTaskId && newValue) {
-    if (field === 'Status' && newValue === 'done' && isTaskBlocked(draggedTaskId)) {
-      var blockers = getTaskDependencies(draggedTaskId).filter(function(b) { return b && b.Status !== 'done'; });
-      var blockerNames = blockers.map(function(b) { return b.Title; }).join(', ');
-      showToast((currentLang === 'fr' ? 'Impossible : tâche bloquée par ' : 'Cannot move: blocked by ') + blockerNames, 'error');
-      draggedTaskId = null;
-      return;
-    }
     try {
       var draggedTask = state.tasks.find(function(t) { return t.id === draggedTaskId; });
       var oldVal = draggedTask ? draggedTask[field] : '';
@@ -593,7 +576,6 @@ export async function onDrop(e) {
 	        if (field === 'Status' && newValue === 'done' && oldVal !== 'done') {
 	          await notifyTaskCompleted(Object.assign({}, draggedTask, record));
 	        }
-	        logActivity('status_changed', draggedTaskId, draggedTask.Title, oldVal + ' → ' + newValue);
       }
       refreshAllViews();
     } catch (err) {
