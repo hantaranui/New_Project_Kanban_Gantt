@@ -4,14 +4,15 @@ import { showToast } from '../ui/toast.js';
 import { loadAllData } from './data-loader.js';
 import { saveSetting } from './settings.js';
 import { closeModalForce } from './task-modal.js';
-// Temporary backwards imports: none of these are extracted yet
-// (getColumnName/loadColumnMapping -> config, loadSettings/
-// ensureConfigAndSettingsTables/hasValidMappedTaskTable -> bootstrap,
-// refreshAllViews -> main orchestration, formatAccessError -> bootstrap).
 import {
-  getColumnName, loadColumnMapping, loadSettings,
-  ensureConfigAndSettingsTables, hasValidMappedTaskTable,
-  refreshAllViews, formatAccessError
+  ensureConfigAndSettingsTables, hasValidMappedTaskTable, formatAccessError
+} from '../bootstrap/ensure-tables.js';
+// Temporary backwards imports: none of these are extracted yet
+// (getColumnName/loadColumnMapping -> config, loadSettings stays in main.js
+// since it reassigns kanbanSort/cardDisplaySettings/customKanbanStatuses,
+// refreshAllViews -> main orchestration).
+import {
+  getColumnName, loadColumnMapping, loadSettings, refreshAllViews
 } from '../main.js';
 
 export async function openColumnMappingModal() {

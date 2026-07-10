@@ -17,11 +17,13 @@ import { closeModalForce } from './task-modal.js';
 // Temporary backwards imports: none of these are extracted yet
 // (isOverdue/getColumnName/getUserDisplayName -> various not-yet-extracted
 // domains, refreshAllViews -> main orchestration, kanbanSort/
-// cardDisplaySettings stay in main.js because loadSettings() reassigns
-// them and can't move until bootstrap/ensure-tables.js is extracted).
+// cardDisplaySettings/customKanbanStatuses stay in main.js because
+// loadSettings() reassigns them - and, for customKanbanStatuses,
+// ensureCustomStatuses() also reassigns it - and can't move until
+// bootstrap/ensure-tables.js is extracted).
 import {
   isOverdue, getColumnName, getUserDisplayName, refreshAllViews,
-  kanbanSort, cardDisplaySettings
+  kanbanSort, cardDisplaySettings, customKanbanStatuses
 } from '../main.js';
 
 export var kanbanGroupBy = 'status'; // 'status' | 'priority' | 'project'
@@ -33,7 +35,6 @@ export var defaultKanbanStatuses = [
   { key: 'progress', label_fr: 'En cours',  label_en: 'In progress',  color: '#3b82f6', cssClass: 'col-progress' },
   { key: 'done',     label_fr: 'Terminé',   label_en: 'Done',         color: '#22c55e', cssClass: 'col-done' }
 ];
-var customKanbanStatuses = null;
 export function getKanbanStatuses() {
   return customKanbanStatuses || defaultKanbanStatuses;
 }

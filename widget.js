@@ -4381,12 +4381,11 @@
     { key: "progress", label_fr: "En cours", label_en: "In progress", color: "#3b82f6", cssClass: "col-progress" },
     { key: "done", label_fr: "Termin\xE9", label_en: "Done", color: "#22c55e", cssClass: "col-done" }
   ];
-  var customKanbanStatuses2 = null;
   function getKanbanStatuses() {
-    return customKanbanStatuses2 || defaultKanbanStatuses;
+    return customKanbanStatuses || defaultKanbanStatuses;
   }
   async function saveKanbanStatuses() {
-    await saveSetting("kanban_statuses", JSON.stringify(customKanbanStatuses2));
+    await saveSetting("kanban_statuses", JSON.stringify(customKanbanStatuses));
     await syncTaskStatusChoices();
     syncSubtaskStatusChoices();
   }
@@ -8156,6 +8155,687 @@
     openNewTaskModalWithDate(dateStr);
   }
 
+  // src/bootstrap/ensure-tables.js
+  function applyFrenchTableNames(updateDefaults) {
+    state.TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
+    state.USERS_TABLE = CLIENT_TABLE_NAMES.users;
+    state.GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
+    state.TEMPLATES_TABLE = CLIENT_TABLE_NAMES.templates;
+    state.SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
+    state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
+    state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
+    state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
+    state.CUSTOM_FIELDS_TABLE = CLIENT_TABLE_NAMES.customFields;
+    state.CUSTOM_FIELD_VALUES_TABLE = CLIENT_TABLE_NAMES.customFieldValues;
+    state.CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
+    state.TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
+    state.PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
+    state.CONFIG_TABLE = CLIENT_TABLE_NAMES.config;
+    state.SETTINGS_TABLE = CLIENT_TABLE_NAMES.settings;
+    state.NOTIFICATIONS_TABLE = CLIENT_TABLE_NAMES.notifications;
+    state.ACTIVITY_LOG_TABLE = CLIENT_TABLE_NAMES.activityLog;
+    state.ATTACHMENTS_TABLE = CLIENT_TABLE_NAMES.attachments;
+    state.USER_INFO_TABLE = CLIENT_TABLE_NAMES.userInfo;
+    if (updateDefaults) {
+      state.DEFAULT_TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
+      state.DEFAULT_USERS_TABLE = CLIENT_TABLE_NAMES.users;
+      state.DEFAULT_PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
+      state.DEFAULT_CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
+      state.DEFAULT_TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
+    }
+  }
+  function hasFrenchClientTables(tableIds) {
+    return tableIds.indexOf(CLIENT_TABLE_NAMES.config) !== -1 || tableIds.indexOf(CLIENT_TABLE_NAMES.tasks) !== -1;
+  }
+  function isInsideGrist() {
+    try {
+      return window.frameElement !== null || window !== window.parent;
+    } catch (e) {
+      return true;
+    }
+  }
+  async function getRawSettingValue(key) {
+    try {
+      var data = await grist.docApi.fetchTable(state.SETTINGS_TABLE);
+      if (!data || !data.Key) return null;
+      for (var i = 0; i < data.Key.length; i++) {
+        if (data.Key[i] === key) return data.Value[i];
+      }
+    } catch (e) {
+    }
+    return null;
+  }
+  function buildDefaultConfigRecords() {
+    var defaultConfig = [
+      ["task_title", state.TASKS_TABLE, "Title", "Titre", true, "Title"],
+      ["task_description", state.TASKS_TABLE, "Description", "Description", false, "Description"],
+      ["task_status", state.TASKS_TABLE, "Status", "Statut", true, "Status"],
+      ["task_priority", state.TASKS_TABLE, "Priority", "Priorit\xE9", true, "Priority"],
+      ["task_assignee", state.TASKS_TABLE, "Assignee", "Assign\xE9 \xE0", false, "Assignee"],
+      ["task_group", state.TASKS_TABLE, "Group_Name", "Groupe", false, "Group_Name"],
+      ["task_start_date", state.TASKS_TABLE, "Start_Date", "Date d\xE9but", false, "Start_Date"],
+      ["task_due_date", state.TASKS_TABLE, "Due_Date", "\xC9ch\xE9ance", false, "Due_Date"],
+      ["task_category", state.TASKS_TABLE, "Category", "Cat\xE9gorie", false, "Category"],
+      ["task_tag", state.TASKS_TABLE, "Tag", "Tag", false, "Tag"],
+      ["task_recurrence", state.TASKS_TABLE, "Recurrence", "R\xE9currence", false, "Recurrence"],
+      ["task_estimated_hours", state.TASKS_TABLE, "Estimated_Hours", "Heures estim\xE9es", false, "Estimated_Hours"],
+      ["task_created_at", state.TASKS_TABLE, "Created_At", "Cr\xE9\xE9 le", false, "Created_At"],
+      ["task_project_id", state.PROJECTS_TABLE, "Project_Id", "Projet", false, "Project_Id"],
+      ["user_name", state.USERS_TABLE, "Name", "Nom", true, "Name"],
+      ["user_email", state.USERS_TABLE, "Email", "Email", true, "Email"],
+      ["user_role", state.USERS_TABLE, "Role", "R\xF4le", false, "Role"],
+      ["user_group", state.USERS_TABLE, "Group_Name", "Groupe", false, "Group_Name"],
+      ["project_name", state.PROJECTS_TABLE, "Name", "Nom", true, "Name"],
+      ["project_description", state.PROJECTS_TABLE, "Description", "Description", false, "Description"],
+      ["project_color", state.PROJECTS_TABLE, "Color", "Couleur", false, "Color"],
+      ["project_status", state.PROJECTS_TABLE, "Status", "Statut", false, "Status"],
+      ["category_name", state.CATEGORIES_TABLE, "Name", "Nom", true, "Name"],
+      ["category_color", state.CATEGORIES_TABLE, "Color", "Couleur", false, "Color"],
+      ["category_order", state.CATEGORIES_TABLE, "Order", "Ordre", false, "Order"],
+      ["tag_name", state.TAGS_TABLE, "Name", "Nom", true, "Name"],
+      ["tag_color", state.TAGS_TABLE, "Color", "Couleur", false, "Color"]
+    ];
+    return defaultConfig.map(function(row) {
+      return { Config_Key: row[0], Table_Name: row[1], Column_Name: row[2], Display_Label: row[3], Required: row[4], Default_Value: row[5] };
+    });
+  }
+  async function ensureConfigAndSettingsTables(existingTables) {
+    existingTables = existingTables || await grist.docApi.listTables();
+    if (existingTables.indexOf(state.CONFIG_TABLE) === -1) {
+      await grist.docApi.applyUserActions([
+        ["AddTable", state.CONFIG_TABLE, [
+          { id: "Config_Key", type: "Text" },
+          { id: "Table_Name", type: "Text" },
+          { id: "Column_Name", type: "Text" },
+          { id: "Display_Label", type: "Text" },
+          { id: "Required", type: "Bool" },
+          { id: "Default_Value", type: "Text" }
+        ]]
+      ]);
+      var configRecords = buildDefaultConfigRecords();
+      await grist.docApi.applyUserActions([
+        ["BulkAddRecord", state.CONFIG_TABLE, configRecords.map(function() {
+          return null;
+        }), configRecords]
+      ]);
+    }
+    existingTables = await grist.docApi.listTables();
+    if (existingTables.indexOf(state.SETTINGS_TABLE) === -1) {
+      await grist.docApi.applyUserActions([
+        ["AddTable", state.SETTINGS_TABLE, [
+          { id: "Key", type: "Text" },
+          { id: "Value", type: "Text" }
+        ]]
+      ]);
+    }
+  }
+  async function tableHasColumns(tableId, requiredColumns) {
+    try {
+      var data = await grist.docApi.fetchTable(tableId);
+      var columns = Object.keys(data || {}).filter(function(key) {
+        return key !== "id";
+      });
+      return requiredColumns.every(function(columnId) {
+        return columns.indexOf(columnId) !== -1;
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+  async function hasValidMappedTaskTable(existingTables) {
+    var configTables = [state.CONFIG_TABLE, CLIENT_TABLE_NAMES.config, "PM_Config"];
+    for (var c = 0; c < configTables.length; c++) {
+      var configTable = configTables[c];
+      if (existingTables.indexOf(configTable) === -1) continue;
+      try {
+        var configData = await grist.docApi.fetchTable(configTable);
+        var rows = configData && configData.id ? configData.id : [];
+        var taskTable = "";
+        var requiredColumns = [];
+        for (var i = 0; i < rows.length; i++) {
+          var key = configData.Config_Key && configData.Config_Key[i];
+          if (key === "task_title") taskTable = configData.Table_Name[i] || taskTable;
+          if (key === "task_title" || key === "task_status") {
+            if (configData.Column_Name[i]) requiredColumns.push(configData.Column_Name[i]);
+          }
+        }
+        if (!taskTable || existingTables.indexOf(taskTable) === -1) continue;
+        if (requiredColumns.length < 2) continue;
+        if (await tableHasColumns(taskTable, requiredColumns)) return true;
+      } catch (e) {
+        console.warn("Impossible de v\xE9rifier le mapping:", e.message);
+      }
+    }
+    return false;
+  }
+  async function getInstallModeFromExistingSettings(existingTables) {
+    var settingsTables = [state.SETTINGS_TABLE, CLIENT_TABLE_NAMES.settings, "PM_Settings"];
+    for (var i = 0; i < settingsTables.length; i++) {
+      var settingsTable = settingsTables[i];
+      if (existingTables.indexOf(settingsTable) === -1) continue;
+      var previousSettingsTable = state.SETTINGS_TABLE;
+      state.SETTINGS_TABLE = settingsTable;
+      var installMode = await getRawSettingValue("install_mode");
+      state.SETTINGS_TABLE = previousSettingsTable;
+      if (installMode) return installMode;
+    }
+    return "";
+  }
+  async function hasUsableDefaultTaskTable(existingTables) {
+    var candidates = [CLIENT_TABLE_NAMES.tasks, "PM_Tasks"];
+    for (var i = 0; i < candidates.length; i++) {
+      var tableId = candidates[i];
+      if (existingTables.indexOf(tableId) === -1) continue;
+      if (await tableHasColumns(tableId, ["Title", "Status"])) return true;
+    }
+    return false;
+  }
+  async function shouldShowClientSetup(existingTables) {
+    existingTables = existingTables || await grist.docApi.listTables();
+    if (hasFrenchClientTables(existingTables)) applyFrenchTableNames(true);
+    if (await hasUsableDefaultTaskTable(existingTables)) return false;
+    if (await hasValidMappedTaskTable(existingTables)) return false;
+    return true;
+  }
+  function showClientSetup() {
+    var setup = document.getElementById("client-setup");
+    if (setup) setup.classList.remove("hidden");
+    var main = document.getElementById("main-content");
+    if (main) main.classList.add("hidden");
+  }
+  function hideClientSetup() {
+    var setup = document.getElementById("client-setup");
+    if (setup) setup.classList.add("hidden");
+    var main = document.getElementById("main-content");
+    if (main) main.classList.remove("hidden");
+  }
+  function formatAccessError(error) {
+    var message = error && error.message ? error.message : String(error || "");
+    if (/access not granted|access denied|permission|autorisation/i.test(message)) {
+      return "Acc\xE8s complet non accord\xE9. Dans le panneau du widget Grist, mettez le niveau d\u2019acc\xE8s sur \u201CAcc\xE8s complet au document\u201D, puis r\xE9essayez.";
+    }
+    return message;
+  }
+  function writeSetupDiagnostic(lines, type) {
+    var box = document.getElementById("client-setup-diagnostics");
+    if (!box) return;
+    box.className = "client-setup-diagnostics " + (type || "");
+    box.innerHTML = lines.map(function(line) {
+      return "<div>" + sanitize(String(line)) + "</div>";
+    }).join("");
+  }
+  async function runSetupDiagnostic() {
+    var lines = ["Diagnostic v" + APP_VERSION];
+    try {
+      var tables = await grist.docApi.listTables();
+      lines.push("Tables vues par le widget : " + (tables.length ? tables.join(", ") : "aucune"));
+      var hasTaches = tables.indexOf(CLIENT_TABLE_NAMES.tasks) !== -1;
+      var hasPmTasks = tables.indexOf("PM_Tasks") !== -1;
+      lines.push("Table Taches d\xE9tect\xE9e : " + (hasTaches ? "oui" : "non"));
+      lines.push("Table PM_Tasks d\xE9tect\xE9e : " + (hasPmTasks ? "oui" : "non"));
+      lines.push("Structure utilisable : " + (await hasUsableDefaultTaskTable(tables) ? "oui" : "non"));
+      lines.push("Mapping utilisable : " + (await hasValidMappedTaskTable(tables) ? "oui" : "non"));
+      if (await shouldShowClientSetup(tables)) {
+        lines.push("Conclusion : installation non reconnue, le choix cr\xE9ation/mapping doit rester affich\xE9.");
+        writeSetupDiagnostic(lines, "warning");
+      } else {
+        lines.push("Conclusion : installation reconnue. Ouverture du widget...");
+        writeSetupDiagnostic(lines, "success");
+        hideClientSetup();
+        setTimeout(function() {
+          window.location.reload();
+        }, 600);
+      }
+    } catch (e) {
+      lines.push("Erreur : " + formatAccessError(e));
+      writeSetupDiagnostic(lines, "error");
+    }
+  }
+  async function setupCreateFrenchTables() {
+    try {
+      applyFrenchTableNames(true);
+      hideClientSetup();
+      showToast("Cr\xE9ation des tables en fran\xE7ais...", "info");
+      await ensureTables();
+      var tablesAfterCreate = await grist.docApi.listTables();
+      if (!await hasUsableDefaultTaskTable(tablesAfterCreate)) {
+        throw new Error("La table Taches n\u2019a pas pu \xEAtre v\xE9rifi\xE9e apr\xE8s cr\xE9ation. V\xE9rifiez que le widget a un acc\xE8s complet au document.");
+      }
+      await loadSettings();
+      await saveSetting("install_mode", "french_auto");
+      showToast("Tables cr\xE9\xE9es. Rechargement du widget...", "success");
+      setTimeout(function() {
+        window.location.reload();
+      }, 700);
+    } catch (e) {
+      console.error("setupCreateFrenchTables:", e);
+      showToast("Erreur pendant la cr\xE9ation : " + formatAccessError(e), "error");
+      showClientSetup();
+    }
+  }
+  async function setupUseExistingTables() {
+    try {
+      applyFrenchTableNames(true);
+      hideClientSetup();
+      showToast("Pr\xE9paration du mapping...", "info");
+      switchTab("settings");
+      setTimeout(function() {
+        openColumnMappingModal();
+      }, 250);
+      showToast("Choisissez vos tables existantes dans le mapping.", "success");
+    } catch (e) {
+      console.error("setupUseExistingTables:", e);
+      showToast("Erreur pendant la pr\xE9paration : " + formatAccessError(e), "error");
+      showClientSetup();
+    }
+  }
+  async function ensureTables() {
+    try {
+      var existingTables = await grist.docApi.listTables();
+      if (hasFrenchClientTables(existingTables)) applyFrenchTableNames(true);
+      var installMode = await getRawSettingValue("install_mode");
+      var skipAutoCreateWorkTables = installMode === "mapping" || installMode === "mapping_started" || installMode === "mapping_complete";
+      if (existingTables.indexOf(state.CONFIG_TABLE) !== -1) {
+        await loadColumnMapping();
+      }
+      if (!skipAutoCreateWorkTables && (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE && existingTables.indexOf(state.TASKS_TABLE) === -1)) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.TASKS_TABLE, [
+            { id: "Title", type: "Text" },
+            { id: "Description", type: "Text" },
+            { id: "Status", type: "Choice", widgetOptions: JSON.stringify({ choices: ["todo", "progress", "done", "archived"] }) },
+            { id: "Priority", type: "Choice", widgetOptions: JSON.stringify({ choices: ["high", "medium", "low"] }) },
+            { id: "Assignee", type: "Text" },
+            { id: "Group_Name", type: "Text" },
+            { id: "Start_Date", type: "Date" },
+            { id: "Due_Date", type: "Date" },
+            { id: "Category", type: "Text" },
+            { id: "Tag", type: "Text" },
+            { id: "Recurrence", type: "Choice", widgetOptions: JSON.stringify({ choices: ["none", "daily", "weekly", "monthly"] }) },
+            { id: "Estimated_Hours", type: "Numeric" },
+            { id: "Created_At", type: "Date" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && (state.USERS_TABLE === state.DEFAULT_USERS_TABLE && existingTables.indexOf(state.USERS_TABLE) === -1)) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.USERS_TABLE, [
+            { id: "Name", type: "Text" },
+            { id: "Email", type: "Text" },
+            { id: "Role", type: "Choice", widgetOptions: JSON.stringify({ choices: ["admin", "member", "viewer"] }) },
+            { id: "Group_Name", type: "Text" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.GROUPS_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.GROUPS_TABLE, [
+            { id: "Name", type: "Text" },
+            { id: "Description", type: "Text" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.TEMPLATES_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.TEMPLATES_TABLE, [
+            { id: "Title", type: "Text" },
+            { id: "Description", type: "Text" },
+            { id: "Priority", type: "Choice", widgetOptions: JSON.stringify({ choices: ["high", "medium", "low"] }) },
+            { id: "Category", type: "Text" },
+            { id: "Estimated_Hours", type: "Numeric" },
+            { id: "Group_Name", type: "Text" },
+            { id: "Tag", type: "Text" },
+            { id: "Recurrence", type: "Text" },
+            { id: "Usage_Count", type: "Int" },
+            { id: "Updated_At", type: "Date" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.SUBTASKS_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.SUBTASKS_TABLE, [
+            { id: "Parent_Task_Id", type: "Int" },
+            { id: "Title", type: "Text" },
+            { id: "Description", type: "Text" },
+            { id: "Status", type: "Choice", widgetOptions: JSON.stringify({ choices: ["todo", "progress", "done", "archived"] }) },
+            { id: "Priority", type: "Choice", widgetOptions: JSON.stringify({ choices: ["high", "medium", "low"] }) },
+            { id: "Assignee", type: "Text" },
+            { id: "Due_Date", type: "Date" },
+            { id: "Estimated_Hours", type: "Numeric" },
+            { id: "Completed", type: "Bool" },
+            { id: "Order", type: "Int" },
+            { id: "Created_At", type: "Date" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.DEPENDENCIES_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.DEPENDENCIES_TABLE, [
+            { id: "Task_Id", type: "Int" },
+            { id: "Depends_On_Task_Id", type: "Int" },
+            { id: "Created_At", type: "Date" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.COMMENTS_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.COMMENTS_TABLE, [
+            { id: "Task_Id", type: "Int" },
+            { id: "Author", type: "Text" },
+            { id: "Content", type: "Text" },
+            { id: "Created_At", type: "Date" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.TIME_ENTRIES_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.TIME_ENTRIES_TABLE, [
+            { id: "Task_Id", type: "Int" },
+            { id: "User", type: "Text" },
+            { id: "Start_Time", type: "Date" },
+            { id: "End_Time", type: "Date" },
+            { id: "Duration", type: "Int" },
+            { id: "Description", type: "Text" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.CUSTOM_FIELDS_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.CUSTOM_FIELDS_TABLE, [
+            { id: "Name", type: "Text" },
+            { id: "Type", type: "Choice", widgetOptions: JSON.stringify({ choices: ["text", "number", "date", "checkbox", "select"] }) },
+            { id: "Options", type: "Text" },
+            { id: "Order", type: "Int" },
+            { id: "Created_At", type: "Date" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.CUSTOM_FIELD_VALUES_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.CUSTOM_FIELD_VALUES_TABLE, [
+            { id: "Task_Id", type: "Int" },
+            { id: "Field_Id", type: "Int" },
+            { id: "Value", type: "Text" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && (state.CATEGORIES_TABLE === state.DEFAULT_CATEGORIES_TABLE && existingTables.indexOf(state.CATEGORIES_TABLE) === -1)) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.CATEGORIES_TABLE, [
+            { id: "Name", type: "Text" },
+            { id: "Color", type: "Text" },
+            { id: "Order", type: "Int" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && (state.TAGS_TABLE === state.DEFAULT_TAGS_TABLE && existingTables.indexOf(state.TAGS_TABLE) === -1)) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.TAGS_TABLE, [
+            { id: "Name", type: "Text" },
+            { id: "Color", type: "Text" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.ATTACHMENTS_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.ATTACHMENTS_TABLE, [
+            { id: "Task_Id", type: "Int" },
+            { id: "File_Name", type: "Text" },
+            { id: "File_Type", type: "Text" },
+            { id: "File_Size", type: "Int" },
+            { id: "File_Data", type: "Text" },
+            { id: "Created_At", type: "DateTime" }
+          ]]
+        ]);
+      } else {
+        try {
+          var attCols = Object.keys(await grist.docApi.fetchTable(state.ATTACHMENTS_TABLE));
+          if (attCols.indexOf("File_Data") === -1) {
+            await grist.docApi.applyUserActions([["AddColumn", state.ATTACHMENTS_TABLE, "File_Data", { type: "Text" }]]);
+          }
+        } catch (mig) {
+          console.log("[GristPM] Migration File_Data ignor\xE9e :", mig.message);
+        }
+      }
+      if (!skipAutoCreateWorkTables && (state.PROJECTS_TABLE === state.DEFAULT_PROJECTS_TABLE && existingTables.indexOf(state.PROJECTS_TABLE) === -1)) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.PROJECTS_TABLE, [
+            { id: "Name", type: "Text" },
+            { id: "Description", type: "Text" },
+            { id: "Color", type: "Text" },
+            { id: "Status", type: "Choice", widgetOptions: JSON.stringify({ choices: ["active", "archived", "completed"] }) },
+            { id: "Start_Date", type: "Date" },
+            { id: "End_Date", type: "Date" },
+            { id: "Lead", type: "Text" },
+            { id: "CreatedBy", type: "Text" },
+            { id: "CreatedAt", type: "Text" }
+          ]]
+        ]);
+      }
+      try {
+        var taskColsCheck = Object.keys(await grist.docApi.fetchTable(state.TASKS_TABLE));
+        if (taskColsCheck.indexOf("Project_Id") === -1) {
+          await grist.docApi.applyUserActions([
+            ["AddColumn", state.TASKS_TABLE, "Project_Id", { type: "Ref:" + state.PROJECTS_TABLE }]
+          ]);
+          console.log("[GristPM] Project_Id ajout\xE9 \xE0 " + state.TASKS_TABLE);
+        } else {
+          await grist.docApi.applyUserActions([
+            ["ModifyColumn", state.TASKS_TABLE, "Project_Id", { type: "Ref:" + state.PROJECTS_TABLE }]
+          ]);
+        }
+      } catch (e) {
+        console.log("[GristPM] Migration Project_Id ignor\xE9e :", e.message);
+      }
+      try {
+        var tplCols = Object.keys(await grist.docApi.fetchTable(state.TEMPLATES_TABLE));
+        var tplMig = [];
+        if (tplCols.indexOf("Group_Name") === -1) tplMig.push(["AddColumn", state.TEMPLATES_TABLE, "Group_Name", { type: "Text" }]);
+        if (tplCols.indexOf("Tag") === -1) tplMig.push(["AddColumn", state.TEMPLATES_TABLE, "Tag", { type: "Text" }]);
+        if (tplCols.indexOf("Recurrence") === -1) tplMig.push(["AddColumn", state.TEMPLATES_TABLE, "Recurrence", { type: "Text" }]);
+        if (tplMig.length) {
+          await grist.docApi.applyUserActions(tplMig);
+          console.log("[GristPM] Colonnes templates enrichies");
+        }
+      } catch (e) {
+        console.log("[GristPM] Migration templates ignor\xE9e :", e.message);
+      }
+      try {
+        var projCols = Object.keys(await grist.docApi.fetchTable(state.PROJECTS_TABLE));
+        var projMig = [];
+        if (projCols.indexOf("CreatedBy") === -1) projMig.push(["AddColumn", state.PROJECTS_TABLE, "CreatedBy", { type: "Text" }]);
+        if (projCols.indexOf("CreatedAt") === -1) projMig.push(["AddColumn", state.PROJECTS_TABLE, "CreatedAt", { type: "Text" }]);
+        if (projCols.indexOf("Lead") === -1) projMig.push(["AddColumn", state.PROJECTS_TABLE, "Lead", { type: "Text" }]);
+        if (projMig.length) {
+          await grist.docApi.applyUserActions(projMig);
+          console.log("[GristPM] CreatedBy/CreatedAt ajout\xE9s \xE0 PM_Projects");
+        }
+      } catch (e) {
+        console.log("[GristPM] Migration CreatedBy ignor\xE9e :", e.message);
+      }
+      await ensureConfigAndSettingsTables(existingTables);
+      existingTables = await grist.docApi.listTables();
+      if (false) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.CONFIG_TABLE, [
+            { id: "Config_Key", type: "Text" },
+            { id: "Table_Name", type: "Text" },
+            { id: "Column_Name", type: "Text" },
+            { id: "Display_Label", type: "Text" },
+            { id: "Required", type: "Bool" },
+            { id: "Default_Value", type: "Text" }
+          ]]
+        ]);
+        var defaultConfig = [
+          // Tasks mapping
+          ["task_title", state.TASKS_TABLE, "Title", "Titre", true, "Title"],
+          ["task_description", state.TASKS_TABLE, "Description", "Description", false, "Description"],
+          ["task_status", state.TASKS_TABLE, "Status", "Statut", true, "Status"],
+          ["task_priority", state.TASKS_TABLE, "Priority", "Priorit\xE9", true, "Priority"],
+          ["task_assignee", state.TASKS_TABLE, "Assignee", "Assign\xE9 \xE0", false, "Assignee"],
+          ["task_group", state.TASKS_TABLE, "Group_Name", "Groupe", false, "Group_Name"],
+          ["task_start_date", state.TASKS_TABLE, "Start_Date", "Date d\xE9but", false, "Start_Date"],
+          ["task_due_date", state.TASKS_TABLE, "Due_Date", "\xC9ch\xE9ance", false, "Due_Date"],
+          ["task_category", state.TASKS_TABLE, "Category", "Cat\xE9gorie", false, "Category"],
+          ["task_tag", state.TASKS_TABLE, "Tag", "Tag", false, "Tag"],
+          ["task_recurrence", state.TASKS_TABLE, "Recurrence", "R\xE9currence", false, "Recurrence"],
+          ["task_estimated_hours", state.TASKS_TABLE, "Estimated_Hours", "Heures estim\xE9es", false, "Estimated_Hours"],
+          ["task_created_at", state.TASKS_TABLE, "Created_At", "Cr\xE9\xE9 le", false, "Created_At"],
+          ["task_project_id", state.TASKS_TABLE, "Project_Id", "Projet", false, "Project_Id"],
+          // Users mapping
+          ["user_name", state.USERS_TABLE, "Name", "Nom", true, "Name"],
+          ["user_email", state.USERS_TABLE, "Email", "Email", true, "Email"],
+          ["user_role", state.USERS_TABLE, "Role", "R\xF4le", false, "Role"],
+          ["user_group", state.USERS_TABLE, "Group_Name", "Groupe", false, "Group_Name"],
+          // Projects mapping
+          ["project_name", state.PROJECTS_TABLE, "Name", "Nom", true, "Name"],
+          ["project_description", state.PROJECTS_TABLE, "Description", "Description", false, "Description"],
+          ["project_color", state.PROJECTS_TABLE, "Color", "Couleur", false, "Color"],
+          ["project_status", state.PROJECTS_TABLE, "Status", "Statut", false, "Status"],
+          // Categories mapping
+          ["category_name", state.CATEGORIES_TABLE, "Name", "Nom", true, "Name"],
+          ["category_color", state.CATEGORIES_TABLE, "Color", "Couleur", false, "Color"],
+          ["category_order", state.CATEGORIES_TABLE, "Order", "Ordre", false, "Order"],
+          // Tags mapping
+          ["tag_name", state.TAGS_TABLE, "Name", "Nom", true, "Name"],
+          ["tag_color", state.TAGS_TABLE, "Color", "Couleur", false, "Color"]
+        ];
+        var configRecords = [];
+        for (var i = 0; i < defaultConfig.length; i++) {
+          configRecords.push({
+            Config_Key: defaultConfig[i][0],
+            Table_Name: defaultConfig[i][1],
+            Column_Name: defaultConfig[i][2],
+            Display_Label: defaultConfig[i][3],
+            Required: defaultConfig[i][4],
+            Default_Value: defaultConfig[i][5]
+          });
+        }
+        await grist.docApi.applyUserActions([
+          ["BulkAddRecord", state.CONFIG_TABLE, configRecords.map(function() {
+            return null;
+          }), configRecords]
+        ]);
+      }
+      if (existingTables.indexOf(state.SETTINGS_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.SETTINGS_TABLE, [
+            { id: "Key", type: "Text" },
+            { id: "Value", type: "Text" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.NOTIFICATIONS_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.NOTIFICATIONS_TABLE, [
+            { id: "Task_Id", type: "Int" },
+            { id: "User_Email", type: "Text" },
+            { id: "Type", type: "Text" },
+            { id: "Message", type: "Text" },
+            { id: "Is_Read", type: "Bool" },
+            { id: "Created_At", type: "Date" },
+            { id: "Rule_Id", type: "Text" }
+          ]]
+        ]);
+      }
+      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.ACTIVITY_LOG_TABLE) === -1) {
+        await grist.docApi.applyUserActions([
+          ["AddTable", state.ACTIVITY_LOG_TABLE, [
+            { id: "Timestamp", type: "Date" },
+            { id: "User_Email", type: "Text" },
+            { id: "Action", type: "Text" },
+            { id: "Task_Id", type: "Int" },
+            { id: "Task_Title", type: "Text" },
+            { id: "Details", type: "Text" }
+          ]]
+        ]);
+      }
+      if (existingTables.indexOf(state.TASKS_TABLE) !== -1) {
+        try {
+          var tableInfo = await grist.docApi.fetchTable(state.TASKS_TABLE);
+          var existingCols = Object.keys(tableInfo);
+          if (existingCols.indexOf("Recurrence") === -1) {
+            await grist.docApi.applyUserActions([
+              ["AddColumn", state.TASKS_TABLE, "Recurrence", { type: "Choice", widgetOptions: JSON.stringify({ choices: ["none", "daily", "weekly", "monthly"] }) }]
+            ]);
+          }
+          if (existingCols.indexOf("Estimated_Hours") === -1) {
+            await grist.docApi.applyUserActions([
+              ["AddColumn", state.TASKS_TABLE, "Estimated_Hours", { type: "Numeric" }]
+            ]);
+          }
+          if (existingCols.indexOf("Tag") === -1) {
+            await grist.docApi.applyUserActions([
+              ["AddColumn", state.TASKS_TABLE, "Tag", { type: "Text" }]
+            ]);
+          }
+          var raciCols = ["Accountable", "Consulted", "Informed"];
+          var raciActions = [];
+          for (var rc = 0; rc < raciCols.length; rc++) {
+            if (existingCols.indexOf(raciCols[rc]) === -1) {
+              raciActions.push(["AddColumn", state.TASKS_TABLE, raciCols[rc], { type: "Text" }]);
+            }
+          }
+          if (raciActions.length > 0) {
+            await grist.docApi.applyUserActions(raciActions);
+          }
+          if (existingCols.indexOf("Extension_Date") === -1) {
+            await grist.docApi.applyUserActions([["AddColumn", state.TASKS_TABLE, "Extension_Date", { type: "Date" }]]);
+          }
+          if (existingCols.indexOf("Auto_Extend") === -1) {
+            await grist.docApi.applyUserActions([["AddColumn", state.TASKS_TABLE, "Auto_Extend", { type: "Bool" }]]);
+          }
+        } catch (migrationErr) {
+          console.log("Migration check completed or columns already exist");
+        }
+      }
+      if (existingTables.indexOf(state.SUBTASKS_TABLE) !== -1) {
+        try {
+          var stInfo = await grist.docApi.fetchTable(state.SUBTASKS_TABLE);
+          var stCols = Object.keys(stInfo);
+          var stActions = [];
+          if (stCols.indexOf("Blocked_By_Subtask_Id") === -1) {
+            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Blocked_By_Subtask_Id", { type: "Int" }]);
+          }
+          if (stCols.indexOf("Assignee") === -1) {
+            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Assignee", { type: "Text" }]);
+          }
+          if (stCols.indexOf("Due_Date") === -1) {
+            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Due_Date", { type: "Date" }]);
+          }
+          if (stCols.indexOf("Description") === -1) {
+            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Description", { type: "Text" }]);
+          }
+          if (stCols.indexOf("Status") === -1) {
+            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Status", { type: "Choice", widgetOptions: JSON.stringify({ choices: ["todo", "progress", "done", "archived"] }) }]);
+          }
+          if (stCols.indexOf("Priority") === -1) {
+            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Priority", { type: "Choice", widgetOptions: JSON.stringify({ choices: ["high", "medium", "low"] }) }]);
+          }
+          if (stCols.indexOf("Estimated_Hours") === -1) {
+            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Estimated_Hours", { type: "Numeric" }]);
+          }
+          if (stCols.indexOf("Recurrence") === -1) {
+            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Recurrence", { type: "Choice", widgetOptions: JSON.stringify({ choices: ["none", "daily", "weekly", "monthly"] }) }]);
+          }
+          if (stCols.indexOf("Start_Date") === -1) {
+            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Start_Date", { type: "Date" }]);
+          }
+          if (stCols.indexOf("Type") === -1) {
+            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Type", { type: "Choice", widgetOptions: JSON.stringify({ choices: ["subtask", "milestone"] }) }]);
+          }
+          if (stActions.length > 0) {
+            await grist.docApi.applyUserActions(stActions);
+          }
+        } catch (e) {
+          console.log("Subtask migration completed");
+        }
+      }
+    } catch (e) {
+      console.error("Error ensuring tables:", e);
+    }
+  }
+
   // src/domains/column-mapping-ui.js
   async function openColumnMappingModal() {
     var html = '<div class="modal-overlay" onclick="closeModal(event)">';
@@ -9938,6 +10618,7 @@
     viewAttachment
   });
   var kanbanSort = "manual";
+  var customKanbanStatuses = null;
   var defaultCardDisplay = { description: true, priority: true, date: true, assignee: true, tags: true, category: true, time: true, subtasks: true, comments: true };
   var cardDisplaySettings = Object.assign({}, defaultCardDisplay);
   async function loadSettings() {
@@ -9985,44 +10666,6 @@
       }
     } catch (e) {
       console.log("[GristPM] PM_Settings not available yet");
-    }
-  }
-  function applyFrenchTableNames(updateDefaults) {
-    state.TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
-    state.USERS_TABLE = CLIENT_TABLE_NAMES.users;
-    state.GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
-    state.TEMPLATES_TABLE = CLIENT_TABLE_NAMES.templates;
-    state.SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
-    state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
-    state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
-    state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
-    state.CUSTOM_FIELDS_TABLE = CLIENT_TABLE_NAMES.customFields;
-    state.CUSTOM_FIELD_VALUES_TABLE = CLIENT_TABLE_NAMES.customFieldValues;
-    state.CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
-    state.TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
-    state.PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
-    state.CONFIG_TABLE = CLIENT_TABLE_NAMES.config;
-    state.SETTINGS_TABLE = CLIENT_TABLE_NAMES.settings;
-    state.NOTIFICATIONS_TABLE = CLIENT_TABLE_NAMES.notifications;
-    state.ACTIVITY_LOG_TABLE = CLIENT_TABLE_NAMES.activityLog;
-    state.ATTACHMENTS_TABLE = CLIENT_TABLE_NAMES.attachments;
-    state.USER_INFO_TABLE = CLIENT_TABLE_NAMES.userInfo;
-    if (updateDefaults) {
-      state.DEFAULT_TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
-      state.DEFAULT_USERS_TABLE = CLIENT_TABLE_NAMES.users;
-      state.DEFAULT_PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
-      state.DEFAULT_CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
-      state.DEFAULT_TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
-    }
-  }
-  function hasFrenchClientTables(tableIds) {
-    return tableIds.indexOf(CLIENT_TABLE_NAMES.config) !== -1 || tableIds.indexOf(CLIENT_TABLE_NAMES.tasks) !== -1;
-  }
-  function isInsideGrist() {
-    try {
-      return window.frameElement !== null || window !== window.parent;
-    } catch (e) {
-      return true;
     }
   }
   async function loadColumnMapping() {
@@ -10128,647 +10771,6 @@
       switchTab(savedTab);
     } else {
       switchTab("kanban");
-    }
-  }
-  async function getRawSettingValue(key) {
-    try {
-      var data = await grist.docApi.fetchTable(state.SETTINGS_TABLE);
-      if (!data || !data.Key) return null;
-      for (var i = 0; i < data.Key.length; i++) {
-        if (data.Key[i] === key) return data.Value[i];
-      }
-    } catch (e) {
-    }
-    return null;
-  }
-  function buildDefaultConfigRecords() {
-    var defaultConfig = [
-      ["task_title", state.TASKS_TABLE, "Title", "Titre", true, "Title"],
-      ["task_description", state.TASKS_TABLE, "Description", "Description", false, "Description"],
-      ["task_status", state.TASKS_TABLE, "Status", "Statut", true, "Status"],
-      ["task_priority", state.TASKS_TABLE, "Priority", "Priorit\xE9", true, "Priority"],
-      ["task_assignee", state.TASKS_TABLE, "Assignee", "Assign\xE9 \xE0", false, "Assignee"],
-      ["task_group", state.TASKS_TABLE, "Group_Name", "Groupe", false, "Group_Name"],
-      ["task_start_date", state.TASKS_TABLE, "Start_Date", "Date d\xE9but", false, "Start_Date"],
-      ["task_due_date", state.TASKS_TABLE, "Due_Date", "\xC9ch\xE9ance", false, "Due_Date"],
-      ["task_category", state.TASKS_TABLE, "Category", "Cat\xE9gorie", false, "Category"],
-      ["task_tag", state.TASKS_TABLE, "Tag", "Tag", false, "Tag"],
-      ["task_recurrence", state.TASKS_TABLE, "Recurrence", "R\xE9currence", false, "Recurrence"],
-      ["task_estimated_hours", state.TASKS_TABLE, "Estimated_Hours", "Heures estim\xE9es", false, "Estimated_Hours"],
-      ["task_created_at", state.TASKS_TABLE, "Created_At", "Cr\xE9\xE9 le", false, "Created_At"],
-      ["task_project_id", state.PROJECTS_TABLE, "Project_Id", "Projet", false, "Project_Id"],
-      ["user_name", state.USERS_TABLE, "Name", "Nom", true, "Name"],
-      ["user_email", state.USERS_TABLE, "Email", "Email", true, "Email"],
-      ["user_role", state.USERS_TABLE, "Role", "R\xF4le", false, "Role"],
-      ["user_group", state.USERS_TABLE, "Group_Name", "Groupe", false, "Group_Name"],
-      ["project_name", state.PROJECTS_TABLE, "Name", "Nom", true, "Name"],
-      ["project_description", state.PROJECTS_TABLE, "Description", "Description", false, "Description"],
-      ["project_color", state.PROJECTS_TABLE, "Color", "Couleur", false, "Color"],
-      ["project_status", state.PROJECTS_TABLE, "Status", "Statut", false, "Status"],
-      ["category_name", state.CATEGORIES_TABLE, "Name", "Nom", true, "Name"],
-      ["category_color", state.CATEGORIES_TABLE, "Color", "Couleur", false, "Color"],
-      ["category_order", state.CATEGORIES_TABLE, "Order", "Ordre", false, "Order"],
-      ["tag_name", state.TAGS_TABLE, "Name", "Nom", true, "Name"],
-      ["tag_color", state.TAGS_TABLE, "Color", "Couleur", false, "Color"]
-    ];
-    return defaultConfig.map(function(row) {
-      return { Config_Key: row[0], Table_Name: row[1], Column_Name: row[2], Display_Label: row[3], Required: row[4], Default_Value: row[5] };
-    });
-  }
-  async function ensureConfigAndSettingsTables(existingTables) {
-    existingTables = existingTables || await grist.docApi.listTables();
-    if (existingTables.indexOf(state.CONFIG_TABLE) === -1) {
-      await grist.docApi.applyUserActions([
-        ["AddTable", state.CONFIG_TABLE, [
-          { id: "Config_Key", type: "Text" },
-          { id: "Table_Name", type: "Text" },
-          { id: "Column_Name", type: "Text" },
-          { id: "Display_Label", type: "Text" },
-          { id: "Required", type: "Bool" },
-          { id: "Default_Value", type: "Text" }
-        ]]
-      ]);
-      var configRecords = buildDefaultConfigRecords();
-      await grist.docApi.applyUserActions([
-        ["BulkAddRecord", state.CONFIG_TABLE, configRecords.map(function() {
-          return null;
-        }), configRecords]
-      ]);
-    }
-    existingTables = await grist.docApi.listTables();
-    if (existingTables.indexOf(state.SETTINGS_TABLE) === -1) {
-      await grist.docApi.applyUserActions([
-        ["AddTable", state.SETTINGS_TABLE, [
-          { id: "Key", type: "Text" },
-          { id: "Value", type: "Text" }
-        ]]
-      ]);
-    }
-  }
-  async function tableHasColumns(tableId, requiredColumns) {
-    try {
-      var data = await grist.docApi.fetchTable(tableId);
-      var columns = Object.keys(data || {}).filter(function(key) {
-        return key !== "id";
-      });
-      return requiredColumns.every(function(columnId) {
-        return columns.indexOf(columnId) !== -1;
-      });
-    } catch (e) {
-      return false;
-    }
-  }
-  async function hasValidMappedTaskTable(existingTables) {
-    var configTables = [state.CONFIG_TABLE, CLIENT_TABLE_NAMES.config, "PM_Config"];
-    for (var c = 0; c < configTables.length; c++) {
-      var configTable = configTables[c];
-      if (existingTables.indexOf(configTable) === -1) continue;
-      try {
-        var configData = await grist.docApi.fetchTable(configTable);
-        var rows = configData && configData.id ? configData.id : [];
-        var taskTable = "";
-        var requiredColumns = [];
-        for (var i = 0; i < rows.length; i++) {
-          var key = configData.Config_Key && configData.Config_Key[i];
-          if (key === "task_title") taskTable = configData.Table_Name[i] || taskTable;
-          if (key === "task_title" || key === "task_status") {
-            if (configData.Column_Name[i]) requiredColumns.push(configData.Column_Name[i]);
-          }
-        }
-        if (!taskTable || existingTables.indexOf(taskTable) === -1) continue;
-        if (requiredColumns.length < 2) continue;
-        if (await tableHasColumns(taskTable, requiredColumns)) return true;
-      } catch (e) {
-        console.warn("Impossible de v\xE9rifier le mapping:", e.message);
-      }
-    }
-    return false;
-  }
-  async function getInstallModeFromExistingSettings(existingTables) {
-    var settingsTables = [state.SETTINGS_TABLE, CLIENT_TABLE_NAMES.settings, "PM_Settings"];
-    for (var i = 0; i < settingsTables.length; i++) {
-      var settingsTable = settingsTables[i];
-      if (existingTables.indexOf(settingsTable) === -1) continue;
-      var previousSettingsTable = state.SETTINGS_TABLE;
-      state.SETTINGS_TABLE = settingsTable;
-      var installMode = await getRawSettingValue("install_mode");
-      state.SETTINGS_TABLE = previousSettingsTable;
-      if (installMode) return installMode;
-    }
-    return "";
-  }
-  async function hasUsableDefaultTaskTable(existingTables) {
-    var candidates = [CLIENT_TABLE_NAMES.tasks, "PM_Tasks"];
-    for (var i = 0; i < candidates.length; i++) {
-      var tableId = candidates[i];
-      if (existingTables.indexOf(tableId) === -1) continue;
-      if (await tableHasColumns(tableId, ["Title", "Status"])) return true;
-    }
-    return false;
-  }
-  async function shouldShowClientSetup(existingTables) {
-    existingTables = existingTables || await grist.docApi.listTables();
-    if (hasFrenchClientTables(existingTables)) applyFrenchTableNames(true);
-    if (await hasUsableDefaultTaskTable(existingTables)) return false;
-    if (await hasValidMappedTaskTable(existingTables)) return false;
-    return true;
-  }
-  function showClientSetup() {
-    var setup = document.getElementById("client-setup");
-    if (setup) setup.classList.remove("hidden");
-    var main = document.getElementById("main-content");
-    if (main) main.classList.add("hidden");
-  }
-  function hideClientSetup() {
-    var setup = document.getElementById("client-setup");
-    if (setup) setup.classList.add("hidden");
-    var main = document.getElementById("main-content");
-    if (main) main.classList.remove("hidden");
-  }
-  function formatAccessError(error) {
-    var message = error && error.message ? error.message : String(error || "");
-    if (/access not granted|access denied|permission|autorisation/i.test(message)) {
-      return "Acc\xE8s complet non accord\xE9. Dans le panneau du widget Grist, mettez le niveau d\u2019acc\xE8s sur \u201CAcc\xE8s complet au document\u201D, puis r\xE9essayez.";
-    }
-    return message;
-  }
-  function writeSetupDiagnostic(lines, type) {
-    var box = document.getElementById("client-setup-diagnostics");
-    if (!box) return;
-    box.className = "client-setup-diagnostics " + (type || "");
-    box.innerHTML = lines.map(function(line) {
-      return "<div>" + sanitize(String(line)) + "</div>";
-    }).join("");
-  }
-  async function runSetupDiagnostic() {
-    var lines = ["Diagnostic v" + APP_VERSION];
-    try {
-      var tables = await grist.docApi.listTables();
-      lines.push("Tables vues par le widget : " + (tables.length ? tables.join(", ") : "aucune"));
-      var hasTaches = tables.indexOf(CLIENT_TABLE_NAMES.tasks) !== -1;
-      var hasPmTasks = tables.indexOf("PM_Tasks") !== -1;
-      lines.push("Table Taches d\xE9tect\xE9e : " + (hasTaches ? "oui" : "non"));
-      lines.push("Table PM_Tasks d\xE9tect\xE9e : " + (hasPmTasks ? "oui" : "non"));
-      lines.push("Structure utilisable : " + (await hasUsableDefaultTaskTable(tables) ? "oui" : "non"));
-      lines.push("Mapping utilisable : " + (await hasValidMappedTaskTable(tables) ? "oui" : "non"));
-      if (await shouldShowClientSetup(tables)) {
-        lines.push("Conclusion : installation non reconnue, le choix cr\xE9ation/mapping doit rester affich\xE9.");
-        writeSetupDiagnostic(lines, "warning");
-      } else {
-        lines.push("Conclusion : installation reconnue. Ouverture du widget...");
-        writeSetupDiagnostic(lines, "success");
-        hideClientSetup();
-        setTimeout(function() {
-          window.location.reload();
-        }, 600);
-      }
-    } catch (e) {
-      lines.push("Erreur : " + formatAccessError(e));
-      writeSetupDiagnostic(lines, "error");
-    }
-  }
-  async function setupCreateFrenchTables() {
-    try {
-      applyFrenchTableNames(true);
-      hideClientSetup();
-      showToast("Cr\xE9ation des tables en fran\xE7ais...", "info");
-      await ensureTables();
-      var tablesAfterCreate = await grist.docApi.listTables();
-      if (!await hasUsableDefaultTaskTable(tablesAfterCreate)) {
-        throw new Error("La table Taches n\u2019a pas pu \xEAtre v\xE9rifi\xE9e apr\xE8s cr\xE9ation. V\xE9rifiez que le widget a un acc\xE8s complet au document.");
-      }
-      await loadSettings();
-      await saveSetting("install_mode", "french_auto");
-      showToast("Tables cr\xE9\xE9es. Rechargement du widget...", "success");
-      setTimeout(function() {
-        window.location.reload();
-      }, 700);
-    } catch (e) {
-      console.error("setupCreateFrenchTables:", e);
-      showToast("Erreur pendant la cr\xE9ation : " + formatAccessError(e), "error");
-      showClientSetup();
-    }
-  }
-  async function setupUseExistingTables() {
-    try {
-      applyFrenchTableNames(true);
-      hideClientSetup();
-      showToast("Pr\xE9paration du mapping...", "info");
-      switchTab("settings");
-      setTimeout(function() {
-        openColumnMappingModal();
-      }, 250);
-      showToast("Choisissez vos tables existantes dans le mapping.", "success");
-    } catch (e) {
-      console.error("setupUseExistingTables:", e);
-      showToast("Erreur pendant la pr\xE9paration : " + formatAccessError(e), "error");
-      showClientSetup();
-    }
-  }
-  async function ensureTables() {
-    try {
-      var existingTables = await grist.docApi.listTables();
-      if (hasFrenchClientTables(existingTables)) applyFrenchTableNames(true);
-      var installMode = await getRawSettingValue("install_mode");
-      var skipAutoCreateWorkTables = installMode === "mapping" || installMode === "mapping_started" || installMode === "mapping_complete";
-      if (existingTables.indexOf(state.CONFIG_TABLE) !== -1) {
-        await loadColumnMapping();
-      }
-      if (!skipAutoCreateWorkTables && (state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE && existingTables.indexOf(state.TASKS_TABLE) === -1)) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.TASKS_TABLE, [
-            { id: "Title", type: "Text" },
-            { id: "Description", type: "Text" },
-            { id: "Status", type: "Choice", widgetOptions: JSON.stringify({ choices: ["todo", "progress", "done", "archived"] }) },
-            { id: "Priority", type: "Choice", widgetOptions: JSON.stringify({ choices: ["high", "medium", "low"] }) },
-            { id: "Assignee", type: "Text" },
-            { id: "Group_Name", type: "Text" },
-            { id: "Start_Date", type: "Date" },
-            { id: "Due_Date", type: "Date" },
-            { id: "Category", type: "Text" },
-            { id: "Tag", type: "Text" },
-            { id: "Recurrence", type: "Choice", widgetOptions: JSON.stringify({ choices: ["none", "daily", "weekly", "monthly"] }) },
-            { id: "Estimated_Hours", type: "Numeric" },
-            { id: "Created_At", type: "Date" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && (state.USERS_TABLE === state.DEFAULT_USERS_TABLE && existingTables.indexOf(state.USERS_TABLE) === -1)) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.USERS_TABLE, [
-            { id: "Name", type: "Text" },
-            { id: "Email", type: "Text" },
-            { id: "Role", type: "Choice", widgetOptions: JSON.stringify({ choices: ["admin", "member", "viewer"] }) },
-            { id: "Group_Name", type: "Text" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.GROUPS_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.GROUPS_TABLE, [
-            { id: "Name", type: "Text" },
-            { id: "Description", type: "Text" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.TEMPLATES_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.TEMPLATES_TABLE, [
-            { id: "Title", type: "Text" },
-            { id: "Description", type: "Text" },
-            { id: "Priority", type: "Choice", widgetOptions: JSON.stringify({ choices: ["high", "medium", "low"] }) },
-            { id: "Category", type: "Text" },
-            { id: "Estimated_Hours", type: "Numeric" },
-            { id: "Group_Name", type: "Text" },
-            { id: "Tag", type: "Text" },
-            { id: "Recurrence", type: "Text" },
-            { id: "Usage_Count", type: "Int" },
-            { id: "Updated_At", type: "Date" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.SUBTASKS_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.SUBTASKS_TABLE, [
-            { id: "Parent_Task_Id", type: "Int" },
-            { id: "Title", type: "Text" },
-            { id: "Description", type: "Text" },
-            { id: "Status", type: "Choice", widgetOptions: JSON.stringify({ choices: ["todo", "progress", "done", "archived"] }) },
-            { id: "Priority", type: "Choice", widgetOptions: JSON.stringify({ choices: ["high", "medium", "low"] }) },
-            { id: "Assignee", type: "Text" },
-            { id: "Due_Date", type: "Date" },
-            { id: "Estimated_Hours", type: "Numeric" },
-            { id: "Completed", type: "Bool" },
-            { id: "Order", type: "Int" },
-            { id: "Created_At", type: "Date" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.DEPENDENCIES_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.DEPENDENCIES_TABLE, [
-            { id: "Task_Id", type: "Int" },
-            { id: "Depends_On_Task_Id", type: "Int" },
-            { id: "Created_At", type: "Date" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.COMMENTS_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.COMMENTS_TABLE, [
-            { id: "Task_Id", type: "Int" },
-            { id: "Author", type: "Text" },
-            { id: "Content", type: "Text" },
-            { id: "Created_At", type: "Date" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.TIME_ENTRIES_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.TIME_ENTRIES_TABLE, [
-            { id: "Task_Id", type: "Int" },
-            { id: "User", type: "Text" },
-            { id: "Start_Time", type: "Date" },
-            { id: "End_Time", type: "Date" },
-            { id: "Duration", type: "Int" },
-            { id: "Description", type: "Text" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.CUSTOM_FIELDS_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.CUSTOM_FIELDS_TABLE, [
-            { id: "Name", type: "Text" },
-            { id: "Type", type: "Choice", widgetOptions: JSON.stringify({ choices: ["text", "number", "date", "checkbox", "select"] }) },
-            { id: "Options", type: "Text" },
-            { id: "Order", type: "Int" },
-            { id: "Created_At", type: "Date" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.CUSTOM_FIELD_VALUES_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.CUSTOM_FIELD_VALUES_TABLE, [
-            { id: "Task_Id", type: "Int" },
-            { id: "Field_Id", type: "Int" },
-            { id: "Value", type: "Text" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && (state.CATEGORIES_TABLE === state.DEFAULT_CATEGORIES_TABLE && existingTables.indexOf(state.CATEGORIES_TABLE) === -1)) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.CATEGORIES_TABLE, [
-            { id: "Name", type: "Text" },
-            { id: "Color", type: "Text" },
-            { id: "Order", type: "Int" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && (state.TAGS_TABLE === state.DEFAULT_TAGS_TABLE && existingTables.indexOf(state.TAGS_TABLE) === -1)) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.TAGS_TABLE, [
-            { id: "Name", type: "Text" },
-            { id: "Color", type: "Text" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.ATTACHMENTS_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.ATTACHMENTS_TABLE, [
-            { id: "Task_Id", type: "Int" },
-            { id: "File_Name", type: "Text" },
-            { id: "File_Type", type: "Text" },
-            { id: "File_Size", type: "Int" },
-            { id: "File_Data", type: "Text" },
-            { id: "Created_At", type: "DateTime" }
-          ]]
-        ]);
-      } else {
-        try {
-          var attCols = Object.keys(await grist.docApi.fetchTable(state.ATTACHMENTS_TABLE));
-          if (attCols.indexOf("File_Data") === -1) {
-            await grist.docApi.applyUserActions([["AddColumn", state.ATTACHMENTS_TABLE, "File_Data", { type: "Text" }]]);
-          }
-        } catch (mig) {
-          console.log("[GristPM] Migration File_Data ignor\xE9e :", mig.message);
-        }
-      }
-      if (!skipAutoCreateWorkTables && (state.PROJECTS_TABLE === state.DEFAULT_PROJECTS_TABLE && existingTables.indexOf(state.PROJECTS_TABLE) === -1)) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.PROJECTS_TABLE, [
-            { id: "Name", type: "Text" },
-            { id: "Description", type: "Text" },
-            { id: "Color", type: "Text" },
-            { id: "Status", type: "Choice", widgetOptions: JSON.stringify({ choices: ["active", "archived", "completed"] }) },
-            { id: "Start_Date", type: "Date" },
-            { id: "End_Date", type: "Date" },
-            { id: "Lead", type: "Text" },
-            { id: "CreatedBy", type: "Text" },
-            { id: "CreatedAt", type: "Text" }
-          ]]
-        ]);
-      }
-      try {
-        var taskColsCheck = Object.keys(await grist.docApi.fetchTable(state.TASKS_TABLE));
-        if (taskColsCheck.indexOf("Project_Id") === -1) {
-          await grist.docApi.applyUserActions([
-            ["AddColumn", state.TASKS_TABLE, "Project_Id", { type: "Ref:" + state.PROJECTS_TABLE }]
-          ]);
-          console.log("[GristPM] Project_Id ajout\xE9 \xE0 " + state.TASKS_TABLE);
-        } else {
-          await grist.docApi.applyUserActions([
-            ["ModifyColumn", state.TASKS_TABLE, "Project_Id", { type: "Ref:" + state.PROJECTS_TABLE }]
-          ]);
-        }
-      } catch (e) {
-        console.log("[GristPM] Migration Project_Id ignor\xE9e :", e.message);
-      }
-      try {
-        var tplCols = Object.keys(await grist.docApi.fetchTable(state.TEMPLATES_TABLE));
-        var tplMig = [];
-        if (tplCols.indexOf("Group_Name") === -1) tplMig.push(["AddColumn", state.TEMPLATES_TABLE, "Group_Name", { type: "Text" }]);
-        if (tplCols.indexOf("Tag") === -1) tplMig.push(["AddColumn", state.TEMPLATES_TABLE, "Tag", { type: "Text" }]);
-        if (tplCols.indexOf("Recurrence") === -1) tplMig.push(["AddColumn", state.TEMPLATES_TABLE, "Recurrence", { type: "Text" }]);
-        if (tplMig.length) {
-          await grist.docApi.applyUserActions(tplMig);
-          console.log("[GristPM] Colonnes templates enrichies");
-        }
-      } catch (e) {
-        console.log("[GristPM] Migration templates ignor\xE9e :", e.message);
-      }
-      try {
-        var projCols = Object.keys(await grist.docApi.fetchTable(state.PROJECTS_TABLE));
-        var projMig = [];
-        if (projCols.indexOf("CreatedBy") === -1) projMig.push(["AddColumn", state.PROJECTS_TABLE, "CreatedBy", { type: "Text" }]);
-        if (projCols.indexOf("CreatedAt") === -1) projMig.push(["AddColumn", state.PROJECTS_TABLE, "CreatedAt", { type: "Text" }]);
-        if (projCols.indexOf("Lead") === -1) projMig.push(["AddColumn", state.PROJECTS_TABLE, "Lead", { type: "Text" }]);
-        if (projMig.length) {
-          await grist.docApi.applyUserActions(projMig);
-          console.log("[GristPM] CreatedBy/CreatedAt ajout\xE9s \xE0 PM_Projects");
-        }
-      } catch (e) {
-        console.log("[GristPM] Migration CreatedBy ignor\xE9e :", e.message);
-      }
-      await ensureConfigAndSettingsTables(existingTables);
-      existingTables = await grist.docApi.listTables();
-      if (false) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.CONFIG_TABLE, [
-            { id: "Config_Key", type: "Text" },
-            { id: "Table_Name", type: "Text" },
-            { id: "Column_Name", type: "Text" },
-            { id: "Display_Label", type: "Text" },
-            { id: "Required", type: "Bool" },
-            { id: "Default_Value", type: "Text" }
-          ]]
-        ]);
-        var defaultConfig = [
-          // Tasks mapping
-          ["task_title", state.TASKS_TABLE, "Title", "Titre", true, "Title"],
-          ["task_description", state.TASKS_TABLE, "Description", "Description", false, "Description"],
-          ["task_status", state.TASKS_TABLE, "Status", "Statut", true, "Status"],
-          ["task_priority", state.TASKS_TABLE, "Priority", "Priorit\xE9", true, "Priority"],
-          ["task_assignee", state.TASKS_TABLE, "Assignee", "Assign\xE9 \xE0", false, "Assignee"],
-          ["task_group", state.TASKS_TABLE, "Group_Name", "Groupe", false, "Group_Name"],
-          ["task_start_date", state.TASKS_TABLE, "Start_Date", "Date d\xE9but", false, "Start_Date"],
-          ["task_due_date", state.TASKS_TABLE, "Due_Date", "\xC9ch\xE9ance", false, "Due_Date"],
-          ["task_category", state.TASKS_TABLE, "Category", "Cat\xE9gorie", false, "Category"],
-          ["task_tag", state.TASKS_TABLE, "Tag", "Tag", false, "Tag"],
-          ["task_recurrence", state.TASKS_TABLE, "Recurrence", "R\xE9currence", false, "Recurrence"],
-          ["task_estimated_hours", state.TASKS_TABLE, "Estimated_Hours", "Heures estim\xE9es", false, "Estimated_Hours"],
-          ["task_created_at", state.TASKS_TABLE, "Created_At", "Cr\xE9\xE9 le", false, "Created_At"],
-          ["task_project_id", state.TASKS_TABLE, "Project_Id", "Projet", false, "Project_Id"],
-          // Users mapping
-          ["user_name", state.USERS_TABLE, "Name", "Nom", true, "Name"],
-          ["user_email", state.USERS_TABLE, "Email", "Email", true, "Email"],
-          ["user_role", state.USERS_TABLE, "Role", "R\xF4le", false, "Role"],
-          ["user_group", state.USERS_TABLE, "Group_Name", "Groupe", false, "Group_Name"],
-          // Projects mapping
-          ["project_name", state.PROJECTS_TABLE, "Name", "Nom", true, "Name"],
-          ["project_description", state.PROJECTS_TABLE, "Description", "Description", false, "Description"],
-          ["project_color", state.PROJECTS_TABLE, "Color", "Couleur", false, "Color"],
-          ["project_status", state.PROJECTS_TABLE, "Status", "Statut", false, "Status"],
-          // Categories mapping
-          ["category_name", state.CATEGORIES_TABLE, "Name", "Nom", true, "Name"],
-          ["category_color", state.CATEGORIES_TABLE, "Color", "Couleur", false, "Color"],
-          ["category_order", state.CATEGORIES_TABLE, "Order", "Ordre", false, "Order"],
-          // Tags mapping
-          ["tag_name", state.TAGS_TABLE, "Name", "Nom", true, "Name"],
-          ["tag_color", state.TAGS_TABLE, "Color", "Couleur", false, "Color"]
-        ];
-        var configRecords = [];
-        for (var i = 0; i < defaultConfig.length; i++) {
-          configRecords.push({
-            Config_Key: defaultConfig[i][0],
-            Table_Name: defaultConfig[i][1],
-            Column_Name: defaultConfig[i][2],
-            Display_Label: defaultConfig[i][3],
-            Required: defaultConfig[i][4],
-            Default_Value: defaultConfig[i][5]
-          });
-        }
-        await grist.docApi.applyUserActions([
-          ["BulkAddRecord", state.CONFIG_TABLE, configRecords.map(function() {
-            return null;
-          }), configRecords]
-        ]);
-      }
-      if (existingTables.indexOf(state.SETTINGS_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.SETTINGS_TABLE, [
-            { id: "Key", type: "Text" },
-            { id: "Value", type: "Text" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.NOTIFICATIONS_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.NOTIFICATIONS_TABLE, [
-            { id: "Task_Id", type: "Int" },
-            { id: "User_Email", type: "Text" },
-            { id: "Type", type: "Text" },
-            { id: "Message", type: "Text" },
-            { id: "Is_Read", type: "Bool" },
-            { id: "Created_At", type: "Date" },
-            { id: "Rule_Id", type: "Text" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.ACTIVITY_LOG_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.ACTIVITY_LOG_TABLE, [
-            { id: "Timestamp", type: "Date" },
-            { id: "User_Email", type: "Text" },
-            { id: "Action", type: "Text" },
-            { id: "Task_Id", type: "Int" },
-            { id: "Task_Title", type: "Text" },
-            { id: "Details", type: "Text" }
-          ]]
-        ]);
-      }
-      if (existingTables.indexOf(state.TASKS_TABLE) !== -1) {
-        try {
-          var tableInfo = await grist.docApi.fetchTable(state.TASKS_TABLE);
-          var existingCols = Object.keys(tableInfo);
-          if (existingCols.indexOf("Recurrence") === -1) {
-            await grist.docApi.applyUserActions([
-              ["AddColumn", state.TASKS_TABLE, "Recurrence", { type: "Choice", widgetOptions: JSON.stringify({ choices: ["none", "daily", "weekly", "monthly"] }) }]
-            ]);
-          }
-          if (existingCols.indexOf("Estimated_Hours") === -1) {
-            await grist.docApi.applyUserActions([
-              ["AddColumn", state.TASKS_TABLE, "Estimated_Hours", { type: "Numeric" }]
-            ]);
-          }
-          if (existingCols.indexOf("Tag") === -1) {
-            await grist.docApi.applyUserActions([
-              ["AddColumn", state.TASKS_TABLE, "Tag", { type: "Text" }]
-            ]);
-          }
-          var raciCols = ["Accountable", "Consulted", "Informed"];
-          var raciActions = [];
-          for (var rc = 0; rc < raciCols.length; rc++) {
-            if (existingCols.indexOf(raciCols[rc]) === -1) {
-              raciActions.push(["AddColumn", state.TASKS_TABLE, raciCols[rc], { type: "Text" }]);
-            }
-          }
-          if (raciActions.length > 0) {
-            await grist.docApi.applyUserActions(raciActions);
-          }
-          if (existingCols.indexOf("Extension_Date") === -1) {
-            await grist.docApi.applyUserActions([["AddColumn", state.TASKS_TABLE, "Extension_Date", { type: "Date" }]]);
-          }
-          if (existingCols.indexOf("Auto_Extend") === -1) {
-            await grist.docApi.applyUserActions([["AddColumn", state.TASKS_TABLE, "Auto_Extend", { type: "Bool" }]]);
-          }
-        } catch (migrationErr) {
-          console.log("Migration check completed or columns already exist");
-        }
-      }
-      if (existingTables.indexOf(state.SUBTASKS_TABLE) !== -1) {
-        try {
-          var stInfo = await grist.docApi.fetchTable(state.SUBTASKS_TABLE);
-          var stCols = Object.keys(stInfo);
-          var stActions = [];
-          if (stCols.indexOf("Blocked_By_Subtask_Id") === -1) {
-            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Blocked_By_Subtask_Id", { type: "Int" }]);
-          }
-          if (stCols.indexOf("Assignee") === -1) {
-            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Assignee", { type: "Text" }]);
-          }
-          if (stCols.indexOf("Due_Date") === -1) {
-            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Due_Date", { type: "Date" }]);
-          }
-          if (stCols.indexOf("Description") === -1) {
-            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Description", { type: "Text" }]);
-          }
-          if (stCols.indexOf("Status") === -1) {
-            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Status", { type: "Choice", widgetOptions: JSON.stringify({ choices: ["todo", "progress", "done", "archived"] }) }]);
-          }
-          if (stCols.indexOf("Priority") === -1) {
-            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Priority", { type: "Choice", widgetOptions: JSON.stringify({ choices: ["high", "medium", "low"] }) }]);
-          }
-          if (stCols.indexOf("Estimated_Hours") === -1) {
-            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Estimated_Hours", { type: "Numeric" }]);
-          }
-          if (stCols.indexOf("Recurrence") === -1) {
-            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Recurrence", { type: "Choice", widgetOptions: JSON.stringify({ choices: ["none", "daily", "weekly", "monthly"] }) }]);
-          }
-          if (stCols.indexOf("Start_Date") === -1) {
-            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Start_Date", { type: "Date" }]);
-          }
-          if (stCols.indexOf("Type") === -1) {
-            stActions.push(["AddColumn", state.SUBTASKS_TABLE, "Type", { type: "Choice", widgetOptions: JSON.stringify({ choices: ["subtask", "milestone"] }) }]);
-          }
-          if (stActions.length > 0) {
-            await grist.docApi.applyUserActions(stActions);
-          }
-        } catch (e) {
-          console.log("Subtask migration completed");
-        }
-      }
-    } catch (e) {
-      console.error("Error ensuring tables:", e);
     }
   }
   function refreshAllViews() {
