@@ -24,10 +24,6 @@ import {
 import {
   openProjectModal, closeProjectModal, renderProjectList, editProject, saveProject, deleteProject
 } from './domains/projects.js';
-import {
-  getTaskCustomFieldValue, getTaskCustomFieldsText, renderCustomFieldInput, updateCustomFieldValue,
-  openCustomFieldsModal, toggleCfOptions, addCustomField, deleteCustomField
-} from './domains/custom-fields.js';
 import { getTaskComments } from './domains/comments.js';
 import {
   getTaskTimeEntries, getTaskTotalTime, formatDuration, formatDurationShort,
@@ -129,12 +125,12 @@ import { openCategoriesModal, editCategory, saveCategory, deleteCategory } from 
 // one of these handlers throws "X is not defined" the moment it's clicked.
 // Any new onclick handler added to generated HTML must be added here too.
 Object.assign(window, {
-  addComment, addCustomField, addDefaultAutomationRules, addDependency, addKanbanStatus, addManualTimeEntry,
+  addComment, addDefaultAutomationRules, addDependency, addKanbanStatus, addManualTimeEntry,
   addRaciChip, addRoleChoice, addSubtask, applySecurityRules, archiveTask, calendarNav,
   calendarToday, cancelEditSubtask, clearDependencyTaskSelection, clearMsFilter, closeAttachmentViewer, closeAutomationModal,
   closeConfirmModal, closeDependencyTaskOptions, closeModal, closeModalForce, closeNotifications, closeProjectModal, closePromptModal,
   closeTagsModal, collapseAllSubtasks, createGroup, createTask, createUser,
-  deleteAttachment, deleteAutomationRule, deleteCategory, deleteComment, deleteCustomField, deleteGroup,
+  deleteAttachment, deleteAutomationRule, deleteCategory, deleteComment, deleteGroup,
   deleteProject, deleteSubtask, deleteTag, deleteTask, deleteUser,
   detectProjectColumns, detectTaskColumns, detectUserColumns, downloadAttachment, editCategory, editKanbanStatus,
   editProject, editTag, expandActivityLog, expandAllSubtasks, exportGanttPdf, filterComboSearch, filterProjectDropdown,
@@ -142,7 +138,7 @@ Object.assign(window, {
   generateOccurrences, generateSubtaskOccurrences, hideGanttDependencyTooltip, markAllNotificationsRead, markNotificationRead, onAutoActionChange,
   onAutoTriggerChange, onCalendarDayClick, onCalendarDragOver, onCalendarDrop, onCalendarTaskDragStart, onDragLeave,
   onDragOver, onDragStart, onDrop, openAddAutomationRuleModal, openAttachmentInNewTab, openCardAttachmentsModal,
-  openCardCommentsModal, openCardSubtasksModal, openCategoriesModal, openColumnMappingModal, openComputedNotification, openCustomFieldsModal,
+  openCardCommentsModal, openCardSubtasksModal, openCategoriesModal, openColumnMappingModal, openComputedNotification,
   openDependencyTaskOptions, openEditAutomationRuleModal, openEditGroupModal, openEditTaskModal, openEditUserModal, openManageRolesModal,
   openNewGroupModal, openNewTaskForDay, openNewTaskModal, openNewUserModal, openNotification,
   openProjectModal, openProjectModalForEdit, openSubtaskDepModal, openTagsModal, pauseTimer, quickAction,
@@ -154,10 +150,10 @@ Object.assign(window, {
   setCalendarMode, setGanttCustomRange, setGanttMode, setGanttSort, setGanttYear, setKanbanGroupBy,
   setKanbanSort, setStPill, setStStatus, setStType, setupCreateFrenchTables, setupUseExistingTables,
   showGanttDependencyTooltip, showNotifications, sortTable, startEditSubtask, startTimer, submitPromptModal,
-  switchTab, toggleArchiveView, toggleAutomationRule, toggleCardDisplay, toggleCardExpand, toggleCfOptions,
+  switchTab, toggleArchiveView, toggleAutomationRule, toggleCardDisplay, toggleCardExpand,
   toggleDependencyTaskOptions, toggleEmojiPicker, toggleFilterCombo, toggleGanttFullscreen, toggleGanttSubtask, toggleKanbanCol,
   toggleKanbanFullscreen, toggleMsFilter, toggleMsOption, toggleMyProjects, toggleNotifyConcerned, toggleProjectDropdown,
-  toggleRaci, toggleSubtask, toggleSubtaskFromCard, toggleSubtaskFromPopup, toggleSubtasks, updateCustomFieldValue,
+  toggleRaci, toggleSubtask, toggleSubtaskFromCard, toggleSubtaskFromPopup, toggleSubtasks,
   updateGroup, updateSubtaskDep, updateTask, updateUser, uploadTaskAttachments,
   viewAttachment
 });

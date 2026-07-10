@@ -18,8 +18,6 @@ export function applyFrenchTableNames(updateDefaults) {
   state.DEPENDENCIES_TABLE = CLIENT_TABLE_NAMES.dependencies;
   state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
   state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
-  state.CUSTOM_FIELDS_TABLE = CLIENT_TABLE_NAMES.customFields;
-  state.CUSTOM_FIELD_VALUES_TABLE = CLIENT_TABLE_NAMES.customFieldValues;
   state.CATEGORIES_TABLE = CLIENT_TABLE_NAMES.categories;
   state.TAGS_TABLE = CLIENT_TABLE_NAMES.tags;
   state.PROJECTS_TABLE = CLIENT_TABLE_NAMES.projects;
@@ -391,28 +389,6 @@ export async function ensureTables() {
           { id: 'End_Time', type: 'Date' },
           { id: 'Duration', type: 'Int' },
           { id: 'Description', type: 'Text' }
-        ]]
-      ]);
-    }
-
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.CUSTOM_FIELDS_TABLE) === -1)) {
-      await grist.docApi.applyUserActions([
-        ['AddTable', state.CUSTOM_FIELDS_TABLE, [
-          { id: 'Name', type: 'Text' },
-          { id: 'Type', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['text', 'number', 'date', 'checkbox', 'select'] }) },
-          { id: 'Options', type: 'Text' },
-          { id: 'Order', type: 'Int' },
-          { id: 'Created_At', type: 'Date' }
-        ]]
-      ]);
-    }
-
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.CUSTOM_FIELD_VALUES_TABLE) === -1)) {
-      await grist.docApi.applyUserActions([
-        ['AddTable', state.CUSTOM_FIELD_VALUES_TABLE, [
-          { id: 'Task_Id', type: 'Int' },
-          { id: 'Field_Id', type: 'Int' },
-          { id: 'Value', type: 'Text' }
         ]]
       ]);
     }

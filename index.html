@@ -2790,76 +2790,7 @@
     }
     .recurrence-batch-btns .btn { flex: 1; font-size: 11px; padding: 6px 8px; }
 
-    /* ========== CUSTOM FIELDS ========== */
-    .custom-fields-section {
-      margin-top: 16px;
-      padding: 12px;
-      background: linear-gradient(135deg, #faf5ff, #f3e8ff);
-      border-radius: 10px;
-      border: 1px solid #e9d5ff;
-    }
-    .custom-fields-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-    .cf-manage-btn {
-      margin-left: auto;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      font-size: 14px;
-      opacity: 0.6;
-      transition: opacity 0.15s;
-    }
-    .cf-manage-btn:hover { opacity: 1; }
-    .custom-fields-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .custom-field-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .cf-label {
-      font-size: 12px;
-      font-weight: 600;
-      color: #7c3aed;
-      min-width: 100px;
-    }
-    .cf-input, .cf-select {
-      flex: 1;
-      padding: 6px 10px;
-      border: 1px solid #e9d5ff;
-      border-radius: 6px;
-      font-size: 12px;
-      font-family: inherit;
-      background: white;
-    }
-    .cf-input:focus, .cf-select:focus {
-      outline: none;
-      border-color: #a78bfa;
-      box-shadow: 0 0 0 3px rgba(167,139,250,0.1);
-    }
-    .cf-number { width: 80px; flex: none; }
-    .cf-date { width: 130px; flex: none; }
-    .cf-checkbox {
-      width: 18px;
-      height: 18px;
-      accent-color: #7c3aed;
-    }
-    .cf-empty {
-      text-align: center;
-      padding: 10px;
-      color: #a78bfa;
-      font-size: 12px;
-      font-style: italic;
-    }
-    
-    /* Custom Fields Modal */
+    /* ========== SHARED LIST/FORM MODAL (used by Categories) ========== */
     .modal-cf {
       max-width: 500px;
     }
@@ -2880,13 +2811,6 @@
       flex: 1;
       font-weight: 600;
       color: #1e293b;
-    }
-    .cf-list-type {
-      font-size: 11px;
-      background: #f3e8ff;
-      color: #7c3aed;
-      padding: 2px 8px;
-      border-radius: 4px;
     }
     .cf-delete-btn {
       background: transparent;
@@ -2926,14 +2850,6 @@
       border-radius: 6px;
       font-size: 12px;
       font-family: inherit;
-    }
-    .cf-form-select {
-      padding: 8px 12px;
-      border: 1px solid #e9d5ff;
-      border-radius: 6px;
-      font-size: 12px;
-      font-family: inherit;
-      background: white;
     }
 
     /* ========== CATEGORIES ========== */

@@ -9,7 +9,6 @@ import { loadAllData } from './data-loader.js';
 import { logActivity } from './activity-log.js';
 import { getTaskAttachments, renderAttachmentsSection, uploadTaskAttachments } from './attachments.js';
 import { getTaskComments } from './comments.js';
-import { getTaskCustomFieldValue, renderCustomFieldInput, openCustomFieldsModal } from './custom-fields.js';
 import {
   getTaskTimeEntries, getTaskTotalTime, formatDuration, formatDurationShort,
   pauseTimer, startTimer, addManualTimeEntry
@@ -774,36 +773,6 @@ export function openEditTaskModal(taskId, preserveAssignees) {
   html += '<button type="button" class="dep-add-btn" onclick="addDependency(' + task.id + ')">+</button>';
   html += '</div>';
   html += '</div>';
-
-  // === CUSTOM FIELDS SECTION ===
-  if (state.customFields.length > 0) {
-    html += '<div class="custom-fields-section">';
-    html += '<div class="custom-fields-header">';
-    html += '<span class="detail-field-icon">📋</span>';
-    html += '<span class="detail-field-label">' + t('customFields') + '</span>';
-    if (state.isOwner) html += '<button class="cf-manage-btn" onclick="openCustomFieldsModal()">⚙️</button>';
-    html += '</div>';
-    html += '<div class="custom-fields-list">';
-    for (var cfi = 0; cfi < state.customFields.length; cfi++) {
-      var cf = state.customFields[cfi];
-      var cfValue = getTaskCustomFieldValue(task.id, cf.id);
-      html += '<div class="custom-field-item">';
-      html += '<label class="cf-label">' + sanitize(cf.Name) + '</label>';
-      html += renderCustomFieldInput(cf, task.id, cfValue);
-      html += '</div>';
-    }
-    html += '</div>';
-    html += '</div>';
-  } else if (state.isOwner) {
-    html += '<div class="custom-fields-section">';
-    html += '<div class="custom-fields-header">';
-    html += '<span class="detail-field-icon">📋</span>';
-    html += '<span class="detail-field-label">' + t('customFields') + '</span>';
-    html += '<button class="cf-manage-btn" onclick="openCustomFieldsModal()">⚙️</button>';
-    html += '</div>';
-    html += '<div class="cf-empty">' + t('noCustomFields') + '</div>';
-    html += '</div>';
-  }
 
   // === ATTACHMENTS SECTION (D2) ===
   html += '<div class="attachments-section">';
@@ -1708,9 +1677,6 @@ export async function deleteTask(taskId) {
     });
     state.timeEntries.forEach(function(entry) {
       if (entry.Task_Id === taskId) actions.push(['RemoveRecord', state.TIME_ENTRIES_TABLE, entry.id]);
-    });
-    state.customFieldValues.forEach(function(value) {
-      if (value.Task_Id === taskId) actions.push(['RemoveRecord', state.CUSTOM_FIELD_VALUES_TABLE, value.id]);
     });
     state.attachments.forEach(function(attachment) {
       if (attachment.Task_Id === taskId) actions.push(['RemoveRecord', state.ATTACHMENTS_TABLE, attachment.id]);

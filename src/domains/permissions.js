@@ -193,8 +193,6 @@ export function getAclRules() {
     { tableId: state.SUBTASKS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
     { tableId: state.COMMENTS_TABLE,        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
     { tableId: state.TIME_ENTRIES_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-    { tableId: state.CUSTOM_FIELD_VALUES_TABLE, ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
-    { tableId: state.CUSTOM_FIELDS_TABLE,   ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
     { tableId: state.DEPENDENCIES_TABLE,    ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
     { tableId: state.USERS_TABLE,           ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
     { tableId: state.GROUPS_TABLE,          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },

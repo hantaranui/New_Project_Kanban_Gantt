@@ -3,7 +3,6 @@ import { sanitize } from '../utils/sanitize.js';
 import { priorityLabel } from '../utils/labels.js';
 import { formatDate } from '../utils/dates.js';
 import { state } from '../store.js';
-import { getTaskCustomFieldsText } from './custom-fields.js';
 import { getTaskSubtasks } from './subtasks.js';
 import { getFilteredTasks, getProjectName, getProjectColor } from './filters.js';
 import { getKanbanStatuses } from './kanban.js';
@@ -126,7 +125,7 @@ export function renderTableView() {
     if (tableFilterStatuses.length && tableFilterStatuses.indexOf(task.Status) === -1) return false;
     if (tableFilterPriorities.length && tableFilterPriorities.indexOf(task.Priority) === -1) return false;
     if (search) {
-      var text = (task.Title + ' ' + task.Description + ' ' + task.Assignee + ' ' + getTaskCustomFieldsText(task.id)).toLowerCase();
+      var text = (task.Title + ' ' + task.Description + ' ' + task.Assignee).toLowerCase();
       if (text.indexOf(search) === -1) return false;
     }
     return true;

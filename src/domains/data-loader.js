@@ -209,43 +209,6 @@ export async function loadAllData() {
   }
 
   try {
-    var cfData = await grist.docApi.fetchTable(state.CUSTOM_FIELDS_TABLE);
-    state.customFields = [];
-    if (cfData && cfData.id) {
-      for (var i = 0; i < cfData.id.length; i++) {
-        state.customFields.push({
-          id: cfData.id[i],
-          Name: cfData.Name ? cfData.Name[i] : '',
-          Type: cfData.Type ? cfData.Type[i] : 'text',
-          Options: cfData.Options ? cfData.Options[i] : '',
-          Order: cfData.Order ? cfData.Order[i] : 0,
-          Created_At: cfData.Created_At ? cfData.Created_At[i] : null
-        });
-      }
-    }
-    state.customFields.sort(function(a, b) { return (a.Order || 0) - (b.Order || 0); });
-  } catch (e) {
-    state.customFields = [];
-  }
-
-  try {
-    var cfvData = await grist.docApi.fetchTable(state.CUSTOM_FIELD_VALUES_TABLE);
-    state.customFieldValues = [];
-    if (cfvData && cfvData.id) {
-      for (var i = 0; i < cfvData.id.length; i++) {
-        state.customFieldValues.push({
-          id: cfvData.id[i],
-          Task_Id: cfvData.Task_Id ? cfvData.Task_Id[i] : null,
-          Field_Id: cfvData.Field_Id ? cfvData.Field_Id[i] : null,
-          Value: cfvData.Value ? cfvData.Value[i] : ''
-        });
-      }
-    }
-  } catch (e) {
-    state.customFieldValues = [];
-  }
-
-  try {
     var catData = await grist.docApi.fetchTable(state.CATEGORIES_TABLE);
     state.categories = [];
     if (catData && catData.id) {

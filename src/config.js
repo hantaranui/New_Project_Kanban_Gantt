@@ -10,8 +10,6 @@ export const CLIENT_TABLE_NAMES = {
   dependencies: 'Dependances',
   comments: 'Commentaires',
   timeEntries: 'Suivi_temps',
-  customFields: 'Champs_personnalises',
-  customFieldValues: 'Valeurs_champs_personnalises',
   categories: 'Categories',
   tags: 'Etiquettes',
   projects: 'Projets',
