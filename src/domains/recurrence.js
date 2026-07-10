@@ -1,9 +1,9 @@
 import { t, currentLang } from '../i18n.js';
 import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
-// Temporary backwards import: setField/loadAllData aren't attached here yet
-// (setField -> config, loadAllData -> data loader).
-import { setField, loadAllData } from '../main.js';
+import { loadAllData } from './data-loader.js';
+// Temporary backwards import: setField isn't attached here yet (config domain).
+import { setField } from '../main.js';
 // NOTE: renderCurrentView() below is called but never defined anywhere in this
 // codebase - a pre-existing bug (confirmed present before this refactor too,
 // see git history). Left as-is: fixing bugs is out of scope for this

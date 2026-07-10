@@ -3,11 +3,12 @@ import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
 import { renderTableView } from './table-view.js';
+import { loadAllData } from './data-loader.js';
 // Temporary backwards imports: none of these are extracted yet
-// (loadAllData -> data loader, openEditTaskModal/closeModalForce -> task-modal,
+// (openEditTaskModal/closeModalForce -> task-modal,
 // openCardSubtasksModal/renderKanbanView -> kanban, getKanbanStatuses -> kanban domain).
 import {
-  loadAllData, openEditTaskModal, closeModalForce, openCardSubtasksModal,
+  openEditTaskModal, closeModalForce, openCardSubtasksModal,
   renderKanbanView, getKanbanStatuses
 } from '../main.js';
 

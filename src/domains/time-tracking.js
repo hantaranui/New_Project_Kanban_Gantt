@@ -1,9 +1,9 @@
 import { t, currentLang } from '../i18n.js';
 import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
-// Temporary backwards imports: loadAllData/openEditTaskModal aren't extracted yet
-// (loadAllData -> data loader, openEditTaskModal -> task-modal domain).
-import { loadAllData, openEditTaskModal } from '../main.js';
+import { loadAllData } from './data-loader.js';
+// Temporary backwards import: openEditTaskModal isn't extracted yet (task-modal domain).
+import { openEditTaskModal } from '../main.js';
 
 export function getTaskTimeEntries(taskId) {
   return state.timeEntries.filter(function(te) { return te.Task_Id === taskId; })

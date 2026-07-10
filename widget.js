@@ -1218,475 +1218,6 @@
     }, 3e3);
   }
 
-  // src/domains/attachments.js
-  var ATTACH_MAX_BYTES = 5 * 1024 * 1024;
-  function getTaskAttachments(taskId) {
-    return state.attachments.filter(function(a) {
-      return a.Task_Id === taskId;
-    }).sort(function(a, b) {
-      return (a.Created_At || 0) - (b.Created_At || 0);
-    });
-  }
-  function formatFileSize(bytes) {
-    if (!bytes) return "";
-    if (bytes < 1024) return bytes + " o";
-    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " Ko";
-    return (bytes / 1024 / 1024).toFixed(1) + " Mo";
-  }
-  function attachmentIsImage(type, name) {
-    return /^image\//.test(type || "") || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(name || "");
-  }
-  function attachmentIsPdf(type, name) {
-    return (type || "") === "application/pdf" || /\.pdf$/i.test(name || "");
-  }
-  function readFileAsDataURL(file) {
-    return new Promise(function(resolve, reject) {
-      var reader = new FileReader();
-      reader.onerror = reject;
-      reader.onload = function() {
-        resolve(reader.result);
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-  function compressImageFile(file, maxW, quality) {
-    maxW = maxW || 1600;
-    quality = quality || 0.8;
-    return new Promise(function(resolve) {
-      readFileAsDataURL(file).then(function(src) {
-        if (file.type === "image/gif" || file.type === "image/svg+xml") {
-          resolve(src);
-          return;
-        }
-        var img = new Image();
-        img.onerror = function() {
-          resolve(src);
-        };
-        img.onload = function() {
-          var scale = Math.min(1, maxW / img.width);
-          var w = Math.round(img.width * scale), h = Math.round(img.height * scale);
-          var canvas = document.createElement("canvas");
-          canvas.width = w;
-          canvas.height = h;
-          var ctx = canvas.getContext("2d");
-          if (!ctx) {
-            resolve(src);
-            return;
-          }
-          if (file.type === "image/png") {
-            ctx.fillStyle = "#fff";
-            ctx.fillRect(0, 0, w, h);
-          }
-          ctx.drawImage(img, 0, 0, w, h);
-          var out = canvas.toDataURL("image/jpeg", quality);
-          resolve(out.length < src.length ? out : src);
-        };
-        img.src = src;
-      }).catch(function() {
-        resolve(null);
-      });
-    });
-  }
-  async function uploadTaskAttachments(taskId, fileList) {
-    if (!fileList || !fileList.length) return;
-    var statusEl = document.getElementById("attach-status-" + taskId);
-    try {
-      var addedCount = 0, skipped = [];
-      for (var i = 0; i < fileList.length; i++) {
-        var file = fileList[i];
-        if (statusEl) statusEl.textContent = (currentLang === "fr" ? "Traitement de " : "Processing ") + file.name + "...";
-        var dataUrl = attachmentIsImage(file.type, file.name) ? await compressImageFile(file) : await readFileAsDataURL(file);
-        if (!dataUrl) {
-          skipped.push(file.name);
-          continue;
-        }
-        var approxBytes = Math.round(dataUrl.length * 0.75);
-        if (approxBytes > ATTACH_MAX_BYTES) {
-          skipped.push(file.name + " (" + formatFileSize(approxBytes) + ")");
-          continue;
-        }
-        await grist.docApi.applyUserActions([
-          ["AddRecord", state.ATTACHMENTS_TABLE, null, {
-            Task_Id: taskId,
-            File_Name: file.name,
-            File_Type: file.type || "",
-            File_Size: file.size || 0,
-            File_Data: dataUrl,
-            Created_At: Math.floor(Date.now() / 1e3)
-          }]
-        ]);
-        addedCount++;
-      }
-      if (statusEl) statusEl.textContent = "";
-      await loadAllData();
-      renderAttachmentsSection(taskId);
-      if (typeof refreshAllViews === "function") refreshAllViews();
-      if (addedCount > 0) showToast((currentLang === "fr" ? "Pi\xE8ce(s) jointe(s) ajout\xE9e(s) : " : "Attachment(s) added: ") + addedCount, "success");
-      if (skipped.length) showToast((currentLang === "fr" ? "Trop volumineux (max 5 Mo), ignor\xE9 : " : "Too large (max 5MB), skipped: ") + skipped.join(", "), "error");
-    } catch (e) {
-      console.error("[GristPM] uploadTaskAttachments error:", e);
-      if (statusEl) statusEl.textContent = "";
-      showToast((currentLang === "fr" ? "\xC9chec : " : "Failed: ") + e.message, "error");
-    }
-  }
-  function _findAtt(recordId) {
-    return state.attachments.find(function(a) {
-      return a.id === recordId;
-    });
-  }
-  function downloadAttachment(recordId) {
-    var att = _findAtt(recordId);
-    if (!att || !att.Data) return;
-    var a = document.createElement("a");
-    a.href = att.Data;
-    a.download = att.File_Name || "fichier";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
-  async function deleteAttachment(recordId, taskId) {
-    var confirmed = await showConfirmModal(
-      currentLang === "fr" ? "Supprimer cette pi\xE8ce jointe ?" : "Delete this attachment?",
-      currentLang === "fr" ? "Supprimer la pi\xE8ce jointe" : "Delete attachment"
-    );
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([["RemoveRecord", state.ATTACHMENTS_TABLE, recordId]]);
-      await loadAllData();
-      renderAttachmentsSection(taskId);
-      if (typeof refreshAllViews === "function") refreshAllViews();
-    } catch (e) {
-      showToast((currentLang === "fr" ? "Erreur : " : "Error: ") + e.message, "error");
-    }
-  }
-  function viewAttachment(recordId) {
-    var att = _findAtt(recordId);
-    if (!att || !att.Data) return;
-    var isImg = attachmentIsImage(att.File_Type, att.File_Name);
-    var isPdf = attachmentIsPdf(att.File_Type, att.File_Name);
-    if (isImg || isPdf) {
-      var overlay = document.getElementById("attachment-viewer");
-      var body = document.getElementById("attachment-viewer-body");
-      var title = document.getElementById("attachment-viewer-title");
-      if (title) title.textContent = att.File_Name || "";
-      if (body) {
-        body.innerHTML = isImg ? '<img src="' + att.Data + '" style="max-width:100%;max-height:78vh;display:block;margin:0 auto;border-radius:8px;">' : '<iframe src="' + att.Data + '" style="width:80vw;height:78vh;border:none;border-radius:8px;"></iframe>';
-      }
-      if (overlay) overlay.style.display = "flex";
-    } else {
-      downloadAttachment(recordId);
-    }
-  }
-  function closeAttachmentViewer() {
-    var overlay = document.getElementById("attachment-viewer");
-    var body = document.getElementById("attachment-viewer-body");
-    if (body) body.innerHTML = "";
-    if (overlay) overlay.style.display = "none";
-  }
-  function renderAttachmentsSection(taskId) {
-    var container = document.getElementById("attachments-list-" + taskId);
-    if (!container) return;
-    var list = getTaskAttachments(taskId);
-    var html = "";
-    if (list.length === 0) {
-      html = '<div class="attach-empty">' + (currentLang === "fr" ? "Aucune pi\xE8ce jointe" : "No attachments") + "</div>";
-    } else {
-      list.forEach(function(att) {
-        var isImg = attachmentIsImage(att.File_Type, att.File_Name);
-        var icon = isImg ? "\u{1F5BC}\uFE0F" : attachmentIsPdf(att.File_Type, att.File_Name) ? "\u{1F4C4}" : "\u{1F4CE}";
-        html += '<div class="attach-item">';
-        html += '<span class="attach-icon">' + icon + "</span>";
-        html += '<span class="attach-name" onclick="viewAttachment(' + att.id + ')" title="' + (currentLang === "fr" ? "Voir" : "View") + '">' + sanitize(att.File_Name) + "</span>";
-        html += '<span class="attach-size">' + formatFileSize(att.File_Size) + "</span>";
-        html += '<button class="attach-btn" onclick="downloadAttachment(' + att.id + ')" title="' + (currentLang === "fr" ? "T\xE9l\xE9charger" : "Download") + '">\u2B07\uFE0F</button>';
-        if (state.isOwner) html += '<button class="attach-btn" onclick="deleteAttachment(' + att.id + ", " + taskId + ')" title="' + t("delete") + '">\u{1F5D1}\uFE0F</button>';
-        html += "</div>";
-      });
-    }
-    container.innerHTML = html;
-  }
-  function openAttachmentInNewTab(recordId) {
-    var att = _findAtt(recordId);
-    if (!att || !att.Data) return;
-    var win = window.open("", "_blank");
-    if (win) {
-      win.document.write('<iframe src="' + att.Data + '" style="border:0;width:100vw;height:100vh;"></iframe>');
-      win.document.title = att.File_Name || "Attachment";
-    } else {
-      downloadAttachment(recordId);
-    }
-  }
-
-  // src/domains/activity-log.js
-  async function logActivity(action, taskId, taskTitle, details) {
-    try {
-      var record = {
-        Timestamp: Math.floor(Date.now() / 1e3),
-        User_Email: state.currentUserEmail || "unknown",
-        Action: action,
-        Task_Id: taskId || 0,
-        Task_Title: taskTitle || "",
-        Details: details || ""
-      };
-      await grist.docApi.applyUserActions([["AddRecord", state.ACTIVITY_LOG_TABLE, null, record]]);
-      state.activityLog.push(record);
-    } catch (e) {
-      console.log("[GristPM] Activity log skipped:", e.message);
-    }
-  }
-  var _activityLogLimit = 20;
-  function renderActivityLog() {
-    var container = document.getElementById("activity-log-list");
-    if (!container) return;
-    var sorted = state.activityLog.slice().sort(function(a, b) {
-      return (b.Timestamp || 0) - (a.Timestamp || 0);
-    });
-    var shown = sorted.slice(0, _activityLogLimit);
-    if (shown.length === 0) {
-      container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + t("actNoActivity") + "</div>";
-      return;
-    }
-    var ACTION_ICONS = {
-      task_created: "\u{1F195}",
-      task_updated: "\u270F\uFE0F",
-      task_deleted: "\u{1F5D1}\uFE0F",
-      status_changed: "\u{1F504}",
-      task_archived: "\u{1F4E6}",
-      task_restored: "\u267B\uFE0F",
-      comment_added: "\u{1F4AC}"
-    };
-    var ACTION_I18N = {
-      task_created: "actTaskCreated",
-      task_updated: "actTaskUpdated",
-      task_deleted: "actTaskDeleted",
-      status_changed: "actStatusChanged",
-      task_archived: "actTaskArchived",
-      task_restored: "actTaskRestored",
-      comment_added: "actCommentAdded"
-    };
-    var html = "";
-    var lastDateStr = "";
-    for (var i = 0; i < shown.length; i++) {
-      var entry = shown[i];
-      var dateObj = entry.Timestamp ? new Date(entry.Timestamp * 1e3) : /* @__PURE__ */ new Date();
-      var dateStr = dateObj.toLocaleDateString(currentLang === "fr" ? "fr-FR" : "en-US", { weekday: "long", day: "numeric", month: "long" });
-      if (dateStr !== lastDateStr) {
-        html += '<div style="font-size:11px;font-weight:700;color:#94a3b8;padding:8px 0 4px;border-bottom:1px solid #f1f5f9;text-transform:capitalize;">' + dateStr + "</div>";
-        lastDateStr = dateStr;
-      }
-      var icon = ACTION_ICONS[entry.Action] || "\u{1F4CB}";
-      var actionText = t(ACTION_I18N[entry.Action] || entry.Action);
-      var userName = getUserDisplayName(entry.User_Email);
-      var timeStr = dateObj.toLocaleTimeString(currentLang === "fr" ? "fr-FR" : "en-US", { hour: "2-digit", minute: "2-digit" });
-      html += '<div class="activity-entry" style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f8fafc;"';
-      if (entry.Task_Id) html += ' onclick="openEditTaskModal(' + entry.Task_Id + ')" style="cursor:pointer;"';
-      html += ">";
-      html += '<span style="font-size:16px;flex-shrink:0;margin-top:2px;">' + icon + "</span>";
-      html += '<div style="flex:1;min-width:0;">';
-      html += '<div style="font-size:13px;"><strong>' + sanitize(userName) + "</strong> " + actionText;
-      if (entry.Task_Title) html += ' <span style="color:#3b82f6;font-weight:600;">' + sanitize(entry.Task_Title) + "</span>";
-      html += "</div>";
-      if (entry.Details) html += '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + sanitize(entry.Details) + "</div>";
-      html += "</div>";
-      html += '<span style="font-size:10px;color:#94a3b8;white-space:nowrap;margin-top:3px;">' + timeStr + "</span>";
-      html += "</div>";
-    }
-    if (sorted.length > _activityLogLimit) {
-      html += '<div style="text-align:center;padding:12px;"><button class="btn btn-secondary btn-sm" onclick="expandActivityLog()">' + t("actLoadMore") + "</button></div>";
-    }
-    container.innerHTML = html;
-  }
-  function expandActivityLog() {
-    _activityLogLimit += 20;
-    renderActivityLog();
-  }
-
-  // src/domains/templates.js
-  function renderTemplatesView() {
-    var search = (document.getElementById("template-search").value || "").toLowerCase();
-    var filterPriority = document.getElementById("filter-template-priority").value;
-    var filtered = state.templates.filter(function(tpl2) {
-      if (filterPriority && tpl2.Priority !== filterPriority) return false;
-      if (search) {
-        var text = (tpl2.Title + " " + tpl2.Description + " " + tpl2.Category).toLowerCase();
-        if (text.indexOf(search) === -1) return false;
-      }
-      return true;
-    });
-    var html = "";
-    for (var i = 0; i < filtered.length; i++) {
-      var tpl = filtered[i];
-      var dotClass = tpl.Priority === "high" ? "dot-high" : tpl.Priority === "medium" ? "dot-medium" : "dot-low";
-      html += '<div class="template-card">';
-      html += '<div class="template-card-info">';
-      html += "<h4>" + sanitize(tpl.Title) + "</h4>";
-      html += '<div class="template-meta">';
-      if (tpl.Category) html += "\u{1F3F7}\uFE0F " + sanitize(tpl.Category);
-      html += ' <span class="priority-dot ' + dotClass + '"></span> ' + priorityLabel(tpl.Priority);
-      if (tpl.Estimated_Hours) html += " \u23F1\uFE0F " + tpl.Estimated_Hours + "h";
-      html += " \u{1F4CA} " + (tpl.Usage_Count || 0) + " " + (currentLang === "fr" ? "utilisations" : "uses");
-      if (tpl.Updated_At) html += " \u2022 " + (currentLang === "fr" ? "Mis \xE0 jour le " : "Updated ") + formatDate(tpl.Updated_At);
-      html += "</div></div>";
-      html += '<div style="display:flex;gap:4px;">';
-      html += '<button class="btn btn-primary btn-sm" onclick="useTemplate(' + tpl.id + ')">' + t("useTemplate") + "</button>";
-      if (state.isOwner) html += '<button class="btn-icon" onclick="openNewTemplateModal(' + tpl.id + ')" title="' + t("editTemplate") + '">\u270F\uFE0F</button>';
-      if (state.isOwner) html += '<button class="btn-icon" onclick="deleteTemplate(' + tpl.id + ')">\u{1F5D1}\uFE0F</button>';
-      html += "</div>";
-      html += "</div>";
-    }
-    if (filtered.length === 0) {
-      html = '<div style="text-align:center;padding:40px;color:#94a3b8;">' + t("noTasks") + "</div>";
-    }
-    document.getElementById("templates-list").innerHTML = html;
-  }
-  function openNewTemplateModal(tplId) {
-    var editing = tplId != null;
-    var tpl = editing ? state.templates.find(function(x) {
-      return x.id === tplId;
-    }) : null;
-    if (editing && !tpl) return;
-    var title = editing ? sanitize(tpl.Title || "") : "";
-    var desc = editing ? sanitize(tpl.Description || "") : "";
-    var priority = editing ? tpl.Priority || "medium" : "medium";
-    var category = editing ? tpl.Category || "" : "";
-    var hours = editing ? tpl.Estimated_Hours || "" : "";
-    var tplGroup = editing ? tpl.Group_Name || "" : "";
-    var tplTag = editing ? tpl.Tag || "" : "";
-    var tplRecur = editing ? tpl.Recurrence || "none" : "none";
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t(editing ? "modalEditTemplate" : "modalNewTemplate") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldTitle") + '</label><input type="text" id="tpl-title" value="' + title + '" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="tpl-desc">' + desc + "</textarea></div>";
-    html += '<div class="form-row">';
-    html += '<div class="form-group"><label>' + t("fieldPriority") + '</label><select id="tpl-priority">';
-    html += '<option value="medium"' + (priority === "medium" ? " selected" : "") + ">" + t("priorityMedium") + "</option>";
-    html += '<option value="high"' + (priority === "high" ? " selected" : "") + ">" + t("priorityHigh") + "</option>";
-    html += '<option value="low"' + (priority === "low" ? " selected" : "") + ">" + t("priorityLow") + "</option>";
-    html += "</select></div>";
-    var tplCatOptions = '<option value=""' + (!category ? " selected" : "") + ">--</option>";
-    for (var tci = 0; tci < state.categories.length; tci++) {
-      var catName = state.categories[tci].Name;
-      tplCatOptions += '<option value="' + sanitize(catName) + '"' + (catName === category ? " selected" : "") + ">" + sanitize(catName) + "</option>";
-    }
-    html += '<div class="form-group"><label>' + t("fieldCategory") + '</label><select id="tpl-category">' + tplCatOptions + "</select></div>";
-    html += "</div>";
-    html += '<div class="form-group"><label>' + t("fieldEstimatedTime") + '</label><input type="number" id="tpl-hours" step="0.5" min="0" value="' + hours + '" /></div>';
-    html += '<div class="form-row">';
-    var tplGroupOpts = '<option value="">--</option>';
-    for (var tgi = 0; tgi < state.groups.length; tgi++) tplGroupOpts += '<option value="' + sanitize(state.groups[tgi].Name) + '"' + (state.groups[tgi].Name === tplGroup ? " selected" : "") + ">" + sanitize(state.groups[tgi].Name) + "</option>";
-    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="tpl-group">' + tplGroupOpts + "</select></div>";
-    var tplTagOpts = '<option value="">--</option>';
-    for (var tti = 0; tti < state.tags.length; tti++) tplTagOpts += '<option value="' + sanitize(state.tags[tti].Name) + '"' + (state.tags[tti].Name === tplTag ? " selected" : "") + ">" + sanitize(state.tags[tti].Name) + "</option>";
-    html += '<div class="form-group"><label>' + t("tag") + '</label><select id="tpl-tag">' + tplTagOpts + "</select></div>";
-    html += "</div>";
-    var recurKeys = ["none", "daily", "weekly", "biweekly", "monthly", "quarterly", "yearly"];
-    var recurLabels = { none: "recurrenceNone", daily: "recurrenceDaily", weekly: "recurrenceWeekly", biweekly: "recurrenceBiweekly", monthly: "recurrenceMonthly", quarterly: "recurrenceQuarterly", yearly: "recurrenceYearly" };
-    var tplRecurOpts = recurKeys.map(function(k) {
-      return '<option value="' + k + '"' + (tplRecur === k ? " selected" : "") + ">" + t(recurLabels[k]) + "</option>";
-    }).join("");
-    html += '<div class="form-group"><label>\u{1F501} ' + (currentLang === "fr" ? "R\xE9currence" : "Recurrence") + '</label><select id="tpl-recurrence">' + tplRecurOpts + "</select></div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    if (editing) {
-      html += '<button class="btn btn-primary" onclick="updateTemplate(' + tplId + ')">' + t("save") + "</button>";
-    } else {
-      html += '<button class="btn btn-primary" onclick="createTemplate()">' + t("save") + "</button>";
-    }
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  async function createTemplate() {
-    var title = document.getElementById("tpl-title").value.trim();
-    if (!title) return;
-    var record = {
-      Title: title,
-      Description: document.getElementById("tpl-desc").value.trim(),
-      Priority: document.getElementById("tpl-priority").value,
-      Category: document.getElementById("tpl-category").value.trim(),
-      Estimated_Hours: parseFloat(document.getElementById("tpl-hours").value) || 0,
-      Group_Name: (document.getElementById("tpl-group") || {}).value || "",
-      Tag: (document.getElementById("tpl-tag") || {}).value || "",
-      Recurrence: (document.getElementById("tpl-recurrence") || {}).value || "none",
-      Usage_Count: 0,
-      Updated_At: Math.floor(Date.now() / 1e3)
-    };
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.TEMPLATES_TABLE, null, record]
-      ]);
-      showToast(t("templateCreated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error creating template:", e);
-    }
-  }
-  async function updateTemplate(tplId) {
-    var title = document.getElementById("tpl-title").value.trim();
-    if (!title) return;
-    var record = {
-      Title: title,
-      Description: document.getElementById("tpl-desc").value.trim(),
-      Priority: document.getElementById("tpl-priority").value,
-      Category: document.getElementById("tpl-category").value.trim(),
-      Estimated_Hours: parseFloat(document.getElementById("tpl-hours").value) || 0,
-      Group_Name: (document.getElementById("tpl-group") || {}).value || "",
-      Tag: (document.getElementById("tpl-tag") || {}).value || "",
-      Recurrence: (document.getElementById("tpl-recurrence") || {}).value || "none",
-      Updated_At: Math.floor(Date.now() / 1e3)
-    };
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.TEMPLATES_TABLE, tplId, record]
-      ]);
-      showToast(t("templateUpdated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error updating template:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function deleteTemplate(tplId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(t("confirmDeleteTemplate"), currentLang === "fr" ? "Supprimer le mod\xE8le" : "Delete template");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.TEMPLATES_TABLE, tplId]
-      ]);
-      showToast(t("templateDeleted"), "info");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error deleting template:", e);
-    }
-  }
-  async function useTemplate(tplId) {
-    var tpl = state.templates.find(function(t2) {
-      return t2.id === tplId;
-    });
-    if (!tpl) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.TEMPLATES_TABLE, tplId, { Usage_Count: (tpl.Usage_Count || 0) + 1 }]
-      ]);
-    } catch (e) {
-    }
-    startNewTask("todo", null, {
-      title: tpl.Title || "",
-      description: tpl.Description || "",
-      priority: tpl.Priority || "medium",
-      category: tpl.Category || "",
-      group: tpl.Group_Name || "",
-      tag: tpl.Tag || "",
-      recurrence: tpl.Recurrence || "none",
-      estimatedHours: tpl.Estimated_Hours || 0
-    });
-  }
-
   // src/domains/filters.js
   function roleLabel(role) {
     if (role === "admin") return t("roleAdmin");
@@ -2192,6 +1723,833 @@
       return p.id === projectId;
     });
     return proj ? proj.Color || "#6366f1" : "#94a3b8";
+  }
+
+  // src/domains/data-loader.js
+  async function loadAllData() {
+    await loadColumnMapping();
+    try {
+      var taskData = await grist.docApi.fetchTable(state.TASKS_TABLE);
+      state.tasks = [];
+      if (taskData && taskData.id) {
+        for (var i = 0; i < taskData.id.length; i++) {
+          var task = { id: taskData.id[i] };
+          var titleCol = getColumnName("tasks", "title");
+          var descCol = getColumnName("tasks", "description");
+          var statusCol = getColumnName("tasks", "status");
+          var priorityCol = getColumnName("tasks", "priority");
+          var assigneeCol = getColumnName("tasks", "assignee");
+          var groupCol = getColumnName("tasks", "group");
+          var startDateCol = getColumnName("tasks", "startDate");
+          var dueDateCol = getColumnName("tasks", "dueDate");
+          var categoryCol = getColumnName("tasks", "category");
+          var tagCol = getColumnName("tasks", "tag");
+          var recurrenceCol = getColumnName("tasks", "recurrence");
+          var estimatedHoursCol = getColumnName("tasks", "estimatedHours");
+          var createdAtCol = getColumnName("tasks", "createdAt");
+          var projectIdCol = getColumnName("tasks", "projectId");
+          task.Title = taskData[titleCol] ? taskData[titleCol][i] : "";
+          task.Description = taskData[descCol] ? taskData[descCol][i] : "";
+          task.Status = taskData[statusCol] ? taskData[statusCol][i] : "todo";
+          task.Priority = taskData[priorityCol] ? taskData[priorityCol][i] : "medium";
+          task.Assignee = taskData[assigneeCol] ? taskData[assigneeCol][i] : "";
+          task.Group_Name = taskData[groupCol] ? taskData[groupCol][i] : "";
+          task.Start_Date = taskData[startDateCol] ? taskData[startDateCol][i] : null;
+          task.Due_Date = taskData[dueDateCol] ? taskData[dueDateCol][i] : null;
+          task.Category = taskData[categoryCol] ? taskData[categoryCol][i] : "";
+          task.Tag = taskData[tagCol] ? taskData[tagCol][i] : "";
+          task.Recurrence = taskData[recurrenceCol] ? taskData[recurrenceCol][i] : "none";
+          task.Estimated_Hours = taskData[estimatedHoursCol] ? taskData[estimatedHoursCol][i] : 0;
+          task.Created_At = taskData[createdAtCol] ? taskData[createdAtCol][i] : null;
+          task.Project_Id = taskData[projectIdCol] ? taskData[projectIdCol][i] : null;
+          task.Accountable = taskData.Accountable ? taskData.Accountable[i] || "" : "";
+          task.Consulted = taskData.Consulted ? taskData.Consulted[i] || "" : "";
+          task.Informed = taskData.Informed ? taskData.Informed[i] || "" : "";
+          task.Extension_Date = taskData.Extension_Date ? taskData.Extension_Date[i] : null;
+          task.Auto_Extend = taskData.Auto_Extend ? !!taskData.Auto_Extend[i] : false;
+          state.tasks.push(task);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load tasks:", e);
+      state.tasks = [];
+    }
+    try {
+      var userData = await grist.docApi.fetchTable(state.USERS_TABLE);
+      state.users = [];
+      if (userData && userData.id) {
+        var nameCol = getColumnName("users", "name");
+        var emailCol = getColumnName("users", "email");
+        var roleCol = getColumnName("users", "role");
+        var groupCol = getColumnName("users", "group");
+        for (var i = 0; i < userData.id.length; i++) {
+          state.users.push({
+            id: userData.id[i],
+            Name: userData[nameCol] ? userData[nameCol][i] : "",
+            Email: userData[emailCol] ? userData[emailCol][i] : "",
+            Role: userData[roleCol] ? userData[roleCol][i] : "member",
+            Group_Name: userData[groupCol] ? userData[groupCol][i] : ""
+          });
+        }
+      }
+    } catch (e) {
+      state.users = [];
+    }
+    try {
+      var groupData = await grist.docApi.fetchTable(state.GROUPS_TABLE);
+      state.groups = [];
+      if (groupData && groupData.id) {
+        for (var i = 0; i < groupData.id.length; i++) {
+          state.groups.push({
+            id: groupData.id[i],
+            Name: groupData.Name ? groupData.Name[i] : "",
+            Description: groupData.Description ? groupData.Description[i] : ""
+          });
+        }
+      }
+    } catch (e) {
+      state.groups = [];
+    }
+    try {
+      var tplData = await grist.docApi.fetchTable(state.TEMPLATES_TABLE);
+      state.templates = [];
+      if (tplData && tplData.id) {
+        for (var i = 0; i < tplData.id.length; i++) {
+          state.templates.push({
+            id: tplData.id[i],
+            Title: tplData.Title ? tplData.Title[i] : "",
+            Description: tplData.Description ? tplData.Description[i] : "",
+            Priority: tplData.Priority ? tplData.Priority[i] : "medium",
+            Category: tplData.Category ? tplData.Category[i] : "",
+            Estimated_Hours: tplData.Estimated_Hours ? tplData.Estimated_Hours[i] : 0,
+            Group_Name: tplData.Group_Name ? tplData.Group_Name[i] : "",
+            Tag: tplData.Tag ? tplData.Tag[i] : "",
+            Recurrence: tplData.Recurrence ? tplData.Recurrence[i] : "none",
+            Usage_Count: tplData.Usage_Count ? tplData.Usage_Count[i] : 0,
+            Updated_At: tplData.Updated_At ? tplData.Updated_At[i] : null
+          });
+        }
+      }
+    } catch (e) {
+      state.templates = [];
+    }
+    try {
+      var subtaskData = await grist.docApi.fetchTable(state.SUBTASKS_TABLE);
+      state.subtasks = [];
+      if (subtaskData && subtaskData.id) {
+        for (var i = 0; i < subtaskData.id.length; i++) {
+          state.subtasks.push({
+            id: subtaskData.id[i],
+            Parent_Task_Id: subtaskData.Parent_Task_Id ? subtaskData.Parent_Task_Id[i] : null,
+            Title: subtaskData.Title ? subtaskData.Title[i] : "",
+            Description: subtaskData.Description ? subtaskData.Description[i] : "",
+            Status: subtaskData.Status ? subtaskData.Status[i] : "todo",
+            Priority: subtaskData.Priority ? subtaskData.Priority[i] : "medium",
+            Completed: subtaskData.Completed ? subtaskData.Completed[i] : false,
+            Order: subtaskData.Order ? subtaskData.Order[i] : 0,
+            Blocked_By_Subtask_Id: subtaskData.Blocked_By_Subtask_Id ? subtaskData.Blocked_By_Subtask_Id[i] : null,
+            Assignee: subtaskData.Assignee ? subtaskData.Assignee[i] : "",
+            Due_Date: subtaskData.Due_Date ? subtaskData.Due_Date[i] : null,
+            Start_Date: subtaskData.Start_Date ? subtaskData.Start_Date[i] : null,
+            Estimated_Hours: subtaskData.Estimated_Hours ? subtaskData.Estimated_Hours[i] : null,
+            Recurrence: subtaskData.Recurrence ? subtaskData.Recurrence[i] : "none",
+            Type: subtaskData.Type ? subtaskData.Type[i] : "subtask",
+            Created_At: subtaskData.Created_At ? subtaskData.Created_At[i] : null
+          });
+        }
+      }
+    } catch (e) {
+      state.subtasks = [];
+    }
+    try {
+      var depData = await grist.docApi.fetchTable(state.DEPENDENCIES_TABLE);
+      state.dependencies = [];
+      if (depData && depData.id) {
+        for (var i = 0; i < depData.id.length; i++) {
+          state.dependencies.push({
+            id: depData.id[i],
+            Task_Id: depData.Task_Id ? depData.Task_Id[i] : null,
+            Depends_On_Task_Id: depData.Depends_On_Task_Id ? depData.Depends_On_Task_Id[i] : null,
+            Created_At: depData.Created_At ? depData.Created_At[i] : null
+          });
+        }
+      }
+    } catch (e) {
+      state.dependencies = [];
+    }
+    try {
+      var commentData = await grist.docApi.fetchTable(state.COMMENTS_TABLE);
+      state.comments = [];
+      if (commentData && commentData.id) {
+        for (var i = 0; i < commentData.id.length; i++) {
+          state.comments.push({
+            id: commentData.id[i],
+            Task_Id: commentData.Task_Id ? commentData.Task_Id[i] : null,
+            Author: commentData.Author ? commentData.Author[i] : "",
+            Content: commentData.Content ? commentData.Content[i] : "",
+            Created_At: commentData.Created_At ? commentData.Created_At[i] : null
+          });
+        }
+      }
+    } catch (e) {
+      state.comments = [];
+    }
+    try {
+      var attData = await grist.docApi.fetchTable(state.ATTACHMENTS_TABLE);
+      state.attachments = [];
+      if (attData && attData.id) {
+        for (var i = 0; i < attData.id.length; i++) {
+          state.attachments.push({
+            id: attData.id[i],
+            Task_Id: attData.Task_Id ? attData.Task_Id[i] : null,
+            File_Name: attData.File_Name ? attData.File_Name[i] : "",
+            File_Type: attData.File_Type ? attData.File_Type[i] : "",
+            File_Size: attData.File_Size ? attData.File_Size[i] : 0,
+            Data: attData.File_Data ? attData.File_Data[i] : "",
+            Created_At: attData.Created_At ? attData.Created_At[i] : null
+          });
+        }
+      }
+    } catch (e) {
+      state.attachments = [];
+    }
+    try {
+      var timeData = await grist.docApi.fetchTable(state.TIME_ENTRIES_TABLE);
+      state.timeEntries = [];
+      state.activeTimers = {};
+      if (timeData && timeData.id) {
+        for (var i = 0; i < timeData.id.length; i++) {
+          var entry = {
+            id: timeData.id[i],
+            Task_Id: timeData.Task_Id ? timeData.Task_Id[i] : null,
+            User: timeData.User ? timeData.User[i] : "",
+            Start_Time: timeData.Start_Time ? timeData.Start_Time[i] : null,
+            End_Time: timeData.End_Time ? timeData.End_Time[i] : null,
+            Duration: timeData.Duration ? timeData.Duration[i] : 0,
+            Description: timeData.Description ? timeData.Description[i] : ""
+          };
+          state.timeEntries.push(entry);
+          if (entry.Task_Id && entry.Start_Time && !entry.End_Time) {
+            state.activeTimers[entry.Task_Id] = entry.Start_Time;
+          }
+        }
+      }
+    } catch (e) {
+      state.timeEntries = [];
+      state.activeTimers = {};
+    }
+    try {
+      var cfData = await grist.docApi.fetchTable(state.CUSTOM_FIELDS_TABLE);
+      state.customFields = [];
+      if (cfData && cfData.id) {
+        for (var i = 0; i < cfData.id.length; i++) {
+          state.customFields.push({
+            id: cfData.id[i],
+            Name: cfData.Name ? cfData.Name[i] : "",
+            Type: cfData.Type ? cfData.Type[i] : "text",
+            Options: cfData.Options ? cfData.Options[i] : "",
+            Order: cfData.Order ? cfData.Order[i] : 0,
+            Created_At: cfData.Created_At ? cfData.Created_At[i] : null
+          });
+        }
+      }
+      state.customFields.sort(function(a, b) {
+        return (a.Order || 0) - (b.Order || 0);
+      });
+    } catch (e) {
+      state.customFields = [];
+    }
+    try {
+      var cfvData = await grist.docApi.fetchTable(state.CUSTOM_FIELD_VALUES_TABLE);
+      state.customFieldValues = [];
+      if (cfvData && cfvData.id) {
+        for (var i = 0; i < cfvData.id.length; i++) {
+          state.customFieldValues.push({
+            id: cfvData.id[i],
+            Task_Id: cfvData.Task_Id ? cfvData.Task_Id[i] : null,
+            Field_Id: cfvData.Field_Id ? cfvData.Field_Id[i] : null,
+            Value: cfvData.Value ? cfvData.Value[i] : ""
+          });
+        }
+      }
+    } catch (e) {
+      state.customFieldValues = [];
+    }
+    try {
+      var catData = await grist.docApi.fetchTable(state.CATEGORIES_TABLE);
+      state.categories = [];
+      if (catData && catData.id) {
+        var nameCol = getColumnName("categories", "name");
+        var colorCol = getColumnName("categories", "color");
+        var orderCol = getColumnName("categories", "order");
+        for (var i = 0; i < catData.id.length; i++) {
+          state.categories.push({
+            id: catData.id[i],
+            Name: catData[nameCol] ? catData[nameCol][i] : "",
+            Color: catData[colorCol] ? catData[colorCol][i] : "#6366f1",
+            Order: catData[orderCol] ? catData[orderCol][i] : 0
+          });
+        }
+      }
+      state.categories.sort(function(a, b) {
+        return (a.Order || 0) - (b.Order || 0);
+      });
+    } catch (e) {
+      state.categories = [];
+    }
+    try {
+      var tagData = await grist.docApi.fetchTable(state.TAGS_TABLE);
+      state.tags = [];
+      if (tagData && tagData.id) {
+        var nameCol = getColumnName("tags", "name");
+        var colorCol = getColumnName("tags", "color");
+        for (var i = 0; i < tagData.id.length; i++) {
+          state.tags.push({
+            id: tagData.id[i],
+            Name: tagData[nameCol] ? tagData[nameCol][i] : "",
+            Color: tagData[colorCol] ? tagData[colorCol][i] : "#6366f1"
+          });
+        }
+      }
+    } catch (e) {
+      state.tags = [];
+    }
+    try {
+      var projData = await grist.docApi.fetchTable(state.PROJECTS_TABLE);
+      state.projects = [];
+      if (projData && projData.id) {
+        var nameCol = getColumnName("projects", "name");
+        var descCol = getColumnName("projects", "description");
+        var colorCol = getColumnName("projects", "color");
+        var statusCol = getColumnName("projects", "status");
+        for (var i = 0; i < projData.id.length; i++) {
+          state.projects.push({
+            id: projData.id[i],
+            Name: projData[nameCol] ? projData[nameCol][i] : "",
+            Description: projData[descCol] ? projData[descCol][i] : "",
+            Color: projData[colorCol] ? projData[colorCol][i] : "#6366f1",
+            Status: projData[statusCol] ? projData[statusCol][i] : "active",
+            Start_Date: projData.Start_Date ? projData.Start_Date[i] : null,
+            End_Date: projData.End_Date ? projData.End_Date[i] : null,
+            Lead: projData.Lead ? projData.Lead[i] : "",
+            CreatedBy: projData.CreatedBy ? projData.CreatedBy[i] : "",
+            CreatedAt: projData.CreatedAt ? projData.CreatedAt[i] : ""
+          });
+        }
+      }
+    } catch (e) {
+      state.projects = [];
+    }
+    try {
+      var notifData = await grist.docApi.fetchTable(state.NOTIFICATIONS_TABLE);
+      state.pmNotifications = [];
+      if (notifData && notifData.id) {
+        for (var ni = 0; ni < notifData.id.length; ni++) {
+          state.pmNotifications.push({
+            id: notifData.id[ni],
+            Task_Id: notifData.Task_Id ? notifData.Task_Id[ni] : null,
+            User_Email: notifData.User_Email ? notifData.User_Email[ni] : "",
+            Type: notifData.Type ? notifData.Type[ni] : "",
+            Message: notifData.Message ? notifData.Message[ni] : "",
+            Is_Read: notifData.Is_Read ? notifData.Is_Read[ni] : false,
+            Created_At: notifData.Created_At ? notifData.Created_At[ni] : null,
+            Rule_Id: notifData.Rule_Id ? notifData.Rule_Id[ni] : ""
+          });
+        }
+      }
+    } catch (e) {
+      state.pmNotifications = [];
+    }
+    try {
+      var logData = await grist.docApi.fetchTable(state.ACTIVITY_LOG_TABLE);
+      state.activityLog = [];
+      if (logData && logData.id) {
+        for (var ai = 0; ai < logData.id.length; ai++) {
+          state.activityLog.push({
+            id: logData.id[ai],
+            Timestamp: logData.Timestamp ? logData.Timestamp[ai] : null,
+            User_Email: logData.User_Email ? logData.User_Email[ai] : "",
+            Action: logData.Action ? logData.Action[ai] : "",
+            Task_Id: logData.Task_Id ? logData.Task_Id[ai] : null,
+            Task_Title: logData.Task_Title ? logData.Task_Title[ai] : "",
+            Details: logData.Details ? logData.Details[ai] : ""
+          });
+        }
+      }
+    } catch (e) {
+      state.activityLog = [];
+    }
+    renderProjectSelector();
+    refreshAllViews();
+  }
+
+  // src/domains/attachments.js
+  var ATTACH_MAX_BYTES = 5 * 1024 * 1024;
+  function getTaskAttachments(taskId) {
+    return state.attachments.filter(function(a) {
+      return a.Task_Id === taskId;
+    }).sort(function(a, b) {
+      return (a.Created_At || 0) - (b.Created_At || 0);
+    });
+  }
+  function formatFileSize(bytes) {
+    if (!bytes) return "";
+    if (bytes < 1024) return bytes + " o";
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " Ko";
+    return (bytes / 1024 / 1024).toFixed(1) + " Mo";
+  }
+  function attachmentIsImage(type, name) {
+    return /^image\//.test(type || "") || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(name || "");
+  }
+  function attachmentIsPdf(type, name) {
+    return (type || "") === "application/pdf" || /\.pdf$/i.test(name || "");
+  }
+  function readFileAsDataURL(file) {
+    return new Promise(function(resolve, reject) {
+      var reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = function() {
+        resolve(reader.result);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  function compressImageFile(file, maxW, quality) {
+    maxW = maxW || 1600;
+    quality = quality || 0.8;
+    return new Promise(function(resolve) {
+      readFileAsDataURL(file).then(function(src) {
+        if (file.type === "image/gif" || file.type === "image/svg+xml") {
+          resolve(src);
+          return;
+        }
+        var img = new Image();
+        img.onerror = function() {
+          resolve(src);
+        };
+        img.onload = function() {
+          var scale = Math.min(1, maxW / img.width);
+          var w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+          var canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          var ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(src);
+            return;
+          }
+          if (file.type === "image/png") {
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(0, 0, w, h);
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+          var out = canvas.toDataURL("image/jpeg", quality);
+          resolve(out.length < src.length ? out : src);
+        };
+        img.src = src;
+      }).catch(function() {
+        resolve(null);
+      });
+    });
+  }
+  async function uploadTaskAttachments(taskId, fileList) {
+    if (!fileList || !fileList.length) return;
+    var statusEl = document.getElementById("attach-status-" + taskId);
+    try {
+      var addedCount = 0, skipped = [];
+      for (var i = 0; i < fileList.length; i++) {
+        var file = fileList[i];
+        if (statusEl) statusEl.textContent = (currentLang === "fr" ? "Traitement de " : "Processing ") + file.name + "...";
+        var dataUrl = attachmentIsImage(file.type, file.name) ? await compressImageFile(file) : await readFileAsDataURL(file);
+        if (!dataUrl) {
+          skipped.push(file.name);
+          continue;
+        }
+        var approxBytes = Math.round(dataUrl.length * 0.75);
+        if (approxBytes > ATTACH_MAX_BYTES) {
+          skipped.push(file.name + " (" + formatFileSize(approxBytes) + ")");
+          continue;
+        }
+        await grist.docApi.applyUserActions([
+          ["AddRecord", state.ATTACHMENTS_TABLE, null, {
+            Task_Id: taskId,
+            File_Name: file.name,
+            File_Type: file.type || "",
+            File_Size: file.size || 0,
+            File_Data: dataUrl,
+            Created_At: Math.floor(Date.now() / 1e3)
+          }]
+        ]);
+        addedCount++;
+      }
+      if (statusEl) statusEl.textContent = "";
+      await loadAllData();
+      renderAttachmentsSection(taskId);
+      if (typeof refreshAllViews === "function") refreshAllViews();
+      if (addedCount > 0) showToast((currentLang === "fr" ? "Pi\xE8ce(s) jointe(s) ajout\xE9e(s) : " : "Attachment(s) added: ") + addedCount, "success");
+      if (skipped.length) showToast((currentLang === "fr" ? "Trop volumineux (max 5 Mo), ignor\xE9 : " : "Too large (max 5MB), skipped: ") + skipped.join(", "), "error");
+    } catch (e) {
+      console.error("[GristPM] uploadTaskAttachments error:", e);
+      if (statusEl) statusEl.textContent = "";
+      showToast((currentLang === "fr" ? "\xC9chec : " : "Failed: ") + e.message, "error");
+    }
+  }
+  function _findAtt(recordId) {
+    return state.attachments.find(function(a) {
+      return a.id === recordId;
+    });
+  }
+  function downloadAttachment(recordId) {
+    var att = _findAtt(recordId);
+    if (!att || !att.Data) return;
+    var a = document.createElement("a");
+    a.href = att.Data;
+    a.download = att.File_Name || "fichier";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  async function deleteAttachment(recordId, taskId) {
+    var confirmed = await showConfirmModal(
+      currentLang === "fr" ? "Supprimer cette pi\xE8ce jointe ?" : "Delete this attachment?",
+      currentLang === "fr" ? "Supprimer la pi\xE8ce jointe" : "Delete attachment"
+    );
+    if (!confirmed) return;
+    try {
+      await grist.docApi.applyUserActions([["RemoveRecord", state.ATTACHMENTS_TABLE, recordId]]);
+      await loadAllData();
+      renderAttachmentsSection(taskId);
+      if (typeof refreshAllViews === "function") refreshAllViews();
+    } catch (e) {
+      showToast((currentLang === "fr" ? "Erreur : " : "Error: ") + e.message, "error");
+    }
+  }
+  function viewAttachment(recordId) {
+    var att = _findAtt(recordId);
+    if (!att || !att.Data) return;
+    var isImg = attachmentIsImage(att.File_Type, att.File_Name);
+    var isPdf = attachmentIsPdf(att.File_Type, att.File_Name);
+    if (isImg || isPdf) {
+      var overlay = document.getElementById("attachment-viewer");
+      var body = document.getElementById("attachment-viewer-body");
+      var title = document.getElementById("attachment-viewer-title");
+      if (title) title.textContent = att.File_Name || "";
+      if (body) {
+        body.innerHTML = isImg ? '<img src="' + att.Data + '" style="max-width:100%;max-height:78vh;display:block;margin:0 auto;border-radius:8px;">' : '<iframe src="' + att.Data + '" style="width:80vw;height:78vh;border:none;border-radius:8px;"></iframe>';
+      }
+      if (overlay) overlay.style.display = "flex";
+    } else {
+      downloadAttachment(recordId);
+    }
+  }
+  function closeAttachmentViewer() {
+    var overlay = document.getElementById("attachment-viewer");
+    var body = document.getElementById("attachment-viewer-body");
+    if (body) body.innerHTML = "";
+    if (overlay) overlay.style.display = "none";
+  }
+  function renderAttachmentsSection(taskId) {
+    var container = document.getElementById("attachments-list-" + taskId);
+    if (!container) return;
+    var list = getTaskAttachments(taskId);
+    var html = "";
+    if (list.length === 0) {
+      html = '<div class="attach-empty">' + (currentLang === "fr" ? "Aucune pi\xE8ce jointe" : "No attachments") + "</div>";
+    } else {
+      list.forEach(function(att) {
+        var isImg = attachmentIsImage(att.File_Type, att.File_Name);
+        var icon = isImg ? "\u{1F5BC}\uFE0F" : attachmentIsPdf(att.File_Type, att.File_Name) ? "\u{1F4C4}" : "\u{1F4CE}";
+        html += '<div class="attach-item">';
+        html += '<span class="attach-icon">' + icon + "</span>";
+        html += '<span class="attach-name" onclick="viewAttachment(' + att.id + ')" title="' + (currentLang === "fr" ? "Voir" : "View") + '">' + sanitize(att.File_Name) + "</span>";
+        html += '<span class="attach-size">' + formatFileSize(att.File_Size) + "</span>";
+        html += '<button class="attach-btn" onclick="downloadAttachment(' + att.id + ')" title="' + (currentLang === "fr" ? "T\xE9l\xE9charger" : "Download") + '">\u2B07\uFE0F</button>';
+        if (state.isOwner) html += '<button class="attach-btn" onclick="deleteAttachment(' + att.id + ", " + taskId + ')" title="' + t("delete") + '">\u{1F5D1}\uFE0F</button>';
+        html += "</div>";
+      });
+    }
+    container.innerHTML = html;
+  }
+  function openAttachmentInNewTab(recordId) {
+    var att = _findAtt(recordId);
+    if (!att || !att.Data) return;
+    var win = window.open("", "_blank");
+    if (win) {
+      win.document.write('<iframe src="' + att.Data + '" style="border:0;width:100vw;height:100vh;"></iframe>');
+      win.document.title = att.File_Name || "Attachment";
+    } else {
+      downloadAttachment(recordId);
+    }
+  }
+
+  // src/domains/activity-log.js
+  async function logActivity(action, taskId, taskTitle, details) {
+    try {
+      var record = {
+        Timestamp: Math.floor(Date.now() / 1e3),
+        User_Email: state.currentUserEmail || "unknown",
+        Action: action,
+        Task_Id: taskId || 0,
+        Task_Title: taskTitle || "",
+        Details: details || ""
+      };
+      await grist.docApi.applyUserActions([["AddRecord", state.ACTIVITY_LOG_TABLE, null, record]]);
+      state.activityLog.push(record);
+    } catch (e) {
+      console.log("[GristPM] Activity log skipped:", e.message);
+    }
+  }
+  var _activityLogLimit = 20;
+  function renderActivityLog() {
+    var container = document.getElementById("activity-log-list");
+    if (!container) return;
+    var sorted = state.activityLog.slice().sort(function(a, b) {
+      return (b.Timestamp || 0) - (a.Timestamp || 0);
+    });
+    var shown = sorted.slice(0, _activityLogLimit);
+    if (shown.length === 0) {
+      container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + t("actNoActivity") + "</div>";
+      return;
+    }
+    var ACTION_ICONS = {
+      task_created: "\u{1F195}",
+      task_updated: "\u270F\uFE0F",
+      task_deleted: "\u{1F5D1}\uFE0F",
+      status_changed: "\u{1F504}",
+      task_archived: "\u{1F4E6}",
+      task_restored: "\u267B\uFE0F",
+      comment_added: "\u{1F4AC}"
+    };
+    var ACTION_I18N = {
+      task_created: "actTaskCreated",
+      task_updated: "actTaskUpdated",
+      task_deleted: "actTaskDeleted",
+      status_changed: "actStatusChanged",
+      task_archived: "actTaskArchived",
+      task_restored: "actTaskRestored",
+      comment_added: "actCommentAdded"
+    };
+    var html = "";
+    var lastDateStr = "";
+    for (var i = 0; i < shown.length; i++) {
+      var entry = shown[i];
+      var dateObj = entry.Timestamp ? new Date(entry.Timestamp * 1e3) : /* @__PURE__ */ new Date();
+      var dateStr = dateObj.toLocaleDateString(currentLang === "fr" ? "fr-FR" : "en-US", { weekday: "long", day: "numeric", month: "long" });
+      if (dateStr !== lastDateStr) {
+        html += '<div style="font-size:11px;font-weight:700;color:#94a3b8;padding:8px 0 4px;border-bottom:1px solid #f1f5f9;text-transform:capitalize;">' + dateStr + "</div>";
+        lastDateStr = dateStr;
+      }
+      var icon = ACTION_ICONS[entry.Action] || "\u{1F4CB}";
+      var actionText = t(ACTION_I18N[entry.Action] || entry.Action);
+      var userName = getUserDisplayName(entry.User_Email);
+      var timeStr = dateObj.toLocaleTimeString(currentLang === "fr" ? "fr-FR" : "en-US", { hour: "2-digit", minute: "2-digit" });
+      html += '<div class="activity-entry" style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f8fafc;"';
+      if (entry.Task_Id) html += ' onclick="openEditTaskModal(' + entry.Task_Id + ')" style="cursor:pointer;"';
+      html += ">";
+      html += '<span style="font-size:16px;flex-shrink:0;margin-top:2px;">' + icon + "</span>";
+      html += '<div style="flex:1;min-width:0;">';
+      html += '<div style="font-size:13px;"><strong>' + sanitize(userName) + "</strong> " + actionText;
+      if (entry.Task_Title) html += ' <span style="color:#3b82f6;font-weight:600;">' + sanitize(entry.Task_Title) + "</span>";
+      html += "</div>";
+      if (entry.Details) html += '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + sanitize(entry.Details) + "</div>";
+      html += "</div>";
+      html += '<span style="font-size:10px;color:#94a3b8;white-space:nowrap;margin-top:3px;">' + timeStr + "</span>";
+      html += "</div>";
+    }
+    if (sorted.length > _activityLogLimit) {
+      html += '<div style="text-align:center;padding:12px;"><button class="btn btn-secondary btn-sm" onclick="expandActivityLog()">' + t("actLoadMore") + "</button></div>";
+    }
+    container.innerHTML = html;
+  }
+  function expandActivityLog() {
+    _activityLogLimit += 20;
+    renderActivityLog();
+  }
+
+  // src/domains/templates.js
+  function renderTemplatesView() {
+    var search = (document.getElementById("template-search").value || "").toLowerCase();
+    var filterPriority = document.getElementById("filter-template-priority").value;
+    var filtered = state.templates.filter(function(tpl2) {
+      if (filterPriority && tpl2.Priority !== filterPriority) return false;
+      if (search) {
+        var text = (tpl2.Title + " " + tpl2.Description + " " + tpl2.Category).toLowerCase();
+        if (text.indexOf(search) === -1) return false;
+      }
+      return true;
+    });
+    var html = "";
+    for (var i = 0; i < filtered.length; i++) {
+      var tpl = filtered[i];
+      var dotClass = tpl.Priority === "high" ? "dot-high" : tpl.Priority === "medium" ? "dot-medium" : "dot-low";
+      html += '<div class="template-card">';
+      html += '<div class="template-card-info">';
+      html += "<h4>" + sanitize(tpl.Title) + "</h4>";
+      html += '<div class="template-meta">';
+      if (tpl.Category) html += "\u{1F3F7}\uFE0F " + sanitize(tpl.Category);
+      html += ' <span class="priority-dot ' + dotClass + '"></span> ' + priorityLabel(tpl.Priority);
+      if (tpl.Estimated_Hours) html += " \u23F1\uFE0F " + tpl.Estimated_Hours + "h";
+      html += " \u{1F4CA} " + (tpl.Usage_Count || 0) + " " + (currentLang === "fr" ? "utilisations" : "uses");
+      if (tpl.Updated_At) html += " \u2022 " + (currentLang === "fr" ? "Mis \xE0 jour le " : "Updated ") + formatDate(tpl.Updated_At);
+      html += "</div></div>";
+      html += '<div style="display:flex;gap:4px;">';
+      html += '<button class="btn btn-primary btn-sm" onclick="useTemplate(' + tpl.id + ')">' + t("useTemplate") + "</button>";
+      if (state.isOwner) html += '<button class="btn-icon" onclick="openNewTemplateModal(' + tpl.id + ')" title="' + t("editTemplate") + '">\u270F\uFE0F</button>';
+      if (state.isOwner) html += '<button class="btn-icon" onclick="deleteTemplate(' + tpl.id + ')">\u{1F5D1}\uFE0F</button>';
+      html += "</div>";
+      html += "</div>";
+    }
+    if (filtered.length === 0) {
+      html = '<div style="text-align:center;padding:40px;color:#94a3b8;">' + t("noTasks") + "</div>";
+    }
+    document.getElementById("templates-list").innerHTML = html;
+  }
+  function openNewTemplateModal(tplId) {
+    var editing = tplId != null;
+    var tpl = editing ? state.templates.find(function(x) {
+      return x.id === tplId;
+    }) : null;
+    if (editing && !tpl) return;
+    var title = editing ? sanitize(tpl.Title || "") : "";
+    var desc = editing ? sanitize(tpl.Description || "") : "";
+    var priority = editing ? tpl.Priority || "medium" : "medium";
+    var category = editing ? tpl.Category || "" : "";
+    var hours = editing ? tpl.Estimated_Hours || "" : "";
+    var tplGroup = editing ? tpl.Group_Name || "" : "";
+    var tplTag = editing ? tpl.Tag || "" : "";
+    var tplRecur = editing ? tpl.Recurrence || "none" : "none";
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t(editing ? "modalEditTemplate" : "modalNewTemplate") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldTitle") + '</label><input type="text" id="tpl-title" value="' + title + '" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="tpl-desc">' + desc + "</textarea></div>";
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>' + t("fieldPriority") + '</label><select id="tpl-priority">';
+    html += '<option value="medium"' + (priority === "medium" ? " selected" : "") + ">" + t("priorityMedium") + "</option>";
+    html += '<option value="high"' + (priority === "high" ? " selected" : "") + ">" + t("priorityHigh") + "</option>";
+    html += '<option value="low"' + (priority === "low" ? " selected" : "") + ">" + t("priorityLow") + "</option>";
+    html += "</select></div>";
+    var tplCatOptions = '<option value=""' + (!category ? " selected" : "") + ">--</option>";
+    for (var tci = 0; tci < state.categories.length; tci++) {
+      var catName = state.categories[tci].Name;
+      tplCatOptions += '<option value="' + sanitize(catName) + '"' + (catName === category ? " selected" : "") + ">" + sanitize(catName) + "</option>";
+    }
+    html += '<div class="form-group"><label>' + t("fieldCategory") + '</label><select id="tpl-category">' + tplCatOptions + "</select></div>";
+    html += "</div>";
+    html += '<div class="form-group"><label>' + t("fieldEstimatedTime") + '</label><input type="number" id="tpl-hours" step="0.5" min="0" value="' + hours + '" /></div>';
+    html += '<div class="form-row">';
+    var tplGroupOpts = '<option value="">--</option>';
+    for (var tgi = 0; tgi < state.groups.length; tgi++) tplGroupOpts += '<option value="' + sanitize(state.groups[tgi].Name) + '"' + (state.groups[tgi].Name === tplGroup ? " selected" : "") + ">" + sanitize(state.groups[tgi].Name) + "</option>";
+    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="tpl-group">' + tplGroupOpts + "</select></div>";
+    var tplTagOpts = '<option value="">--</option>';
+    for (var tti = 0; tti < state.tags.length; tti++) tplTagOpts += '<option value="' + sanitize(state.tags[tti].Name) + '"' + (state.tags[tti].Name === tplTag ? " selected" : "") + ">" + sanitize(state.tags[tti].Name) + "</option>";
+    html += '<div class="form-group"><label>' + t("tag") + '</label><select id="tpl-tag">' + tplTagOpts + "</select></div>";
+    html += "</div>";
+    var recurKeys = ["none", "daily", "weekly", "biweekly", "monthly", "quarterly", "yearly"];
+    var recurLabels = { none: "recurrenceNone", daily: "recurrenceDaily", weekly: "recurrenceWeekly", biweekly: "recurrenceBiweekly", monthly: "recurrenceMonthly", quarterly: "recurrenceQuarterly", yearly: "recurrenceYearly" };
+    var tplRecurOpts = recurKeys.map(function(k) {
+      return '<option value="' + k + '"' + (tplRecur === k ? " selected" : "") + ">" + t(recurLabels[k]) + "</option>";
+    }).join("");
+    html += '<div class="form-group"><label>\u{1F501} ' + (currentLang === "fr" ? "R\xE9currence" : "Recurrence") + '</label><select id="tpl-recurrence">' + tplRecurOpts + "</select></div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    if (editing) {
+      html += '<button class="btn btn-primary" onclick="updateTemplate(' + tplId + ')">' + t("save") + "</button>";
+    } else {
+      html += '<button class="btn btn-primary" onclick="createTemplate()">' + t("save") + "</button>";
+    }
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  async function createTemplate() {
+    var title = document.getElementById("tpl-title").value.trim();
+    if (!title) return;
+    var record = {
+      Title: title,
+      Description: document.getElementById("tpl-desc").value.trim(),
+      Priority: document.getElementById("tpl-priority").value,
+      Category: document.getElementById("tpl-category").value.trim(),
+      Estimated_Hours: parseFloat(document.getElementById("tpl-hours").value) || 0,
+      Group_Name: (document.getElementById("tpl-group") || {}).value || "",
+      Tag: (document.getElementById("tpl-tag") || {}).value || "",
+      Recurrence: (document.getElementById("tpl-recurrence") || {}).value || "none",
+      Usage_Count: 0,
+      Updated_At: Math.floor(Date.now() / 1e3)
+    };
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.TEMPLATES_TABLE, null, record]
+      ]);
+      showToast(t("templateCreated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error creating template:", e);
+    }
+  }
+  async function updateTemplate(tplId) {
+    var title = document.getElementById("tpl-title").value.trim();
+    if (!title) return;
+    var record = {
+      Title: title,
+      Description: document.getElementById("tpl-desc").value.trim(),
+      Priority: document.getElementById("tpl-priority").value,
+      Category: document.getElementById("tpl-category").value.trim(),
+      Estimated_Hours: parseFloat(document.getElementById("tpl-hours").value) || 0,
+      Group_Name: (document.getElementById("tpl-group") || {}).value || "",
+      Tag: (document.getElementById("tpl-tag") || {}).value || "",
+      Recurrence: (document.getElementById("tpl-recurrence") || {}).value || "none",
+      Updated_At: Math.floor(Date.now() / 1e3)
+    };
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.TEMPLATES_TABLE, tplId, record]
+      ]);
+      showToast(t("templateUpdated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error updating template:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function deleteTemplate(tplId) {
+    if (!state.isOwner) return;
+    var confirmed = await showConfirmModal(t("confirmDeleteTemplate"), currentLang === "fr" ? "Supprimer le mod\xE8le" : "Delete template");
+    if (!confirmed) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["RemoveRecord", state.TEMPLATES_TABLE, tplId]
+      ]);
+      showToast(t("templateDeleted"), "info");
+      await loadAllData();
+    } catch (e) {
+      console.error("Error deleting template:", e);
+    }
+  }
+  async function useTemplate(tplId) {
+    var tpl = state.templates.find(function(t2) {
+      return t2.id === tplId;
+    });
+    if (!tpl) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.TEMPLATES_TABLE, tplId, { Usage_Count: (tpl.Usage_Count || 0) + 1 }]
+      ]);
+    } catch (e) {
+    }
+    startNewTask("todo", null, {
+      title: tpl.Title || "",
+      description: tpl.Description || "",
+      priority: tpl.Priority || "medium",
+      category: tpl.Category || "",
+      group: tpl.Group_Name || "",
+      tag: tpl.Tag || "",
+      recurrence: tpl.Recurrence || "none",
+      estimatedHours: tpl.Estimated_Hours || 0
+    });
   }
 
   // src/domains/stats.js
@@ -5633,362 +5991,6 @@
     } catch (e) {
       console.error("Error ensuring tables:", e);
     }
-  }
-  async function loadAllData() {
-    await loadColumnMapping();
-    try {
-      var taskData = await grist.docApi.fetchTable(state.TASKS_TABLE);
-      state.tasks = [];
-      if (taskData && taskData.id) {
-        for (var i = 0; i < taskData.id.length; i++) {
-          var task = { id: taskData.id[i] };
-          var titleCol = getColumnName("tasks", "title");
-          var descCol = getColumnName("tasks", "description");
-          var statusCol = getColumnName("tasks", "status");
-          var priorityCol = getColumnName("tasks", "priority");
-          var assigneeCol = getColumnName("tasks", "assignee");
-          var groupCol = getColumnName("tasks", "group");
-          var startDateCol = getColumnName("tasks", "startDate");
-          var dueDateCol = getColumnName("tasks", "dueDate");
-          var categoryCol = getColumnName("tasks", "category");
-          var tagCol = getColumnName("tasks", "tag");
-          var recurrenceCol = getColumnName("tasks", "recurrence");
-          var estimatedHoursCol = getColumnName("tasks", "estimatedHours");
-          var createdAtCol = getColumnName("tasks", "createdAt");
-          var projectIdCol = getColumnName("tasks", "projectId");
-          task.Title = taskData[titleCol] ? taskData[titleCol][i] : "";
-          task.Description = taskData[descCol] ? taskData[descCol][i] : "";
-          task.Status = taskData[statusCol] ? taskData[statusCol][i] : "todo";
-          task.Priority = taskData[priorityCol] ? taskData[priorityCol][i] : "medium";
-          task.Assignee = taskData[assigneeCol] ? taskData[assigneeCol][i] : "";
-          task.Group_Name = taskData[groupCol] ? taskData[groupCol][i] : "";
-          task.Start_Date = taskData[startDateCol] ? taskData[startDateCol][i] : null;
-          task.Due_Date = taskData[dueDateCol] ? taskData[dueDateCol][i] : null;
-          task.Category = taskData[categoryCol] ? taskData[categoryCol][i] : "";
-          task.Tag = taskData[tagCol] ? taskData[tagCol][i] : "";
-          task.Recurrence = taskData[recurrenceCol] ? taskData[recurrenceCol][i] : "none";
-          task.Estimated_Hours = taskData[estimatedHoursCol] ? taskData[estimatedHoursCol][i] : 0;
-          task.Created_At = taskData[createdAtCol] ? taskData[createdAtCol][i] : null;
-          task.Project_Id = taskData[projectIdCol] ? taskData[projectIdCol][i] : null;
-          task.Accountable = taskData.Accountable ? taskData.Accountable[i] || "" : "";
-          task.Consulted = taskData.Consulted ? taskData.Consulted[i] || "" : "";
-          task.Informed = taskData.Informed ? taskData.Informed[i] || "" : "";
-          task.Extension_Date = taskData.Extension_Date ? taskData.Extension_Date[i] : null;
-          task.Auto_Extend = taskData.Auto_Extend ? !!taskData.Auto_Extend[i] : false;
-          state.tasks.push(task);
-        }
-      }
-    } catch (e) {
-      console.warn("Could not load tasks:", e);
-      state.tasks = [];
-    }
-    try {
-      var userData = await grist.docApi.fetchTable(state.USERS_TABLE);
-      state.users = [];
-      if (userData && userData.id) {
-        var nameCol = getColumnName("users", "name");
-        var emailCol = getColumnName("users", "email");
-        var roleCol = getColumnName("users", "role");
-        var groupCol = getColumnName("users", "group");
-        for (var i = 0; i < userData.id.length; i++) {
-          state.users.push({
-            id: userData.id[i],
-            Name: userData[nameCol] ? userData[nameCol][i] : "",
-            Email: userData[emailCol] ? userData[emailCol][i] : "",
-            Role: userData[roleCol] ? userData[roleCol][i] : "member",
-            Group_Name: userData[groupCol] ? userData[groupCol][i] : ""
-          });
-        }
-      }
-    } catch (e) {
-      state.users = [];
-    }
-    try {
-      var groupData = await grist.docApi.fetchTable(state.GROUPS_TABLE);
-      state.groups = [];
-      if (groupData && groupData.id) {
-        for (var i = 0; i < groupData.id.length; i++) {
-          state.groups.push({
-            id: groupData.id[i],
-            Name: groupData.Name ? groupData.Name[i] : "",
-            Description: groupData.Description ? groupData.Description[i] : ""
-          });
-        }
-      }
-    } catch (e) {
-      state.groups = [];
-    }
-    try {
-      var tplData = await grist.docApi.fetchTable(state.TEMPLATES_TABLE);
-      state.templates = [];
-      if (tplData && tplData.id) {
-        for (var i = 0; i < tplData.id.length; i++) {
-          state.templates.push({
-            id: tplData.id[i],
-            Title: tplData.Title ? tplData.Title[i] : "",
-            Description: tplData.Description ? tplData.Description[i] : "",
-            Priority: tplData.Priority ? tplData.Priority[i] : "medium",
-            Category: tplData.Category ? tplData.Category[i] : "",
-            Estimated_Hours: tplData.Estimated_Hours ? tplData.Estimated_Hours[i] : 0,
-            Group_Name: tplData.Group_Name ? tplData.Group_Name[i] : "",
-            Tag: tplData.Tag ? tplData.Tag[i] : "",
-            Recurrence: tplData.Recurrence ? tplData.Recurrence[i] : "none",
-            Usage_Count: tplData.Usage_Count ? tplData.Usage_Count[i] : 0,
-            Updated_At: tplData.Updated_At ? tplData.Updated_At[i] : null
-          });
-        }
-      }
-    } catch (e) {
-      state.templates = [];
-    }
-    try {
-      var subtaskData = await grist.docApi.fetchTable(state.SUBTASKS_TABLE);
-      state.subtasks = [];
-      if (subtaskData && subtaskData.id) {
-        for (var i = 0; i < subtaskData.id.length; i++) {
-          state.subtasks.push({
-            id: subtaskData.id[i],
-            Parent_Task_Id: subtaskData.Parent_Task_Id ? subtaskData.Parent_Task_Id[i] : null,
-            Title: subtaskData.Title ? subtaskData.Title[i] : "",
-            Description: subtaskData.Description ? subtaskData.Description[i] : "",
-            Status: subtaskData.Status ? subtaskData.Status[i] : "todo",
-            Priority: subtaskData.Priority ? subtaskData.Priority[i] : "medium",
-            Completed: subtaskData.Completed ? subtaskData.Completed[i] : false,
-            Order: subtaskData.Order ? subtaskData.Order[i] : 0,
-            Blocked_By_Subtask_Id: subtaskData.Blocked_By_Subtask_Id ? subtaskData.Blocked_By_Subtask_Id[i] : null,
-            Assignee: subtaskData.Assignee ? subtaskData.Assignee[i] : "",
-            Due_Date: subtaskData.Due_Date ? subtaskData.Due_Date[i] : null,
-            Start_Date: subtaskData.Start_Date ? subtaskData.Start_Date[i] : null,
-            Estimated_Hours: subtaskData.Estimated_Hours ? subtaskData.Estimated_Hours[i] : null,
-            Recurrence: subtaskData.Recurrence ? subtaskData.Recurrence[i] : "none",
-            Type: subtaskData.Type ? subtaskData.Type[i] : "subtask",
-            Created_At: subtaskData.Created_At ? subtaskData.Created_At[i] : null
-          });
-        }
-      }
-    } catch (e) {
-      state.subtasks = [];
-    }
-    try {
-      var depData = await grist.docApi.fetchTable(state.DEPENDENCIES_TABLE);
-      state.dependencies = [];
-      if (depData && depData.id) {
-        for (var i = 0; i < depData.id.length; i++) {
-          state.dependencies.push({
-            id: depData.id[i],
-            Task_Id: depData.Task_Id ? depData.Task_Id[i] : null,
-            Depends_On_Task_Id: depData.Depends_On_Task_Id ? depData.Depends_On_Task_Id[i] : null,
-            Created_At: depData.Created_At ? depData.Created_At[i] : null
-          });
-        }
-      }
-    } catch (e) {
-      state.dependencies = [];
-    }
-    try {
-      var commentData = await grist.docApi.fetchTable(state.COMMENTS_TABLE);
-      state.comments = [];
-      if (commentData && commentData.id) {
-        for (var i = 0; i < commentData.id.length; i++) {
-          state.comments.push({
-            id: commentData.id[i],
-            Task_Id: commentData.Task_Id ? commentData.Task_Id[i] : null,
-            Author: commentData.Author ? commentData.Author[i] : "",
-            Content: commentData.Content ? commentData.Content[i] : "",
-            Created_At: commentData.Created_At ? commentData.Created_At[i] : null
-          });
-        }
-      }
-    } catch (e) {
-      state.comments = [];
-    }
-    try {
-      var attData = await grist.docApi.fetchTable(state.ATTACHMENTS_TABLE);
-      state.attachments = [];
-      if (attData && attData.id) {
-        for (var i = 0; i < attData.id.length; i++) {
-          state.attachments.push({
-            id: attData.id[i],
-            Task_Id: attData.Task_Id ? attData.Task_Id[i] : null,
-            File_Name: attData.File_Name ? attData.File_Name[i] : "",
-            File_Type: attData.File_Type ? attData.File_Type[i] : "",
-            File_Size: attData.File_Size ? attData.File_Size[i] : 0,
-            Data: attData.File_Data ? attData.File_Data[i] : "",
-            Created_At: attData.Created_At ? attData.Created_At[i] : null
-          });
-        }
-      }
-    } catch (e) {
-      state.attachments = [];
-    }
-    try {
-      var timeData = await grist.docApi.fetchTable(state.TIME_ENTRIES_TABLE);
-      state.timeEntries = [];
-      state.activeTimers = {};
-      if (timeData && timeData.id) {
-        for (var i = 0; i < timeData.id.length; i++) {
-          var entry = {
-            id: timeData.id[i],
-            Task_Id: timeData.Task_Id ? timeData.Task_Id[i] : null,
-            User: timeData.User ? timeData.User[i] : "",
-            Start_Time: timeData.Start_Time ? timeData.Start_Time[i] : null,
-            End_Time: timeData.End_Time ? timeData.End_Time[i] : null,
-            Duration: timeData.Duration ? timeData.Duration[i] : 0,
-            Description: timeData.Description ? timeData.Description[i] : ""
-          };
-          state.timeEntries.push(entry);
-          if (entry.Task_Id && entry.Start_Time && !entry.End_Time) {
-            state.activeTimers[entry.Task_Id] = entry.Start_Time;
-          }
-        }
-      }
-    } catch (e) {
-      state.timeEntries = [];
-      state.activeTimers = {};
-    }
-    try {
-      var cfData = await grist.docApi.fetchTable(state.CUSTOM_FIELDS_TABLE);
-      state.customFields = [];
-      if (cfData && cfData.id) {
-        for (var i = 0; i < cfData.id.length; i++) {
-          state.customFields.push({
-            id: cfData.id[i],
-            Name: cfData.Name ? cfData.Name[i] : "",
-            Type: cfData.Type ? cfData.Type[i] : "text",
-            Options: cfData.Options ? cfData.Options[i] : "",
-            Order: cfData.Order ? cfData.Order[i] : 0,
-            Created_At: cfData.Created_At ? cfData.Created_At[i] : null
-          });
-        }
-      }
-      state.customFields.sort(function(a, b) {
-        return (a.Order || 0) - (b.Order || 0);
-      });
-    } catch (e) {
-      state.customFields = [];
-    }
-    try {
-      var cfvData = await grist.docApi.fetchTable(state.CUSTOM_FIELD_VALUES_TABLE);
-      state.customFieldValues = [];
-      if (cfvData && cfvData.id) {
-        for (var i = 0; i < cfvData.id.length; i++) {
-          state.customFieldValues.push({
-            id: cfvData.id[i],
-            Task_Id: cfvData.Task_Id ? cfvData.Task_Id[i] : null,
-            Field_Id: cfvData.Field_Id ? cfvData.Field_Id[i] : null,
-            Value: cfvData.Value ? cfvData.Value[i] : ""
-          });
-        }
-      }
-    } catch (e) {
-      state.customFieldValues = [];
-    }
-    try {
-      var catData = await grist.docApi.fetchTable(state.CATEGORIES_TABLE);
-      state.categories = [];
-      if (catData && catData.id) {
-        var nameCol = getColumnName("categories", "name");
-        var colorCol = getColumnName("categories", "color");
-        var orderCol = getColumnName("categories", "order");
-        for (var i = 0; i < catData.id.length; i++) {
-          state.categories.push({
-            id: catData.id[i],
-            Name: catData[nameCol] ? catData[nameCol][i] : "",
-            Color: catData[colorCol] ? catData[colorCol][i] : "#6366f1",
-            Order: catData[orderCol] ? catData[orderCol][i] : 0
-          });
-        }
-      }
-      state.categories.sort(function(a, b) {
-        return (a.Order || 0) - (b.Order || 0);
-      });
-    } catch (e) {
-      state.categories = [];
-    }
-    try {
-      var tagData = await grist.docApi.fetchTable(state.TAGS_TABLE);
-      state.tags = [];
-      if (tagData && tagData.id) {
-        var nameCol = getColumnName("tags", "name");
-        var colorCol = getColumnName("tags", "color");
-        for (var i = 0; i < tagData.id.length; i++) {
-          state.tags.push({
-            id: tagData.id[i],
-            Name: tagData[nameCol] ? tagData[nameCol][i] : "",
-            Color: tagData[colorCol] ? tagData[colorCol][i] : "#6366f1"
-          });
-        }
-      }
-    } catch (e) {
-      state.tags = [];
-    }
-    try {
-      var projData = await grist.docApi.fetchTable(state.PROJECTS_TABLE);
-      state.projects = [];
-      if (projData && projData.id) {
-        var nameCol = getColumnName("projects", "name");
-        var descCol = getColumnName("projects", "description");
-        var colorCol = getColumnName("projects", "color");
-        var statusCol = getColumnName("projects", "status");
-        for (var i = 0; i < projData.id.length; i++) {
-          state.projects.push({
-            id: projData.id[i],
-            Name: projData[nameCol] ? projData[nameCol][i] : "",
-            Description: projData[descCol] ? projData[descCol][i] : "",
-            Color: projData[colorCol] ? projData[colorCol][i] : "#6366f1",
-            Status: projData[statusCol] ? projData[statusCol][i] : "active",
-            Start_Date: projData.Start_Date ? projData.Start_Date[i] : null,
-            End_Date: projData.End_Date ? projData.End_Date[i] : null,
-            Lead: projData.Lead ? projData.Lead[i] : "",
-            CreatedBy: projData.CreatedBy ? projData.CreatedBy[i] : "",
-            CreatedAt: projData.CreatedAt ? projData.CreatedAt[i] : ""
-          });
-        }
-      }
-    } catch (e) {
-      state.projects = [];
-    }
-    try {
-      var notifData = await grist.docApi.fetchTable(state.NOTIFICATIONS_TABLE);
-      state.pmNotifications = [];
-      if (notifData && notifData.id) {
-        for (var ni = 0; ni < notifData.id.length; ni++) {
-          state.pmNotifications.push({
-            id: notifData.id[ni],
-            Task_Id: notifData.Task_Id ? notifData.Task_Id[ni] : null,
-            User_Email: notifData.User_Email ? notifData.User_Email[ni] : "",
-            Type: notifData.Type ? notifData.Type[ni] : "",
-            Message: notifData.Message ? notifData.Message[ni] : "",
-            Is_Read: notifData.Is_Read ? notifData.Is_Read[ni] : false,
-            Created_At: notifData.Created_At ? notifData.Created_At[ni] : null,
-            Rule_Id: notifData.Rule_Id ? notifData.Rule_Id[ni] : ""
-          });
-        }
-      }
-    } catch (e) {
-      state.pmNotifications = [];
-    }
-    try {
-      var logData = await grist.docApi.fetchTable(state.ACTIVITY_LOG_TABLE);
-      state.activityLog = [];
-      if (logData && logData.id) {
-        for (var ai = 0; ai < logData.id.length; ai++) {
-          state.activityLog.push({
-            id: logData.id[ai],
-            Timestamp: logData.Timestamp ? logData.Timestamp[ai] : null,
-            User_Email: logData.User_Email ? logData.User_Email[ai] : "",
-            Action: logData.Action ? logData.Action[ai] : "",
-            Task_Id: logData.Task_Id ? logData.Task_Id[ai] : null,
-            Task_Title: logData.Task_Title ? logData.Task_Title[ai] : "",
-            Details: logData.Details ? logData.Details[ai] : ""
-          });
-        }
-      }
-    } catch (e) {
-      state.activityLog = [];
-    }
-    renderProjectSelector();
-    refreshAllViews();
   }
   function refreshAllViews() {
     if (typeof renderProjectSelector === "function") renderProjectSelector();

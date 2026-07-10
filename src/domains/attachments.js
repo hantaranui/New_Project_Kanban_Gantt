@@ -3,11 +3,10 @@ import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
 import { showConfirmModal } from '../ui/confirm-modal.js';
 import { showToast } from '../ui/toast.js';
-// Temporary backwards import: loadAllData/refreshAllViews aren't extracted
-// yet (loadAllData is the big data-loader, refreshAllViews is the tab-render
-// orchestrator - both depend on domains not extracted yet). Update this once
-// domains/data-loader.js and the final main.js orchestration exist.
-import { loadAllData, refreshAllViews } from '../main.js';
+import { loadAllData } from './data-loader.js';
+// Temporary backwards import: refreshAllViews is the tab-render orchestrator,
+// still depends on domains (kanban/gantt/team) not extracted yet.
+import { refreshAllViews } from '../main.js';
 
 export const ATTACH_MAX_BYTES = 5 * 1024 * 1024; // limite pratique par fichier (~5 Mo)
 

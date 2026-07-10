@@ -5,9 +5,9 @@ import { formatDate } from '../utils/dates.js';
 import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
 import { showConfirmModal } from '../ui/confirm-modal.js';
-// Temporary backwards imports: none of these are extracted yet
-// (closeModalForce/startNewTask -> task-modal domain, loadAllData -> data loader).
-import { closeModalForce, startNewTask, loadAllData } from '../main.js';
+import { loadAllData } from './data-loader.js';
+// Temporary backwards imports: closeModalForce/startNewTask aren't extracted yet (task-modal domain).
+import { closeModalForce, startNewTask } from '../main.js';
 
 export function renderTemplatesView() {
   var search = (document.getElementById('template-search').value || '').toLowerCase();

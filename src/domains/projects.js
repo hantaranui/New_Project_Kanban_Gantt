@@ -4,12 +4,13 @@ import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
 import { showConfirmModal } from '../ui/confirm-modal.js';
 import { getFilteredTasks } from './filters.js';
+import { loadAllData } from './data-loader.js';
 // Temporary backwards imports: none of these are extracted yet
 // (canEditWorkItems/setField -> config/permissions, getUserDisplayName -> team domain,
-// closeModalForce -> task-modal, loadAllData/refreshAllViews -> data loader / main orchestration).
+// closeModalForce -> task-modal, refreshAllViews -> main orchestration).
 import {
   canEditWorkItems, setField, getUserDisplayName,
-  closeModalForce, loadAllData, refreshAllViews
+  closeModalForce, refreshAllViews
 } from '../main.js';
 
 export function populateProjectLead(selectedValue) {

@@ -3,8 +3,9 @@ import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
 import { showConfirmModal } from '../ui/confirm-modal.js';
-// Temporary backwards imports: loadAllData/closeModalForce aren't extracted yet.
-import { loadAllData, closeModalForce } from '../main.js';
+import { loadAllData } from './data-loader.js';
+// Temporary backwards import: closeModalForce isn't extracted yet (task-modal domain).
+import { closeModalForce } from '../main.js';
 
 export function getTaskCustomFieldValue(taskId, fieldId) {
   var cfv = state.customFieldValues.find(function(v) {
