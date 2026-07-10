@@ -3,9 +3,9 @@ import { sanitize } from '../utils/sanitize.js';
 import { formatDate } from '../utils/dates.js';
 import { state } from '../store.js';
 import { getFilteredTasks } from './filters.js';
-// Temporary backwards imports: none of these are extracted yet
-// (getKanbanStatuses -> kanban domain, openEditTaskModal -> task-modal domain).
-import { getKanbanStatuses, openEditTaskModal } from '../main.js';
+import { getKanbanStatuses } from './kanban.js';
+// Temporary backwards import: openEditTaskModal isn't extracted yet (task-modal domain).
+import { openEditTaskModal } from '../main.js';
 
 // NOTIFICATIONS / ALERTS + AUTOMATION ENGINE
 // =============================================================================

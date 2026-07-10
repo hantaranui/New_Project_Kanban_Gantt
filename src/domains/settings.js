@@ -7,15 +7,17 @@ import { showConfirmModal, showPromptModal } from '../ui/confirm-modal.js';
 import { checkSecurityStatus } from './permissions.js';
 import { renderProjectSelector } from './filters.js';
 import { loadAllData } from './data-loader.js';
+import { getKanbanStatuses, renderKanbanView } from './kanban.js';
 // Temporary backwards imports: none of these are extracted yet
 // (setField -> config, closeModalForce -> task-modal, refreshAllViews -> main
-// orchestration, getKanbanStatuses/renderKanbanStatusesList/renderKanbanView ->
-// kanban domain, defaultCardDisplay/cardDisplaySettings -> stay in main.js
-// because loadSettings() reassigns cardDisplaySettings and can't move until
-// the kanban domain that also reassigns it is extracted).
+// orchestration, renderKanbanStatusesList -> kanban domain but stays in
+// main.js since it reassigns customKanbanStatuses like loadSettings() does,
+// defaultCardDisplay/cardDisplaySettings -> stay in main.js because
+// loadSettings() reassigns cardDisplaySettings and can't move until
+// bootstrap/ensure-tables.js is extracted).
 import {
   setField, closeModalForce, refreshAllViews,
-  getKanbanStatuses, renderKanbanStatusesList, renderKanbanView,
+  renderKanbanStatusesList,
   defaultCardDisplay, cardDisplaySettings
 } from '../main.js';
 

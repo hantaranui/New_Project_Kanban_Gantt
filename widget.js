@@ -1218,6 +1218,2079 @@
     }, 3e3);
   }
 
+  // src/domains/comments.js
+  function getTaskComments(taskId) {
+    return state.comments.filter(function(c) {
+      return c.Task_Id === taskId;
+    }).sort(function(a, b) {
+      return (b.Created_At || 0) - (a.Created_At || 0);
+    });
+  }
+
+  // src/domains/custom-fields.js
+  function getTaskCustomFieldValue(taskId, fieldId) {
+    var cfv = state.customFieldValues.find(function(v) {
+      return v.Task_Id === taskId && v.Field_Id === fieldId;
+    });
+    return cfv ? cfv.Value : "";
+  }
+  function getTaskCustomFieldsText(taskId) {
+    return state.customFieldValues.filter(function(v) {
+      return v.Task_Id === taskId && v.Value;
+    }).map(function(v) {
+      return String(v.Value);
+    }).join(" ");
+  }
+  function getCustomFieldTypeLabel(type) {
+    switch (type) {
+      case "text":
+        return t("typeText");
+      case "number":
+        return t("typeNumber");
+      case "date":
+        return t("typeDate");
+      case "checkbox":
+        return t("typeCheckbox");
+      case "select":
+        return t("typeSelect");
+      default:
+        return type;
+    }
+  }
+  function renderCustomFieldInput(field, taskId, value) {
+    var inputId = "cf-" + field.id;
+    var html = "";
+    switch (field.Type) {
+      case "text":
+        html = '<input type="text" id="' + inputId + '" class="cf-input" value="' + sanitize(value) + '" onchange="updateCustomFieldValue(' + taskId + ", " + field.id + ', this.value)" />';
+        break;
+      case "number":
+        html = '<input type="number" id="' + inputId + '" class="cf-input cf-number" value="' + sanitize(value) + '" onchange="updateCustomFieldValue(' + taskId + ", " + field.id + ', this.value)" />';
+        break;
+      case "date":
+        var dateVal = value ? new Date(parseInt(value) * 1e3).toISOString().split("T")[0] : "";
+        html = '<input type="date" id="' + inputId + '" class="cf-input cf-date" value="' + dateVal + '" onchange="updateCustomFieldValue(' + taskId + ", " + field.id + `, this.value ? Math.floor(new Date(this.value).getTime()/1000) : '')" />`;
+        break;
+      case "checkbox":
+        var checked = value === "true" || value === "1";
+        html = '<input type="checkbox" id="' + inputId + '" class="cf-checkbox" ' + (checked ? "checked" : "") + ' onchange="updateCustomFieldValue(' + taskId + ", " + field.id + `, this.checked ? 'true' : 'false')" />`;
+        break;
+      case "select":
+        var options = field.Options ? field.Options.split(",").map(function(o) {
+          return o.trim();
+        }) : [];
+        html = '<select id="' + inputId + '" class="cf-select" onchange="updateCustomFieldValue(' + taskId + ", " + field.id + ', this.value)">';
+        html += '<option value="">--</option>';
+        for (var oi = 0; oi < options.length; oi++) {
+          html += '<option value="' + sanitize(options[oi]) + '"' + (value === options[oi] ? " selected" : "") + ">" + sanitize(options[oi]) + "</option>";
+        }
+        html += "</select>";
+        break;
+      default:
+        html = '<input type="text" id="' + inputId + '" class="cf-input" value="' + sanitize(value) + '" />';
+    }
+    return html;
+  }
+  async function updateCustomFieldValue(taskId, fieldId, value) {
+    var existing = state.customFieldValues.find(function(v) {
+      return v.Task_Id === taskId && v.Field_Id === fieldId;
+    });
+    try {
+      if (existing) {
+        await grist.docApi.applyUserActions([
+          ["UpdateRecord", state.CUSTOM_FIELD_VALUES_TABLE, existing.id, { Value: String(value) }]
+        ]);
+        existing.Value = String(value);
+      } else {
+        await grist.docApi.applyUserActions([
+          ["AddRecord", state.CUSTOM_FIELD_VALUES_TABLE, null, {
+            Task_Id: taskId,
+            Field_Id: fieldId,
+            Value: String(value)
+          }]
+        ]);
+        await loadAllData();
+      }
+    } catch (e) {
+      console.error("Error updating custom field value:", e);
+    }
+  }
+  function openCustomFieldsModal() {
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal modal-cf" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>\u{1F3F7}\uFE0F ' + t("manageCustomFields") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="cf-list">';
+    if (state.customFields.length === 0) {
+      html += '<div class="cf-empty-modal">' + t("noCustomFields") + "</div>";
+    } else {
+      for (var i = 0; i < state.customFields.length; i++) {
+        var cf = state.customFields[i];
+        html += '<div class="cf-list-item">';
+        html += '<span class="cf-list-name">' + sanitize(cf.Name) + "</span>";
+        html += '<span class="cf-list-type">' + getCustomFieldTypeLabel(cf.Type) + "</span>";
+        html += '<button class="cf-delete-btn" onclick="deleteCustomField(' + cf.id + ')">\u{1F5D1}\uFE0F</button>';
+        html += "</div>";
+      }
+    }
+    html += "</div>";
+    html += '<div class="cf-add-form">';
+    html += "<h4>" + t("addCustomField") + "</h4>";
+    html += '<div class="cf-form-row">';
+    html += '<input type="text" id="new-cf-name" placeholder="' + t("customFieldName") + '" class="cf-form-input" />';
+    html += '<select id="new-cf-type" class="cf-form-select" onchange="toggleCfOptions()">';
+    html += '<option value="text">' + t("typeText") + "</option>";
+    html += '<option value="number">' + t("typeNumber") + "</option>";
+    html += '<option value="date">' + t("typeDate") + "</option>";
+    html += '<option value="checkbox">' + t("typeCheckbox") + "</option>";
+    html += '<option value="select">' + t("typeSelect") + "</option>";
+    html += "</select>";
+    html += "</div>";
+    html += '<div id="cf-options-row" class="cf-form-row" style="display:none;">';
+    html += '<input type="text" id="new-cf-options" placeholder="' + t("fieldOptions") + '" class="cf-form-input" />';
+    html += "</div>";
+    html += '<button class="btn btn-primary" onclick="addCustomField()">' + t("addCustomField") + "</button>";
+    html += "</div>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function toggleCfOptions() {
+    var type = document.getElementById("new-cf-type").value;
+    document.getElementById("cf-options-row").style.display = type === "select" ? "flex" : "none";
+  }
+  async function addCustomField() {
+    var name = document.getElementById("new-cf-name").value.trim();
+    var type = document.getElementById("new-cf-type").value;
+    var options = document.getElementById("new-cf-options").value.trim();
+    if (!name) return;
+    var maxOrder = state.customFields.length > 0 ? Math.max.apply(null, state.customFields.map(function(cf) {
+      return cf.Order || 0;
+    })) : 0;
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.CUSTOM_FIELDS_TABLE, null, {
+          Name: name,
+          Type: type,
+          Options: type === "select" ? options : "",
+          Order: maxOrder + 1,
+          Created_At: Math.floor(Date.now() / 1e3)
+        }]
+      ]);
+      showToast(t("customFieldCreated"), "success");
+      await loadAllData();
+      openCustomFieldsModal();
+    } catch (e) {
+      console.error("Error adding custom field:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function deleteCustomField(fieldId) {
+    if (!state.isOwner) return;
+    var confirmed = await showConfirmModal(
+      currentLang === "fr" ? "Supprimer ce champ personnalis\xE9 et toutes ses valeurs ?" : "Delete this custom field and all its values?",
+      currentLang === "fr" ? "Supprimer le champ" : "Delete field"
+    );
+    if (!confirmed) return;
+    try {
+      var valuesToDelete = state.customFieldValues.filter(function(v) {
+        return v.Field_Id === fieldId;
+      });
+      for (var i = 0; i < valuesToDelete.length; i++) {
+        await grist.docApi.applyUserActions([
+          ["RemoveRecord", state.CUSTOM_FIELD_VALUES_TABLE, valuesToDelete[i].id]
+        ]);
+      }
+      await grist.docApi.applyUserActions([
+        ["RemoveRecord", state.CUSTOM_FIELDS_TABLE, fieldId]
+      ]);
+      showToast(t("customFieldDeleted"), "info");
+      await loadAllData();
+      openCustomFieldsModal();
+    } catch (e) {
+      console.error("Error deleting custom field:", e);
+    }
+  }
+
+  // src/domains/table-view.js
+  var tableFilterStatuses = [];
+  var tableFilterPriorities = [];
+  function renderMultiFilter(kind) {
+    var containerId = kind === "status" ? "ms-status" : "ms-priority";
+    var c = document.getElementById(containerId);
+    if (!c) return;
+    var opts, selected, placeholder;
+    if (kind === "status") {
+      opts = getKanbanStatuses().map(function(s) {
+        return { value: s.key, label: currentLang === "fr" ? s.label_fr : s.label_en };
+      });
+      selected = tableFilterStatuses;
+      placeholder = currentLang === "fr" ? "Tous les statuts" : "All statuses";
+    } else {
+      opts = [
+        { value: "high", label: t("priorityHigh") },
+        { value: "medium", label: t("priorityMedium") },
+        { value: "low", label: t("priorityLow") }
+      ];
+      selected = tableFilterPriorities;
+      placeholder = currentLang === "fr" ? "Toutes priorit\xE9s" : "All priorities";
+    }
+    var labelText = selected.length === 0 ? placeholder : opts.filter(function(o) {
+      return selected.indexOf(o.value) !== -1;
+    }).map(function(o) {
+      return o.label;
+    }).join(", ");
+    var h = '<button type="button" class="filter-combo-btn' + (selected.length ? " active" : "") + `" onclick="toggleMsFilter('` + containerId + `')" id="` + containerId + '-btn">';
+    h += '<span class="filter-combo-label">' + sanitize(labelText) + '</span><span class="filter-combo-chevron">\u25BE</span></button>';
+    h += '<div class="filter-combo-dd" id="' + containerId + '-dd"><div class="filter-combo-list">';
+    if (selected.length) {
+      h += `<div class="filter-combo-opt" onclick="clearMsFilter('` + kind + `')" style="color:#ef4444;font-weight:600;">\u2715 ` + (currentLang === "fr" ? "Effacer" : "Clear") + "</div>";
+    }
+    opts.forEach(function(o) {
+      var on = selected.indexOf(o.value) !== -1;
+      h += '<div class="filter-combo-opt' + (on ? " selected" : "") + `" onclick="toggleMsOption('` + kind + "','" + sanitize(o.value).replace(/'/g, "\\'") + `')">`;
+      h += '<span style="display:inline-block;width:16px;">' + (on ? "\u2713" : "") + "</span>" + sanitize(o.label) + "</div>";
+    });
+    h += "</div></div>";
+    var prevDd = document.getElementById(containerId + "-dd");
+    var wasOpen = prevDd && prevDd.classList.contains("show");
+    c.innerHTML = h;
+    if (wasOpen) {
+      var newDd = document.getElementById(containerId + "-dd");
+      var newBtn = document.getElementById(containerId + "-btn");
+      if (newDd) newDd.classList.add("show");
+      if (newBtn) newBtn.classList.add("open");
+    }
+  }
+  function toggleMsFilter(containerId) {
+    var dd = document.getElementById(containerId + "-dd");
+    var btn = document.getElementById(containerId + "-btn");
+    if (!dd) return;
+    var isOpen = dd.classList.contains("show");
+    document.querySelectorAll(".filter-combo-dd.show").forEach(function(d) {
+      d.classList.remove("show");
+    });
+    document.querySelectorAll(".filter-combo-btn.open").forEach(function(b) {
+      b.classList.remove("open");
+    });
+    if (!isOpen) {
+      dd.classList.add("show");
+      if (btn) btn.classList.add("open");
+      setTimeout(function() {
+        document.addEventListener("mousedown", function hideMs(e) {
+          var box = document.getElementById(containerId);
+          if (box && !box.contains(e.target)) {
+            var dd2 = document.getElementById(containerId + "-dd");
+            var btn2 = document.getElementById(containerId + "-btn");
+            if (dd2) dd2.classList.remove("show");
+            if (btn2) btn2.classList.remove("open");
+            document.removeEventListener("mousedown", hideMs);
+          }
+        });
+      }, 0);
+    }
+  }
+  function toggleMsOption(kind, value) {
+    var arr = kind === "status" ? tableFilterStatuses : tableFilterPriorities;
+    var i = arr.indexOf(value);
+    if (i === -1) arr.push(value);
+    else arr.splice(i, 1);
+    renderTableView();
+  }
+  function clearMsFilter(kind) {
+    if (kind === "status") tableFilterStatuses = [];
+    else tableFilterPriorities = [];
+    renderMultiFilter(kind);
+    renderTableView();
+  }
+  var tableSortField = null;
+  var tableSortAsc = true;
+  function sortTable(field) {
+    if (tableSortField === field) {
+      tableSortAsc = !tableSortAsc;
+    } else {
+      tableSortField = field;
+      tableSortAsc = true;
+    }
+    renderTableView();
+  }
+  function renderTableView() {
+    var _prevView = document.getElementById("table-view");
+    var _expandedParents = [];
+    if (_prevView) {
+      _prevView.querySelectorAll(".toggle-btn.expanded").forEach(function(b) {
+        _expandedParents.push(b.id.replace("toggle-", ""));
+      });
+    }
+    var _scrollEl = document.scrollingElement || document.documentElement;
+    var _scrollTop = _scrollEl ? _scrollEl.scrollTop : window.scrollY || 0;
+    renderMultiFilter("status");
+    renderMultiFilter("priority");
+    var search = (document.getElementById("table-search").value || "").toLowerCase();
+    var filtered = getFilteredTasks().filter(function(task2) {
+      if (tableFilterStatuses.length && tableFilterStatuses.indexOf(task2.Status) === -1) return false;
+      if (tableFilterPriorities.length && tableFilterPriorities.indexOf(task2.Priority) === -1) return false;
+      if (search) {
+        var text = (task2.Title + " " + task2.Description + " " + task2.Assignee + " " + getTaskCustomFieldsText(task2.id)).toLowerCase();
+        if (text.indexOf(search) === -1) return false;
+      }
+      return true;
+    });
+    if (tableSortField) {
+      var dir = tableSortAsc ? 1 : -1;
+      filtered.sort(function(a, b) {
+        var va, vb;
+        switch (tableSortField) {
+          case "Title":
+            va = (a.Title || "").toLowerCase();
+            vb = (b.Title || "").toLowerCase();
+            break;
+          case "Project":
+            va = getProjectName(a.Project_Id).toLowerCase();
+            vb = getProjectName(b.Project_Id).toLowerCase();
+            break;
+          case "Status":
+            va = a.Status || "";
+            vb = b.Status || "";
+            break;
+          case "Priority":
+            var po = { high: 0, medium: 1, low: 2 };
+            va = po[a.Priority] !== void 0 ? po[a.Priority] : 3;
+            vb = po[b.Priority] !== void 0 ? po[b.Priority] : 3;
+            break;
+          case "Assignee":
+            va = (a.Assignee || "").toLowerCase();
+            vb = (b.Assignee || "").toLowerCase();
+            break;
+          case "Start_Date":
+            va = a.Start_Date || 0;
+            vb = b.Start_Date || 0;
+            break;
+          case "Due_Date":
+            va = a.Due_Date || 0;
+            vb = b.Due_Date || 0;
+            break;
+          default:
+            va = "";
+            vb = "";
+        }
+        if (va < vb) return -1 * dir;
+        if (va > vb) return 1 * dir;
+        return 0;
+      });
+    }
+    function sortIcon(field) {
+      return tableSortField === field ? tableSortAsc ? " \u25B2" : " \u25BC" : " \u21C5";
+    }
+    var thStyle = "cursor:pointer;user-select:none;";
+    var html = '<table class="data-table">';
+    html += "<thead><tr>";
+    html += '<th style="' + thStyle + `" onclick="sortTable('Title')">` + t("colTaskName") + sortIcon("Title") + "</th>";
+    html += '<th style="' + thStyle + `" onclick="sortTable('Project')">` + (currentLang === "fr" ? "Projet" : "Project") + sortIcon("Project") + "</th>";
+    html += '<th style="' + thStyle + `" onclick="sortTable('Status')">` + t("colStatus") + sortIcon("Status") + "</th>";
+    html += '<th style="' + thStyle + `" onclick="sortTable('Priority')">` + t("colPriority") + sortIcon("Priority") + "</th>";
+    html += '<th style="' + thStyle + `" onclick="sortTable('Assignee')">` + t("colAssignee") + sortIcon("Assignee") + "</th>";
+    html += '<th style="' + thStyle + `" onclick="sortTable('Start_Date')">` + t("colStartDate") + sortIcon("Start_Date") + "</th>";
+    html += '<th style="' + thStyle + `" onclick="sortTable('Due_Date')">` + t("colDueDate") + sortIcon("Due_Date") + "</th>";
+    html += "<th>" + t("colActions") + "</th>";
+    html += "</tr></thead><tbody>";
+    for (var i = 0; i < filtered.length; i++) {
+      var task = filtered[i];
+      var statusClass = "status-" + task.Status;
+      var overdueHtml = isOverdue(task) ? " \u26A0\uFE0F" : "";
+      var dotClass = task.Priority === "high" ? "dot-high" : task.Priority === "medium" ? "dot-medium" : "dot-low";
+      var taskSubtasks = getTaskSubtasks(task.id);
+      var completedSt = taskSubtasks.filter(function(st2) {
+        return st2.Completed;
+      }).length;
+      var taskProjColor = getProjectColor(task.Project_Id);
+      var taskProjName = getProjectName(task.Project_Id);
+      html += '<tr class="task-row clickable-row" onclick="openEditTaskModal(' + task.id + ')">';
+      html += '<td><div style="display:flex;align-items:center;gap:8px;border-left:3px solid ' + taskProjColor + ';padding-left:6px;">';
+      if (taskSubtasks.length > 0) {
+        html += '<button class="toggle-btn" onclick="event.stopPropagation(); toggleSubtasks(' + task.id + ')" id="toggle-' + task.id + '">\u25B6</button>';
+      } else {
+        html += '<span style="width:18px;"></span>';
+      }
+      html += '<div><div style="font-weight:700;">' + sanitize(task.Title) + "</div>";
+      if (task.Description) html += '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + sanitize(task.Description).substring(0, 80) + "</div>";
+      html += "</div></div></td>";
+      html += "<td>" + (taskProjName ? '<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:' + taskProjColor + ';display:inline-block;"></span>' + sanitize(taskProjName) + "</span>" : "") + "</td>";
+      html += '<td><span class="status-badge ' + statusClass + '">\u25CF ' + statusLabel(task.Status) + "</span>";
+      if (taskSubtasks.length > 0) html += ' <span class="st-badge">' + completedSt + "/" + taskSubtasks.length + "</span>";
+      html += "</td>";
+      html += '<td><span class="priority-dot ' + dotClass + '"></span> ' + priorityLabel(task.Priority) + "</td>";
+      var assigneeDisplay = task.Assignee ? task.Assignee.split(",").map(function(a) {
+        return getUserDisplayName(a.trim());
+      }).join(", ") : "";
+      html += "<td>" + (assigneeDisplay ? '<span class="assignee-chip">\u{1F464} ' + sanitize(assigneeDisplay) + "</span>" : "") + "</td>";
+      html += "<td>" + (task.Start_Date ? formatDate(task.Start_Date) : t("notDefined")) + "</td>";
+      html += '<td style="' + (isOverdue(task) ? "color:#dc2626;font-weight:700;" : "") + '">' + (task.Due_Date ? formatDate(task.Due_Date) + overdueHtml : t("noDate")) + "</td>";
+      html += '<td onclick="event.stopPropagation();">';
+      if (state.isOwner) html += '<button class="btn-icon" onclick="deleteTask(' + task.id + ')">\u{1F5D1}\uFE0F</button>';
+      html += "</td>";
+      html += "</tr>";
+      var _nowSec = Math.floor(Date.now() / 1e3);
+      for (var si = 0; si < taskSubtasks.length; si++) {
+        var st = taskSubtasks[si];
+        html += '<tr class="subtask-row clickable-row" data-parent="' + task.id + '" style="display:none;cursor:pointer;" onclick="openEditTaskModal(' + task.id + ", true); setTimeout(function(){startEditSubtask(" + st.id + ')},100);">';
+        var stStatus = st.Status || (st.Completed ? "done" : "todo");
+        var stDotClass = st.Priority === "high" ? "dot-high" : st.Priority === "medium" ? "dot-medium" : "dot-low";
+        var stAssignee = st.Assignee ? st.Assignee.split(",").map(function(a) {
+          return getUserDisplayName(a.trim());
+        }).join(", ") : "";
+        var stOverdue = st.Due_Date && !st.Completed && st.Due_Date < _nowSec;
+        var stMilestoneMark = st.Type === "milestone" ? '<span title="Jalon" style="color:#7c3aed;margin-right:3px;">\u25C6</span>' : "";
+        html += '<td><div class="subtask-indent"><span class="subtask-arrow">\u2514</span><input type="checkbox" class="subtask-checkbox" ' + (st.Completed ? "checked" : "") + ' onclick="event.stopPropagation();toggleSubtask(' + st.id + ", " + !st.Completed + ')" style="cursor:pointer;width:14px;height:14px;margin-right:6px;flex-shrink:0;" />' + stMilestoneMark + '<span class="subtask-name' + (st.Completed ? " completed" : "") + '">' + sanitize(st.Title) + "</span></div></td>";
+        html += "<td></td>";
+        var stStatusDef = getKanbanStatuses().find(function(s) {
+          return s.key === stStatus;
+        });
+        var stStatusColor = stStatusDef && stStatusDef.color ? stStatusDef.color : "#94a3b8";
+        html += '<td><span class="status-badge" style="background:' + stStatusColor + "20;color:" + stStatusColor + ';">\u25CF ' + statusLabel(stStatus) + "</span></td>";
+        html += '<td><span class="priority-dot ' + stDotClass + '"></span> ' + priorityLabel(st.Priority) + "</td>";
+        html += "<td>" + (stAssignee ? '<span class="assignee-chip">\u{1F464} ' + sanitize(stAssignee) + "</span>" : "") + "</td>";
+        html += "<td>" + (st.Start_Date ? formatDate(st.Start_Date) : "") + "</td>";
+        html += '<td style="' + (stOverdue ? "color:#dc2626;font-weight:700;" : "") + '">' + (st.Due_Date ? formatDate(st.Due_Date) + (stOverdue ? " \u26A0\uFE0F" : "") : "") + "</td>";
+        html += "<td></td>";
+        html += "</tr>";
+      }
+    }
+    if (filtered.length === 0) {
+      html += '<tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8;">' + t("noTasks") + "</td></tr>";
+    }
+    html += "</tbody></table>";
+    document.getElementById("table-view").innerHTML = html;
+    _expandedParents.forEach(function(pid) {
+      var rows = document.querySelectorAll('.subtask-row[data-parent="' + pid + '"]');
+      var btn = document.getElementById("toggle-" + pid);
+      for (var i2 = 0; i2 < rows.length; i2++) rows[i2].style.display = "table-row";
+      if (btn) {
+        btn.textContent = "\u25BC";
+        btn.classList.add("expanded");
+      }
+    });
+    if (_scrollEl && _scrollTop) _scrollEl.scrollTop = _scrollTop;
+  }
+
+  // src/domains/subtasks.js
+  function getTaskSubtasks(taskId) {
+    return state.subtasks.filter(function(st) {
+      return st.Parent_Task_Id === taskId;
+    }).sort(function(a, b) {
+      var da = a.Due_Date || null;
+      var db = b.Due_Date || null;
+      if (da && db) {
+        if (da !== db) return da - db;
+      } else if (da) {
+        return -1;
+      } else if (db) {
+        return 1;
+      }
+      return (a.Order || 0) - (b.Order || 0);
+    });
+  }
+  function getTaskProgress(task) {
+    var taskSubtasks = getTaskSubtasks(task.id);
+    if (taskSubtasks.length === 0) {
+      return task.Status === "done" ? 100 : task.Status === "progress" ? 50 : 10;
+    }
+    var completed = taskSubtasks.filter(function(st) {
+      return st.Completed;
+    }).length;
+    return Math.round(completed / taskSubtasks.length * 100);
+  }
+  function isSubtaskBlocked(subtask) {
+    if (!subtask.Blocked_By_Subtask_Id) return false;
+    var blocker = state.subtasks.find(function(st) {
+      return st.id === subtask.Blocked_By_Subtask_Id;
+    });
+    return blocker && !blocker.Completed;
+  }
+  function getSubtaskBlocker(subtask) {
+    if (!subtask.Blocked_By_Subtask_Id) return null;
+    return state.subtasks.find(function(st) {
+      return st.id === subtask.Blocked_By_Subtask_Id;
+    });
+  }
+  async function toggleSubtaskFromPopup(subtaskId, taskId, completed) {
+    await toggleSubtaskFromCard(subtaskId, completed);
+    await loadAllData();
+    openCardSubtasksModal(taskId);
+    renderKanbanView();
+  }
+  async function toggleSubtaskFromCard(subtaskId, completed) {
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, { Completed: completed }]
+      ]);
+      for (var i = 0; i < state.subtasks.length; i++) {
+        if (state.subtasks[i].id === subtaskId) {
+          state.subtasks[i].Completed = completed;
+          break;
+        }
+      }
+      renderKanbanView();
+    } catch (e) {
+      console.error("toggleSubtaskFromCard:", e);
+    }
+  }
+  function toggleSubtasks(taskId) {
+    var rows = document.querySelectorAll('.subtask-row[data-parent="' + taskId + '"]');
+    var btn = document.getElementById("toggle-" + taskId);
+    var isExpanded = rows.length > 0 && rows[0].style.display !== "none";
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].style.display = isExpanded ? "none" : "table-row";
+    }
+    if (btn) {
+      btn.textContent = isExpanded ? "\u25B6" : "\u25BC";
+      btn.classList.toggle("expanded", !isExpanded);
+    }
+  }
+  function expandAllSubtasks() {
+    var rows = document.querySelectorAll(".subtask-row");
+    var btns = document.querySelectorAll(".toggle-btn");
+    for (var i = 0; i < rows.length; i++) rows[i].style.display = "table-row";
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].textContent = "\u25BC";
+      btns[i].classList.add("expanded");
+    }
+  }
+  function collapseAllSubtasks() {
+    var rows = document.querySelectorAll(".subtask-row");
+    var btns = document.querySelectorAll(".toggle-btn");
+    for (var i = 0; i < rows.length; i++) rows[i].style.display = "none";
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].textContent = "\u25B6";
+      btns[i].classList.remove("expanded");
+    }
+  }
+  async function toggleSubtaskFromTable(subtaskId, completed) {
+    var subtask = state.subtasks.find(function(st) {
+      return st.id === subtaskId;
+    });
+    var parentTaskId = subtask ? subtask.Parent_Task_Id : null;
+    var expandedTasks = [];
+    document.querySelectorAll(".toggle-btn.expanded").forEach(function(btn) {
+      var taskId = btn.id.replace("toggle-", "");
+      expandedTasks.push(parseInt(taskId));
+    });
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, { Completed: completed }]
+      ]);
+      for (var i = 0; i < state.subtasks.length; i++) {
+        if (state.subtasks[i].id === subtaskId) {
+          state.subtasks[i].Completed = completed;
+          break;
+        }
+      }
+      renderTableView();
+      expandedTasks.forEach(function(taskId) {
+        var rows = document.querySelectorAll('.subtask-row[data-parent="' + taskId + '"]');
+        var btn = document.getElementById("toggle-" + taskId);
+        for (var i2 = 0; i2 < rows.length; i2++) {
+          rows[i2].style.display = "table-row";
+        }
+        if (btn) {
+          btn.textContent = "\u25BC";
+          btn.classList.add("expanded");
+        }
+      });
+      var modal = document.getElementById("edit-task-modal");
+      if (modal && modal.style.display !== "none" && parentTaskId) {
+        openEditTaskModal(parentTaskId);
+      }
+    } catch (e) {
+      console.error("Error toggling subtask:", e);
+    }
+  }
+  function openSubtaskDepModal(subtaskId, taskId) {
+    var subtask = state.subtasks.find(function(st) {
+      return st.id === subtaskId;
+    });
+    if (!subtask) return;
+    var taskSubtasks = getTaskSubtasks(taskId);
+    var otherSubtasks = taskSubtasks.filter(function(st) {
+      return st.id !== subtaskId;
+    });
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" style="max-width:400px;" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>\u{1F517} ' + t("dependencies") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<p style="margin-bottom:12px;font-size:12px;color:#64748b;">' + sanitize(subtask.Title) + "</p>";
+    html += '<div class="form-group"><label>' + t("blockedBy") + "</label>";
+    html += '<select id="subtask-blocker-select">';
+    html += '<option value="">-- ' + t("noDependencies") + " --</option>";
+    for (var i = 0; i < otherSubtasks.length; i++) {
+      var ost = otherSubtasks[i];
+      var sel = subtask.Blocked_By_Subtask_Id === ost.id ? " selected" : "";
+      html += '<option value="' + ost.id + '"' + sel + ">" + sanitize(ost.Title) + "</option>";
+    }
+    html += "</select></div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="updateSubtaskDep(' + subtaskId + ", " + taskId + ')">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  async function updateSubtaskDep(subtaskId, taskId) {
+    var select = document.getElementById("subtask-blocker-select");
+    var blockerId = select.value ? parseInt(select.value) : null;
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, { Blocked_By_Subtask_Id: blockerId }]
+      ]);
+      showToast(t("dependencyAdded"), "success");
+      closeModalForce();
+      await loadAllData();
+      openEditTaskModal(taskId);
+    } catch (e) {
+      console.error("Error updating subtask dependency:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  function setStStatus(subtaskId, value, btn) {
+    var hidden = document.getElementById("st-status-" + subtaskId);
+    if (hidden) hidden.value = value;
+    var grp = btn.parentNode;
+    if (grp) grp.querySelectorAll(".st-pill").forEach(function(p) {
+      p.className = "st-pill";
+      p.style.background = "";
+      p.style.color = "";
+      p.style.borderColor = "";
+    });
+    var def = getKanbanStatuses().find(function(s) {
+      return s.key === value;
+    });
+    var color = def && def.color ? def.color : "#3b82f6";
+    btn.style.background = color;
+    btn.style.color = "#fff";
+    btn.style.borderColor = color;
+  }
+  function setStType(subtaskId, value, btn) {
+    var hidden = document.getElementById("st-type-" + subtaskId);
+    if (hidden) hidden.value = value;
+    var grp = btn.parentNode;
+    if (grp) grp.querySelectorAll(".st-pill").forEach(function(p) {
+      p.className = "st-pill";
+    });
+    btn.className = "st-pill active-progress";
+  }
+  function setStPill(field, subtaskId, value, btn) {
+    var group = document.getElementById("st-" + field + "-group-" + subtaskId);
+    var hidden = document.getElementById("st-" + field + "-" + subtaskId);
+    if (!group || !hidden) return;
+    hidden.value = value;
+    var pills = group.querySelectorAll(".st-pill");
+    pills.forEach(function(p) {
+      p.className = "st-pill";
+    });
+    btn.className = "st-pill active-" + value;
+  }
+  function startEditSubtask(subtaskId) {
+    var viewEl = document.getElementById("st-view-" + subtaskId);
+    var editEl = document.getElementById("st-edit-" + subtaskId);
+    if (viewEl) viewEl.style.display = "none";
+    if (editEl) {
+      editEl.style.display = "flex";
+      var t2 = document.getElementById("st-title-" + subtaskId);
+      if (t2) t2.focus();
+    }
+  }
+  function cancelEditSubtask(subtaskId) {
+    var viewEl = document.getElementById("st-view-" + subtaskId);
+    var editEl = document.getElementById("st-edit-" + subtaskId);
+    if (viewEl) viewEl.style.display = "flex";
+    if (editEl) editEl.style.display = "none";
+  }
+  function filterStAssignees(subtaskId, query) {
+    var box = document.getElementById("st-assignee-" + subtaskId);
+    if (!box) return;
+    var q = (query || "").toLowerCase().trim();
+    box.querySelectorAll("label").forEach(function(lbl) {
+      var name = (lbl.textContent || "").toLowerCase();
+      lbl.style.display = !q || name.indexOf(q) !== -1 ? "" : "none";
+    });
+  }
+
+  // src/domains/dependencies.js
+  function getTaskDependencies(taskId) {
+    return state.dependencies.filter(function(d) {
+      return d.Task_Id === taskId;
+    }).map(function(d) {
+      return state.tasks.find(function(t2) {
+        return t2.id === d.Depends_On_Task_Id;
+      });
+    }).filter(Boolean);
+  }
+  function getTasksDependingOn(taskId) {
+    return state.dependencies.filter(function(d) {
+      return d.Depends_On_Task_Id === taskId;
+    }).map(function(d) {
+      return state.tasks.find(function(t2) {
+        return t2.id === d.Task_Id;
+      });
+    }).filter(Boolean);
+  }
+  function isTaskBlocked(taskId) {
+    var blockers = getTaskDependencies(taskId);
+    return blockers.some(function(blocker) {
+      return blocker && blocker.Status !== "done";
+    });
+  }
+  function ganttDepBadge(task) {
+    var deps = getTaskDependencies(task.id);
+    var blocks = getTasksDependingOn(task.id);
+    var html = "";
+    if (deps.length > 0) {
+      var dependsText = (currentLang === "fr" ? "Cette t\xE2che d\xE9pend de : " : "This task depends on: ") + deps.map(function(d) {
+        return d.Title;
+      }).join(", ") + ".";
+      html += ' <button type="button" class="gantt-dep-badge gantt-dep-depends" data-tooltip="' + sanitize(dependsText) + '" aria-label="' + sanitize(dependsText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">\u{1F517}' + deps.length + "</button>";
+    }
+    if (blocks.length > 0) {
+      var blocksText = (currentLang === "fr" ? "Cette t\xE2che bloque : " : "This task blocks: ") + blocks.map(function(d) {
+        return d.Title;
+      }).join(", ") + (currentLang === "fr" ? ". La t\xE2che indiqu\xE9e attend que celle-ci soit termin\xE9e." : ". The listed task is waiting for this one to be completed.");
+      html += ' <button type="button" class="gantt-dep-badge gantt-dep-blocks" data-tooltip="' + sanitize(blocksText) + '" aria-label="' + sanitize(blocksText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">\u23F3' + blocks.length + "</button>";
+    }
+    return html;
+  }
+  function showGanttDependencyTooltip(event) {
+    var target = event && event.currentTarget;
+    if (!target) return;
+    var message = target.getAttribute("data-tooltip");
+    if (!message) return;
+    var tooltip = document.getElementById("gantt-dependency-tooltip");
+    if (!tooltip) {
+      tooltip = document.createElement("div");
+      tooltip.id = "gantt-dependency-tooltip";
+      tooltip.setAttribute("role", "tooltip");
+      document.body.appendChild(tooltip);
+    }
+    tooltip.textContent = message;
+    tooltip.style.display = "block";
+    var rect = target.getBoundingClientRect();
+    var left = Math.min(Math.max(8, rect.left), window.innerWidth - tooltip.offsetWidth - 8);
+    var top = rect.bottom + 8;
+    if (top + tooltip.offsetHeight > window.innerHeight - 8) top = rect.top - tooltip.offsetHeight - 8;
+    tooltip.style.left = left + "px";
+    tooltip.style.top = Math.max(8, top) + "px";
+  }
+  function hideGanttDependencyTooltip() {
+    var tooltip = document.getElementById("gantt-dependency-tooltip");
+    if (tooltip) tooltip.style.display = "none";
+  }
+  function normalizeDependencyProjectId(value) {
+    var parsed = parseInt(value, 10);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  function getDependencyCandidates(taskId, projectId, query) {
+    var normalizedProjectId = normalizeDependencyProjectId(projectId);
+    if (!normalizedProjectId) return [];
+    var normalizedQuery = String(query || "").trim().toLowerCase();
+    var existingDependencyIds = {};
+    getTaskDependencies(taskId).forEach(function(dependency) {
+      existingDependencyIds[dependency.id] = true;
+    });
+    return state.tasks.filter(function(candidate) {
+      if (candidate.id === taskId || candidate.Status === "archived" || existingDependencyIds[candidate.id]) return false;
+      if (normalizeDependencyProjectId(candidate.Project_Id) !== normalizedProjectId) return false;
+      if (normalizedQuery && String(candidate.Title || "").toLowerCase().indexOf(normalizedQuery) === -1) return false;
+      if (shouldLimitToMyProjects()) {
+        var myIds = myProjectIdSet();
+        if (!(candidate.Project_Id && myIds[candidate.Project_Id] || taskConcernsCurrentUser(candidate))) return false;
+      }
+      return true;
+    }).sort(function(a, b) {
+      return String(a.Title || "").localeCompare(String(b.Title || ""));
+    });
+  }
+  function refreshDependencyTaskOptions(taskId, resetSelection) {
+    var selectedInput = document.getElementById("dep-select");
+    var optionsContainer = document.getElementById("dep-options");
+    if (!selectedInput || !optionsContainer) return;
+    var projectEl = document.getElementById("task-project");
+    var searchEl = document.getElementById("dep-search");
+    if (resetSelection) {
+      selectedInput.value = "";
+      if (searchEl) searchEl.value = "";
+    }
+    var candidates = getDependencyCandidates(taskId, projectEl ? projectEl.value : 0, searchEl ? searchEl.value : "");
+    optionsContainer.innerHTML = "";
+    if (!normalizeDependencyProjectId(projectEl ? projectEl.value : 0)) {
+      var noProject = document.createElement("div");
+      noProject.className = "dep-option-empty";
+      noProject.textContent = currentLang === "fr" ? "Choisissez d\u2019abord un projet." : "Choose a project first.";
+      optionsContainer.appendChild(noProject);
+      return;
+    }
+    if (!candidates.length) {
+      var empty = document.createElement("div");
+      empty.className = "dep-option-empty";
+      empty.textContent = currentLang === "fr" ? "Aucune t\xE2che correspondante." : "No matching task.";
+      optionsContainer.appendChild(empty);
+      return;
+    }
+    candidates.forEach(function(candidate) {
+      var option = document.createElement("button");
+      option.type = "button";
+      option.className = "dep-option";
+      option.setAttribute("role", "option");
+      option.textContent = candidate.Title || "";
+      option.onclick = function() {
+        selectDependencyTask(candidate.id);
+      };
+      optionsContainer.appendChild(option);
+    });
+  }
+  function clearDependencyTaskSelection() {
+    var selectedInput = document.getElementById("dep-select");
+    if (selectedInput) selectedInput.value = "";
+  }
+  function openDependencyTaskOptions(taskId) {
+    refreshDependencyTaskOptions(taskId);
+    var combobox = document.getElementById("dep-combobox");
+    var searchEl = document.getElementById("dep-search");
+    if (combobox) combobox.classList.add("open");
+    if (searchEl) searchEl.setAttribute("aria-expanded", "true");
+  }
+  function closeDependencyTaskOptions() {
+    var combobox = document.getElementById("dep-combobox");
+    var searchEl = document.getElementById("dep-search");
+    if (combobox) combobox.classList.remove("open");
+    if (searchEl) searchEl.setAttribute("aria-expanded", "false");
+  }
+  function toggleDependencyTaskOptions(taskId) {
+    var combobox = document.getElementById("dep-combobox");
+    if (combobox && combobox.classList.contains("open")) closeDependencyTaskOptions();
+    else openDependencyTaskOptions(taskId);
+  }
+  function selectDependencyTask(taskId) {
+    var selectedTask = state.tasks.find(function(candidate) {
+      return candidate.id === taskId;
+    });
+    var selectedInput = document.getElementById("dep-select");
+    var searchEl = document.getElementById("dep-search");
+    if (!selectedTask || !selectedInput || !searchEl) return;
+    selectedInput.value = String(selectedTask.id);
+    searchEl.value = selectedTask.Title || "";
+    closeDependencyTaskOptions();
+  }
+
+  // src/domains/time-tracking.js
+  function getTaskTimeEntries(taskId) {
+    return state.timeEntries.filter(function(te) {
+      return te.Task_Id === taskId;
+    }).sort(function(a, b) {
+      return (b.Start_Time || 0) - (a.Start_Time || 0);
+    });
+  }
+  function getTaskTotalTime(taskId) {
+    var entries = getTaskTimeEntries(taskId);
+    var total = 0;
+    for (var i = 0; i < entries.length; i++) {
+      total += entries[i].Duration || 0;
+    }
+    if (state.activeTimers[taskId]) {
+      total += Math.floor(Date.now() / 1e3) - state.activeTimers[taskId];
+    }
+    return total;
+  }
+  function formatDuration(seconds) {
+    if (!seconds || seconds < 0) return "0" + t("minutes");
+    var hours = Math.floor(seconds / 3600);
+    var mins = Math.floor(seconds % 3600 / 60);
+    if (hours > 0) {
+      return hours + t("hours") + " " + mins + t("minutes");
+    }
+    return mins + t("minutes");
+  }
+  function formatDurationShort(seconds) {
+    if (!seconds || seconds < 0) return "0m";
+    var hours = Math.floor(seconds / 3600);
+    var mins = Math.floor(seconds % 3600 / 60);
+    if (hours > 0) {
+      return hours + "h" + (mins > 0 ? mins + "m" : "");
+    }
+    return mins + "m";
+  }
+  async function startTimer(taskId) {
+    if (state.activeTimers[taskId]) return;
+    var now = Math.floor(Date.now() / 1e3);
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
+          Task_Id: taskId,
+          User: state.currentUserEmail || "Utilisateur",
+          Start_Time: now,
+          End_Time: null,
+          Duration: 0,
+          Description: currentLang === "fr" ? "Timer en cours" : "Running timer"
+        }]
+      ]);
+      state.activeTimers[taskId] = now;
+      await loadAllData();
+      openEditTaskModal(taskId);
+    } catch (e) {
+      console.error("Error starting timer:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function stopTimer(taskId) {
+    if (!state.activeTimers[taskId]) return;
+    var startTime = state.activeTimers[taskId];
+    var endTime = Math.floor(Date.now() / 1e3);
+    var duration = endTime - startTime;
+    var openEntry = state.timeEntries.find(function(te) {
+      return te.Task_Id === taskId && te.Start_Time === startTime && !te.End_Time;
+    });
+    try {
+      if (openEntry) {
+        await grist.docApi.applyUserActions([
+          ["UpdateRecord", state.TIME_ENTRIES_TABLE, openEntry.id, {
+            End_Time: endTime,
+            Duration: duration,
+            Description: ""
+          }]
+        ]);
+      } else {
+        await grist.docApi.applyUserActions([
+          ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
+            Task_Id: taskId,
+            User: state.currentUserEmail || "Utilisateur",
+            Start_Time: startTime,
+            End_Time: endTime,
+            Duration: duration,
+            Description: ""
+          }]
+        ]);
+      }
+      delete state.activeTimers[taskId];
+      showToast(t("timeEntryAdded"), "success");
+      await loadAllData();
+      openEditTaskModal(taskId);
+    } catch (e) {
+      console.error("Error stopping timer:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function pauseTimer(taskId) {
+    await stopTimer(taskId);
+  }
+  async function addManualTimeEntry(taskId) {
+    var hours = parseInt(document.getElementById("manual-hours").value) || 0;
+    var minutes = parseInt(document.getElementById("manual-minutes").value) || 0;
+    var duration = hours * 3600 + minutes * 60;
+    if (duration <= 0) {
+      showToast(currentLang === "fr" ? "Entrez une dur\xE9e valide" : "Enter a valid duration", "error");
+      return;
+    }
+    var now = Math.floor(Date.now() / 1e3);
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
+          Task_Id: taskId,
+          User: state.currentUserEmail || "Utilisateur",
+          Start_Time: now - duration,
+          End_Time: now,
+          Duration: duration,
+          Description: currentLang === "fr" ? "Saisie manuelle" : "Manual entry"
+        }]
+      ]);
+      showToast(t("timeEntryAdded"), "success");
+      await loadAllData();
+      openEditTaskModal(taskId);
+    } catch (e) {
+      console.error("Error adding manual time entry:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+
+  // src/domains/activity-log.js
+  async function logActivity(action, taskId, taskTitle, details) {
+    try {
+      var record = {
+        Timestamp: Math.floor(Date.now() / 1e3),
+        User_Email: state.currentUserEmail || "unknown",
+        Action: action,
+        Task_Id: taskId || 0,
+        Task_Title: taskTitle || "",
+        Details: details || ""
+      };
+      await grist.docApi.applyUserActions([["AddRecord", state.ACTIVITY_LOG_TABLE, null, record]]);
+      state.activityLog.push(record);
+    } catch (e) {
+      console.log("[GristPM] Activity log skipped:", e.message);
+    }
+  }
+  var _activityLogLimit = 20;
+  function renderActivityLog() {
+    var container = document.getElementById("activity-log-list");
+    if (!container) return;
+    var sorted = state.activityLog.slice().sort(function(a, b) {
+      return (b.Timestamp || 0) - (a.Timestamp || 0);
+    });
+    var shown = sorted.slice(0, _activityLogLimit);
+    if (shown.length === 0) {
+      container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + t("actNoActivity") + "</div>";
+      return;
+    }
+    var ACTION_ICONS = {
+      task_created: "\u{1F195}",
+      task_updated: "\u270F\uFE0F",
+      task_deleted: "\u{1F5D1}\uFE0F",
+      status_changed: "\u{1F504}",
+      task_archived: "\u{1F4E6}",
+      task_restored: "\u267B\uFE0F",
+      comment_added: "\u{1F4AC}"
+    };
+    var ACTION_I18N = {
+      task_created: "actTaskCreated",
+      task_updated: "actTaskUpdated",
+      task_deleted: "actTaskDeleted",
+      status_changed: "actStatusChanged",
+      task_archived: "actTaskArchived",
+      task_restored: "actTaskRestored",
+      comment_added: "actCommentAdded"
+    };
+    var html = "";
+    var lastDateStr = "";
+    for (var i = 0; i < shown.length; i++) {
+      var entry = shown[i];
+      var dateObj = entry.Timestamp ? new Date(entry.Timestamp * 1e3) : /* @__PURE__ */ new Date();
+      var dateStr = dateObj.toLocaleDateString(currentLang === "fr" ? "fr-FR" : "en-US", { weekday: "long", day: "numeric", month: "long" });
+      if (dateStr !== lastDateStr) {
+        html += '<div style="font-size:11px;font-weight:700;color:#94a3b8;padding:8px 0 4px;border-bottom:1px solid #f1f5f9;text-transform:capitalize;">' + dateStr + "</div>";
+        lastDateStr = dateStr;
+      }
+      var icon = ACTION_ICONS[entry.Action] || "\u{1F4CB}";
+      var actionText = t(ACTION_I18N[entry.Action] || entry.Action);
+      var userName = getUserDisplayName(entry.User_Email);
+      var timeStr = dateObj.toLocaleTimeString(currentLang === "fr" ? "fr-FR" : "en-US", { hour: "2-digit", minute: "2-digit" });
+      html += '<div class="activity-entry" style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f8fafc;"';
+      if (entry.Task_Id) html += ' onclick="openEditTaskModal(' + entry.Task_Id + ')" style="cursor:pointer;"';
+      html += ">";
+      html += '<span style="font-size:16px;flex-shrink:0;margin-top:2px;">' + icon + "</span>";
+      html += '<div style="flex:1;min-width:0;">';
+      html += '<div style="font-size:13px;"><strong>' + sanitize(userName) + "</strong> " + actionText;
+      if (entry.Task_Title) html += ' <span style="color:#3b82f6;font-weight:600;">' + sanitize(entry.Task_Title) + "</span>";
+      html += "</div>";
+      if (entry.Details) html += '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + sanitize(entry.Details) + "</div>";
+      html += "</div>";
+      html += '<span style="font-size:10px;color:#94a3b8;white-space:nowrap;margin-top:3px;">' + timeStr + "</span>";
+      html += "</div>";
+    }
+    if (sorted.length > _activityLogLimit) {
+      html += '<div style="text-align:center;padding:12px;"><button class="btn btn-secondary btn-sm" onclick="expandActivityLog()">' + t("actLoadMore") + "</button></div>";
+    }
+    container.innerHTML = html;
+  }
+  function expandActivityLog() {
+    _activityLogLimit += 20;
+    renderActivityLog();
+  }
+
+  // src/domains/notifications.js
+  function getOverdueTasks() {
+    var now = Math.floor(Date.now() / 1e3);
+    return getFilteredTasks().filter(function(t2) {
+      return t2.Due_Date && t2.Due_Date < now && t2.Status !== "done" && t2.Status !== "archived";
+    });
+  }
+  function getUpcomingTasks() {
+    var now = Math.floor(Date.now() / 1e3);
+    var threeDays = now + 3 * 24 * 60 * 60;
+    return getFilteredTasks().filter(function(t2) {
+      return t2.Due_Date && t2.Due_Date >= now && t2.Due_Date <= threeDays && t2.Status !== "done" && t2.Status !== "archived";
+    });
+  }
+  function getMyNotifications() {
+    var email = (state.currentUserEmail || "").toLowerCase().trim();
+    if (!email) return [];
+    return state.pmNotifications.filter(function(n) {
+      return (n.User_Email || "").toLowerCase().trim() === email;
+    }).sort(function(a, b) {
+      return (b.Created_At || 0) - (a.Created_At || 0);
+    });
+  }
+  function getUnreadCount() {
+    return getMyNotifications().filter(function(n) {
+      return !n.Is_Read;
+    }).length;
+  }
+  function getComputedAlertKey(task, type) {
+    return "computed:" + type + ":" + Number(task && task.Due_Date || 0);
+  }
+  function isComputedAlertRead(taskId, type) {
+    var email = (state.currentUserEmail || "").toLowerCase().trim();
+    var task = state.tasks.find(function(item) {
+      return Number(item.id) === Number(taskId);
+    });
+    var alertKey = getComputedAlertKey(task, type);
+    return state.pmNotifications.some(function(n) {
+      return Number(n.Task_Id) === Number(taskId) && n.Type === type && n.Is_Read && (n.User_Email || "").toLowerCase().trim() === email && n.Rule_Id === alertKey;
+    });
+  }
+  function getUnreadComputedTasks(tasksList, type) {
+    return tasksList.filter(function(task) {
+      return !isComputedAlertRead(task.id, type);
+    });
+  }
+  function updateNotificationBadge() {
+    var unread = getUnreadCount();
+    var hasOverdueRule = state.automationRules.some(function(r) {
+      return r.enabled && r.trigger === "overdue";
+    });
+    var hasApproachingRule = state.automationRules.some(function(r) {
+      return r.enabled && r.trigger === "approaching_deadline";
+    });
+    var computed = 0;
+    if (!hasOverdueRule) computed += getUnreadComputedTasks(getOverdueTasks(), "computed_overdue").length;
+    if (!hasApproachingRule) computed += getUnreadComputedTasks(getUpcomingTasks(), "computed_upcoming").length;
+    var total = unread + computed;
+    var badge = document.getElementById("notif-badge");
+    if (badge) {
+      badge.textContent = total;
+      badge.classList.toggle("show", total > 0);
+    }
+  }
+  function showNotifications() {
+    var myNotifs = getMyNotifications();
+    var unread = myNotifs.filter(function(n2) {
+      return !n2.Is_Read;
+    });
+    var readRecent = myNotifs.filter(function(n2) {
+      return n2.Is_Read;
+    }).slice(0, 10);
+    var hasOverdueRule = state.automationRules.some(function(r) {
+      return r.enabled && r.trigger === "overdue";
+    });
+    var hasApproachingRule = state.automationRules.some(function(r) {
+      return r.enabled && r.trigger === "approaching_deadline";
+    });
+    var overdue = !hasOverdueRule ? getUnreadComputedTasks(getOverdueTasks(), "computed_overdue") : [];
+    var upcoming = !hasApproachingRule ? getUnreadComputedTasks(getUpcomingTasks(), "computed_upcoming") : [];
+    var html = '<div class="notif-dropdown" id="notif-dropdown">';
+    html += '<div class="notif-header" style="display:flex;justify-content:space-between;align-items:center;">';
+    html += "<span>\u{1F514} " + t("notifications") + "</span>";
+    if (unread.length > 0) {
+      html += '<button onclick="event.stopPropagation();markAllNotificationsRead();" style="background:#3b82f6;color:white;border:none;border-radius:4px;font-size:10px;padding:3px 8px;cursor:pointer;">' + t("markAllRead") + "</button>";
+    }
+    html += "</div>";
+    if (unread.length > 0) {
+      html += '<div style="padding:6px 16px;font-size:10px;color:#3b82f6;font-weight:700;">\u{1F535} ' + unread.length + " " + t("notifUnread") + "</div>";
+      for (var ui = 0; ui < unread.length; ui++) {
+        var n = unread[ui];
+        html += '<div class="notif-item" style="display:flex;align-items:center;gap:6px;font-weight:600;" onclick="openNotification(' + n.id + ", " + n.Task_Id + ');">';
+        html += '<div style="flex:1;">';
+        html += '<div class="notif-item-title">' + sanitize(n.Message) + "</div>";
+        html += '<div class="notif-item-date">' + formatDate(n.Created_At) + "</div>";
+        html += "</div>";
+        html += '<button onclick="event.stopPropagation();markNotificationRead(' + n.id + ');" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:14px;" title="' + t("markAsRead") + '">\u2713</button>';
+        html += "</div>";
+      }
+    }
+    if (overdue.length > 0) {
+      html += '<div style="padding:6px 16px;font-size:10px;color:#ef4444;font-weight:700;">\u26A0\uFE0F ' + overdue.length + " " + t("overdueTasksAlert") + "</div>";
+      for (var oi = 0; oi < overdue.length; oi++) {
+        html += '<div class="notif-item overdue" onclick="openComputedNotification(' + overdue[oi].id + `, 'computed_overdue');">`;
+        html += '<div class="notif-item-title">' + sanitize(overdue[oi].Title) + "</div>";
+        html += '<div class="notif-item-date">\u{1F4C5} ' + formatDate(overdue[oi].Due_Date) + "</div>";
+        html += "</div>";
+      }
+    }
+    if (upcoming.length > 0) {
+      html += '<div style="padding:6px 16px;font-size:10px;color:#f59e0b;font-weight:700;">\u{1F4C5} ' + upcoming.length + " " + t("upcomingTasksAlert") + "</div>";
+      for (var upi = 0; upi < upcoming.length; upi++) {
+        html += '<div class="notif-item upcoming" onclick="openComputedNotification(' + upcoming[upi].id + `, 'computed_upcoming');">`;
+        html += '<div class="notif-item-title">' + sanitize(upcoming[upi].Title) + "</div>";
+        html += '<div class="notif-item-date">\u{1F4C5} ' + formatDate(upcoming[upi].Due_Date) + "</div>";
+        html += "</div>";
+      }
+    }
+    if (readRecent.length > 0) {
+      html += '<div style="padding:6px 16px;font-size:10px;color:#94a3b8;font-weight:700;border-top:1px solid #e2e8f0;">\u{1F4CB} ' + (currentLang === "fr" ? "Historique" : "History") + "</div>";
+      for (var ri = 0; ri < readRecent.length; ri++) {
+        var rn = readRecent[ri];
+        html += '<div class="notif-item" style="opacity:0.5;" onclick="openEditTaskModal(' + rn.Task_Id + '); closeNotifications();">';
+        html += '<div class="notif-item-title">' + sanitize(rn.Message) + "</div>";
+        html += '<div class="notif-item-date">' + formatDate(rn.Created_At) + "</div>";
+        html += "</div>";
+      }
+    }
+    if (unread.length === 0 && overdue.length === 0 && upcoming.length === 0 && readRecent.length === 0) {
+      html += '<div class="notif-empty">' + t("noAlerts") + "</div>";
+    }
+    html += "</div>";
+    closeNotifications();
+    var btn = document.getElementById("notifications-btn");
+    btn.style.position = "relative";
+    btn.insertAdjacentHTML("beforeend", html);
+    setTimeout(function() {
+      document.addEventListener("click", closeNotificationsOnOutsideClick);
+    }, 10);
+  }
+  function closeNotifications() {
+    var dropdown = document.getElementById("notif-dropdown");
+    if (dropdown) dropdown.remove();
+    document.removeEventListener("click", closeNotificationsOnOutsideClick);
+  }
+  function closeNotificationsOnOutsideClick(e) {
+    if (!e.target.closest("#notifications-btn")) {
+      closeNotifications();
+    }
+  }
+  async function openNotification(notifId, taskId) {
+    closeNotifications();
+    await markNotificationRead(notifId, false);
+    openEditTaskModal(taskId);
+  }
+  async function openComputedNotification(taskId, type) {
+    closeNotifications();
+    var task = state.tasks.find(function(item) {
+      return Number(item.id) === Number(taskId);
+    });
+    if (!task || !state.currentUserEmail || isComputedAlertRead(taskId, type)) {
+      openEditTaskModal(taskId);
+      return;
+    }
+    var messagePrefix = type === "computed_overdue" ? currentLang === "fr" ? "T\xE2che en retard : " : "Overdue task: " : currentLang === "fr" ? "\xC9ch\xE9ance proche : " : "Upcoming deadline: ";
+    var record = {
+      Task_Id: taskId,
+      User_Email: state.currentUserEmail,
+      Type: type,
+      Message: messagePrefix + (task.Title || ""),
+      Is_Read: true,
+      Created_At: Math.floor(Date.now() / 1e3),
+      Rule_Id: getComputedAlertKey(task, type)
+    };
+    try {
+      var result = await grist.docApi.applyUserActions([["AddRecord", state.NOTIFICATIONS_TABLE, null, record]]);
+      record.id = result && result.retValues && result.retValues[0] || (state.pmNotifications.length ? Math.max.apply(null, state.pmNotifications.map(function(n) {
+        return n.id;
+      })) + 1 : 1);
+      state.pmNotifications.push(record);
+      updateNotificationBadge();
+    } catch (e) {
+      console.error("[GristPM] Error dismissing computed notification:", e);
+    }
+    openEditTaskModal(taskId);
+  }
+  async function markNotificationRead(notifId, reopenDropdown) {
+    try {
+      await grist.docApi.applyUserActions([["UpdateRecord", state.NOTIFICATIONS_TABLE, notifId, { Is_Read: true }]]);
+      var n = state.pmNotifications.find(function(x) {
+        return x.id === notifId;
+      });
+      if (n) n.Is_Read = true;
+      updateNotificationBadge();
+      if (reopenDropdown !== false) showNotifications();
+    } catch (e) {
+      console.error("[GristPM] Error marking notification read:", e);
+    }
+  }
+  async function markAllNotificationsRead() {
+    var myUnread = getMyNotifications().filter(function(n) {
+      return !n.Is_Read;
+    });
+    if (myUnread.length === 0) return;
+    try {
+      var ids = myUnread.map(function(n) {
+        return n.id;
+      });
+      var flags = ids.map(function() {
+        return true;
+      });
+      await grist.docApi.applyUserActions([["BulkUpdateRecord", state.NOTIFICATIONS_TABLE, ids, { Is_Read: flags }]]);
+      myUnread.forEach(function(n) {
+        n.Is_Read = true;
+      });
+      updateNotificationBadge();
+      showNotifications();
+    } catch (e) {
+      console.error("[GristPM] Error marking all read:", e);
+    }
+  }
+  async function createNotification(taskId, userEmail, type, message, ruleId) {
+    try {
+      var resolvedEmail = resolveUserEmail(userEmail);
+      if (!resolvedEmail || resolvedEmail.toLowerCase() === (state.currentUserEmail || "").toLowerCase().trim()) return;
+      var record = {
+        Task_Id: taskId,
+        User_Email: resolvedEmail,
+        Type: type,
+        Message: message,
+        Is_Read: false,
+        Created_At: Math.floor(Date.now() / 1e3),
+        Rule_Id: ruleId || ""
+      };
+      await grist.docApi.applyUserActions([["AddRecord", state.NOTIFICATIONS_TABLE, null, record]]);
+      record.id = state.pmNotifications.length > 0 ? Math.max.apply(null, state.pmNotifications.map(function(n) {
+        return n.id;
+      })) + 1 : 1;
+      state.pmNotifications.push(record);
+    } catch (e) {
+      console.error("[GristPM] Error creating notification:", e);
+    }
+  }
+  function splitRecipientValues(value) {
+    if (Array.isArray(value)) return value;
+    return String(value || "").split(",").map(function(item) {
+      return item.trim();
+    }).filter(Boolean);
+  }
+  function resolveUserEmail(value) {
+    var raw = String(value || "").trim();
+    if (!raw) return "";
+    var key = raw.toLowerCase();
+    var user = state.users.find(function(candidate) {
+      return String(candidate.Email || "").trim().toLowerCase() === key || String(candidate.Name || "").trim().toLowerCase() === key;
+    });
+    if (user && user.Email) return String(user.Email).trim();
+    return raw.indexOf("@") > 0 ? raw : "";
+  }
+  function getProjectLead(task) {
+    var projectId = Number(task && task.Project_Id || 0);
+    var project = state.projects.find(function(item) {
+      return Number(item.id) === projectId;
+    });
+    return project ? resolveUserEmail(project.Lead) : "";
+  }
+  async function notifyTaskCompleted(task) {
+    if (!task) return;
+    var lead = getProjectLead(task);
+    if (!lead) return;
+    await notifyConcernedUsers(task.id, [lead], "task_completed", task.Title || "");
+  }
+  async function notifyConcernedUsers(taskId, emails, eventType, title) {
+    if (!state.notifyConcernedEnabled) return;
+    var me = (state.currentUserEmail || "").toLowerCase().trim();
+    var seen = {}, recipients = [];
+    (emails || []).forEach(function(e) {
+      var v = resolveUserEmail(e);
+      var k = v.toLowerCase();
+      if (v && k !== me && !seen[k]) {
+        seen[k] = 1;
+        recipients.push(v);
+      }
+    });
+    if (!recipients.length) return;
+    var messages = {
+      task_assigned: currentLang === "fr" ? "Une t\xE2che vous a \xE9t\xE9 assign\xE9e : " : "A task was assigned to you: ",
+      task_completed: currentLang === "fr" ? "T\xE2che termin\xE9e : " : "Task completed: ",
+      task_updated: currentLang === "fr" ? "T\xE2che modifi\xE9e : " : "Task updated: "
+    };
+    var msg = (messages[eventType] || messages.task_updated) + title;
+    var now = Math.floor(Date.now() / 1e3);
+    var actions = recipients.map(function(email) {
+      return ["AddRecord", state.NOTIFICATIONS_TABLE, null, { Task_Id: taskId, User_Email: email, Type: eventType, Message: msg, Is_Read: false, Created_At: now, Rule_Id: "builtin" }];
+    });
+    try {
+      await grist.docApi.applyUserActions(actions);
+    } catch (e) {
+      console.error("[GristPM] notifyConcernedUsers", e);
+    }
+  }
+  function resolveRecipients(action, actionTarget, task) {
+    if (action === "notify_assignee") {
+      return splitRecipientValues(task.Assignee).map(resolveUserEmail).filter(Boolean);
+    }
+    if (action === "notify_project_lead") {
+      var lead = getProjectLead(task);
+      return lead ? [lead] : [];
+    }
+    if (action === "notify_specific" && actionTarget) {
+      return [actionTarget];
+    }
+    if (action === "notify_all") {
+      return state.users.map(function(u) {
+        return u.Email;
+      }).filter(Boolean);
+    }
+    return [];
+  }
+  function renderAutoMessage(template, task) {
+    var statusLabel2 = "";
+    var statuses = getKanbanStatuses();
+    for (var si = 0; si < statuses.length; si++) {
+      if (statuses[si].key === task.Status) {
+        statusLabel2 = currentLang === "fr" ? statuses[si].label_fr : statuses[si].label_en;
+        break;
+      }
+    }
+    return (template || "").replace(/\{title\}/g, task.Title || "").replace(/\{status\}/g, statusLabel2 || task.Status || "").replace(/\{priority\}/g, task.Priority || "").replace(/\{assignee\}/g, task.Assignee || "");
+  }
+  async function evaluateAutomationRules(task, changes) {
+    if (!state.automationRules || state.automationRules.length === 0) return;
+    for (var i = 0; i < state.automationRules.length; i++) {
+      var rule = state.automationRules[i];
+      if (!rule.enabled) continue;
+      var triggered = false;
+      if (rule.trigger === "status_change" && changes.status) {
+        var mf = !rule.condition || !rule.condition.from || rule.condition.from === changes.status.from;
+        var mt = !rule.condition || !rule.condition.to || rule.condition.to === changes.status.to;
+        triggered = mf && mt;
+      } else if (rule.trigger === "priority_change" && changes.priority) {
+        var mf2 = !rule.condition || !rule.condition.from || rule.condition.from === changes.priority.from;
+        var mt2 = !rule.condition || !rule.condition.to || rule.condition.to === changes.priority.to;
+        triggered = mf2 && mt2;
+      } else if (rule.trigger === "assignment_change" && changes.assignee) {
+        triggered = true;
+      }
+      if (triggered) {
+        var msgTpl = currentLang === "fr" ? rule.message_fr || rule.message_en || "" : rule.message_en || rule.message_fr || "";
+        var message = renderAutoMessage(msgTpl, task);
+        var recipients = resolveRecipients(rule.action, rule.action_target, task);
+        for (var r = 0; r < recipients.length; r++) {
+          await createNotification(task.id, recipients[r], rule.trigger, message, rule.id);
+        }
+      }
+    }
+    updateNotificationBadge();
+  }
+  async function checkTimeBasedAutomations() {
+    if (!state.automationRules || state.automationRules.length === 0) return;
+    var now = Math.floor(Date.now() / 1e3);
+    var todayStart = now - now % 86400;
+    var threeDays = now + 3 * 24 * 60 * 60;
+    for (var i = 0; i < state.automationRules.length; i++) {
+      var rule = state.automationRules[i];
+      if (!rule.enabled) continue;
+      if (rule.trigger !== "overdue" && rule.trigger !== "approaching_deadline") continue;
+      var matching = state.tasks.filter(function(t2) {
+        if (t2.Status === "done" || t2.Status === "archived" || !t2.Due_Date) return false;
+        if (rule.trigger === "overdue") return t2.Due_Date < now;
+        return t2.Due_Date >= now && t2.Due_Date <= threeDays;
+      });
+      for (var j = 0; j < matching.length; j++) {
+        var task = matching[j];
+        var recipients = resolveRecipients(rule.action, rule.action_target, task);
+        for (var r = 0; r < recipients.length; r++) {
+          var already = state.pmNotifications.some(function(n) {
+            return n.Rule_Id === rule.id && n.Task_Id === task.id && n.User_Email === recipients[r] && n.Created_At >= todayStart;
+          });
+          if (already) continue;
+          var msgTpl = currentLang === "fr" ? rule.message_fr || rule.message_en || "" : rule.message_en || rule.message_fr || "";
+          var message = renderAutoMessage(msgTpl, task);
+          await createNotification(task.id, recipients[r], rule.trigger, message, rule.id);
+        }
+      }
+    }
+    updateNotificationBadge();
+  }
+  async function cleanupOldNotifications() {
+    var now = Math.floor(Date.now() / 1e3);
+    var thirtyDays = 30 * 86400;
+    var ninetyDays = 90 * 86400;
+    var toDelete = state.pmNotifications.filter(function(n) {
+      var age = now - (n.Created_At || 0);
+      return n.Is_Read && age > thirtyDays || age > ninetyDays;
+    });
+    if (toDelete.length === 0) return;
+    try {
+      var ids = toDelete.map(function(n) {
+        return n.id;
+      });
+      var actions = ids.map(function(id) {
+        return ["RemoveRecord", state.NOTIFICATIONS_TABLE, id];
+      });
+      await grist.docApi.applyUserActions(actions);
+      state.pmNotifications = state.pmNotifications.filter(function(n) {
+        return ids.indexOf(n.id) === -1;
+      });
+    } catch (e) {
+      console.log("[GristPM] Notification cleanup skipped:", e.message);
+    }
+  }
+
+  // src/domains/kanban.js
+  var kanbanGroupBy = "status";
+  var expandedKanbanCards = {};
+  var collapsedKanbanCols = {};
+  var defaultKanbanStatuses = [
+    { key: "todo", label_fr: "\xC0 faire", label_en: "To do", color: "#f59e0b", cssClass: "col-todo" },
+    { key: "progress", label_fr: "En cours", label_en: "In progress", color: "#3b82f6", cssClass: "col-progress" },
+    { key: "done", label_fr: "Termin\xE9", label_en: "Done", color: "#22c55e", cssClass: "col-done" }
+  ];
+  var customKanbanStatuses2 = null;
+  function getKanbanStatuses() {
+    return customKanbanStatuses2 || defaultKanbanStatuses;
+  }
+  async function saveKanbanStatuses() {
+    await saveSetting("kanban_statuses", JSON.stringify(customKanbanStatuses2));
+    await syncTaskStatusChoices();
+    syncSubtaskStatusChoices();
+  }
+  async function syncTaskStatusChoices() {
+    try {
+      var statuses = getKanbanStatuses();
+      var choices = statuses.map(function(s) {
+        return s.key;
+      });
+      if (choices.indexOf("archived") === -1) choices.push("archived");
+      var choiceOptions = {};
+      statuses.forEach(function(s) {
+        if (s.color) choiceOptions[s.key] = { fillColor: s.color, textColor: "#271A79" };
+      });
+      choiceOptions.archived = { fillColor: "#EEFFEE", textColor: "#271A79" };
+      var statusCol = getColumnName("tasks", "status");
+      await grist.docApi.applyUserActions([
+        ["ModifyColumn", state.TASKS_TABLE, statusCol, { widgetOptions: JSON.stringify({ choices, choiceOptions }) }]
+      ]);
+      state.taskTableColumns = null;
+    } catch (e) {
+      console.log("syncTaskStatusChoices:", e.message);
+    }
+  }
+  async function syncSubtaskStatusChoices() {
+    try {
+      var statuses = getKanbanStatuses();
+      var choices = statuses.map(function(s) {
+        return s.key;
+      });
+      if (choices.indexOf("archived") === -1) choices.push("archived");
+      var choiceOptions = {};
+      statuses.forEach(function(s) {
+        if (s.color) choiceOptions[s.key] = { fillColor: s.color, textColor: "#ffffff" };
+      });
+      var widgetOptions = JSON.stringify({ widget: "TextBox", choices, choiceOptions });
+      if (typeof localStorage !== "undefined" && localStorage.getItem("pm_subtask_status_sig") === widgetOptions) return;
+      await grist.docApi.applyUserActions([
+        ["ModifyColumn", state.SUBTASKS_TABLE, "Status", { widgetOptions }]
+      ]);
+      if (typeof localStorage !== "undefined") localStorage.setItem("pm_subtask_status_sig", widgetOptions);
+    } catch (e) {
+      console.log("syncSubtaskStatusChoices:", e.message);
+    }
+  }
+  function getStatusLabel(key) {
+    var statuses = getKanbanStatuses();
+    var found = statuses.find(function(s) {
+      return s.key === key;
+    });
+    if (found) return currentLang === "fr" ? found.label_fr : found.label_en;
+    return key;
+  }
+  function setKanbanGroupBy(value) {
+    kanbanGroupBy = value;
+    renderKanbanView();
+  }
+  function sortKanbanTasks(list) {
+    var arr = list.slice();
+    if (kanbanSort === "alpha") {
+      arr.sort(function(a, b) {
+        return (a.Title || "").localeCompare(b.Title || "");
+      });
+    } else if (kanbanSort === "alpha-desc") {
+      arr.sort(function(a, b) {
+        return (b.Title || "").localeCompare(a.Title || "");
+      });
+    } else if (kanbanSort === "due") {
+      arr.sort(function(a, b) {
+        var da = a.Due_Date || null, db = b.Due_Date || null;
+        if (da && db) return da - db;
+        if (da) return -1;
+        if (db) return 1;
+        return 0;
+      });
+    } else if (kanbanSort === "priority") {
+      var po = { high: 0, medium: 1, low: 2 };
+      arr.sort(function(a, b) {
+        var pa = po[a.Priority] !== void 0 ? po[a.Priority] : 3;
+        var pb = po[b.Priority] !== void 0 ? po[b.Priority] : 3;
+        return pa - pb;
+      });
+    }
+    return arr;
+  }
+  function toggleKanbanCol(key) {
+    collapsedKanbanCols[key] = !collapsedKanbanCols[key];
+    renderKanbanView();
+  }
+  function toggleCardExpand(taskId, ev) {
+    if (ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
+    }
+    if (expandedKanbanCards[taskId]) delete expandedKanbanCards[taskId];
+    else expandedKanbanCards[taskId] = true;
+    renderKanbanView();
+  }
+  function getTaskDateProgress(task) {
+    if (!task || !task.Start_Date || !task.Due_Date || task.Due_Date <= task.Start_Date) return null;
+    var now = Math.floor(Date.now() / 1e3);
+    if (now <= task.Start_Date) return 0;
+    if (now >= task.Due_Date) return 100;
+    return Math.max(0, Math.min(100, Math.round((now - task.Start_Date) / (task.Due_Date - task.Start_Date) * 100)));
+  }
+  function openCardSubtasksModal(taskId) {
+    var task = state.tasks.find(function(t2) {
+      return t2.id === taskId;
+    });
+    if (!task) return;
+    var taskSubtasks = getTaskSubtasks(taskId);
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal compact-subtasks-modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + (currentLang === "fr" ? "Sous-t\xE2ches" : "Subtasks") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="compact-subtasks-title">' + sanitize(task.Title || "") + "</div>";
+    if (taskSubtasks.length === 0) {
+      html += '<div class="subtasks-empty">' + t("noSubtasks") + "</div>";
+    } else {
+      html += '<div class="compact-subtasks-list">';
+      taskSubtasks.forEach(function(st) {
+        html += '<label class="compact-subtask-item">';
+        html += '<input type="checkbox" ' + (st.Completed ? "checked" : "") + ' onchange="toggleSubtaskFromPopup(' + st.id + ", " + taskId + ', this.checked)">';
+        html += '<span class="' + (st.Completed ? "completed" : "") + '">' + sanitize(st.Title) + "</span>";
+        html += "</label>";
+      });
+      html += "</div>";
+    }
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function openCardCommentsModal(taskId) {
+    var task = state.tasks.find(function(t2) {
+      return t2.id === taskId;
+    });
+    var taskComments = getTaskComments(taskId);
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal compact-subtasks-modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("comments") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    if (task) html += '<div class="compact-subtasks-title">' + sanitize(task.Title || "") + "</div>";
+    if (taskComments.length === 0) {
+      html += '<div class="comments-empty">' + t("noComments") + "</div>";
+    } else {
+      html += '<div class="quick-comments-list">';
+      taskComments.forEach(function(cmt) {
+        html += '<div class="quick-comment-item">';
+        html += '<div class="quick-comment-meta">\u{1F464} ' + sanitize(cmt.Author || "Anonyme") + " \xB7 " + formatTimeAgo(cmt.Created_At) + "</div>";
+        html += '<div class="quick-comment-content">' + sanitize(cmt.Content) + "</div>";
+        html += "</div>";
+      });
+      html += "</div>";
+    }
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function openCardAttachmentsModal(taskId) {
+    var task = state.tasks.find(function(t2) {
+      return t2.id === taskId;
+    });
+    var list = getTaskAttachments(taskId);
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal compact-subtasks-modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + (currentLang === "fr" ? "Pi\xE8ces jointes" : "Attachments") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    if (task) html += '<div class="compact-subtasks-title">' + sanitize(task.Title || "") + "</div>";
+    if (list.length === 0) {
+      html += '<div class="attach-empty">' + (currentLang === "fr" ? "Aucune pi\xE8ce jointe" : "No attachments") + "</div>";
+    } else {
+      html += '<div class="quick-attachments-list">';
+      list.forEach(function(att) {
+        html += '<div class="quick-attachment-item">';
+        html += '<span class="quick-attachment-name">\u{1F4CE} ' + sanitize(att.File_Name || "") + "</span>";
+        html += '<span class="quick-attachment-size">' + formatFileSize(att.File_Size) + "</span>";
+        html += '<button class="attach-btn" onclick="openAttachmentInNewTab(' + att.id + ')">' + (currentLang === "fr" ? "Ouvrir" : "Open") + "</button>";
+        html += '<button class="attach-btn" onclick="downloadAttachment(' + att.id + ')">' + (currentLang === "fr" ? "T\xE9l\xE9charger" : "Download") + "</button>";
+        html += "</div>";
+      });
+      html += "</div>";
+    }
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function renderKanbanView() {
+    var board = document.getElementById("kanban-board");
+    var sel = document.getElementById("kanban-groupby");
+    if (sel && sel.value !== kanbanGroupBy) sel.value = kanbanGroupBy;
+    var sortSel = document.getElementById("kanban-sort");
+    if (sortSel && sortSel.value !== kanbanSort) sortSel.value = kanbanSort;
+    var columns = [];
+    var filteredTasks = getFilteredTasks();
+    if (kanbanGroupBy === "priority") {
+      columns = [
+        { key: "high", label: "\u{1F534} " + t("priorityHigh"), cssClass: "col-todo", field: "Priority" },
+        { key: "medium", label: "\u{1F7E1} " + t("priorityMedium"), cssClass: "col-progress", field: "Priority" },
+        { key: "low", label: "\u{1F7E2} " + t("priorityLow"), cssClass: "col-done", field: "Priority" }
+      ];
+    } else if (kanbanGroupBy === "project") {
+      var projMap = {};
+      filteredTasks.forEach(function(task) {
+        var pid = task.Project_Id || 0;
+        if (!projMap[pid]) {
+          projMap[pid] = { key: String(pid), label: pid ? getProjectName(pid) || "Projet " + pid : currentLang === "fr" ? "Sans projet" : "No project", cssClass: "col-todo", field: "Project_Id", tasks: [], color: getProjectColor(pid || null) };
+        }
+        projMap[pid].tasks.push(task);
+      });
+      columns = Object.values(projMap).sort(function(a, b) {
+        return a.label.localeCompare(b.label);
+      });
+    } else if (showArchivedTasks) {
+      columns = [
+        { key: "archived", label: currentLang === "fr" ? "\u{1F4E6} Archives" : "\u{1F4E6} Archives", cssClass: "col-custom", field: "Status", color: "#94a3b8" }
+      ];
+    } else {
+      var statuses = getKanbanStatuses();
+      columns = statuses.map(function(s2) {
+        return {
+          key: s2.key,
+          label: (s2.emoji ? s2.emoji + " " : "") + (currentLang === "fr" ? s2.label_fr : s2.label_en),
+          cssClass: s2.cssClass || "col-custom",
+          field: "Status",
+          color: s2.color
+        };
+      });
+    }
+    var html = "";
+    for (var s = 0; s < columns.length; s++) {
+      var col = columns[s];
+      var colTasks = col.tasks || filteredTasks.filter(function(task) {
+        if (col.field === "Status") return task.Status === col.key;
+        if (col.field === "Priority") return task.Priority === col.key;
+        return false;
+      });
+      colTasks = sortKanbanTasks(colTasks);
+      var dotStyle = col.color ? "display:inline-block;width:10px;height:10px;border-radius:50%;background:" + col.color + ";margin-right:6px;" : "display:none;";
+      var isCollapsed = !!collapsedKanbanCols[col.key];
+      if (isCollapsed) {
+        var collapsedStyle = col.color ? "background:" + col.color + "15;border-left:3px solid " + col.color + ";color:" + col.color + ";" : "";
+        html += '<div class="kanban-column kanban-column-collapsed ' + col.cssClass + `" onclick="toggleKanbanCol('` + sanitize(col.key) + `')" title="` + col.label + '" style="' + collapsedStyle + '">';
+        html += '<div class="kanban-col-header-collapsed">';
+        html += '<span class="col-collapse-icon">\u21C4</span>';
+        html += '<span class="col-collapsed-label">' + col.label + " (" + colTasks.length + ")</span>";
+        html += "</div></div>";
+        continue;
+      }
+      html += '<div class="kanban-column ' + col.cssClass + '">';
+      var headerStyle = col.color ? "border-bottom-color:" + col.color + ";color:" + col.color + ";" : "";
+      html += '<div class="kanban-col-header" style="' + headerStyle + '">';
+      html += '<div style="display:flex;align-items:center;gap:4px;"><span style="' + dotStyle + '"></span>' + col.label + ' <span class="col-count">' + colTasks.length + "</span></div>";
+      html += '<div style="display:flex;align-items:center;gap:4px;">';
+      if (kanbanGroupBy === "status") html += `<button class="col-add" onclick="openNewTaskModal('` + col.key + `')" title="` + (currentLang === "fr" ? "Nouvelle t\xE2che" : "New task") + '">+</button>';
+      var collapseColor = col.color ? "color:" + col.color + ";background:white;" : "";
+      html += `<button class="col-add" onclick="toggleKanbanCol('` + sanitize(col.key) + `')" title="` + (currentLang === "fr" ? "R\xE9duire" : "Collapse") + '" style="' + collapseColor + '">\u21C4</button>';
+      html += "</div>";
+      html += "</div>";
+      html += '<div class="kanban-cards" data-groupby="' + kanbanGroupBy + '" data-value="' + sanitize(col.key) + '" data-field="' + col.field + '" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragleave="onDragLeave(event)">';
+      if (colTasks.length === 0) {
+        html += '<div class="kanban-empty"><div class="kanban-empty-icon">\u{1F4DD}</div>' + t("noTasks") + "</div>";
+      } else {
+        for (var i = 0; i < colTasks.length; i++) {
+          html += renderTaskCard(colTasks[i]);
+        }
+      }
+      html += "</div>";
+      if (kanbanGroupBy === "status") html += `<button class="kanban-add-btn" onclick="openNewTaskModal('` + col.key + `')">` + t("addTask") + "</button>";
+      html += "</div>";
+    }
+    board.innerHTML = html;
+  }
+  function renderTaskCard(task) {
+    var cd = cardDisplaySettings;
+    var overdueHtml = isOverdue(task) ? ' <span class="overdue-badge">' + t("overdue") + "</span>" : "";
+    var taskSubtasks = getTaskSubtasks(task.id);
+    var progressPct = getTaskProgress(task);
+    var completedCount = taskSubtasks.filter(function(st) {
+      return st.Completed;
+    }).length;
+    var blocked = isTaskBlocked(task.id);
+    var taskComments = getTaskComments(task.id);
+    var taskAttachments = getTaskAttachments(task.id);
+    var priorityClass = "priority-" + (task.Priority || "medium");
+    var projColor = getProjectColor(task.Project_Id);
+    var projName = getProjectName(task.Project_Id);
+    var html = '<div class="task-card ' + priorityClass + (blocked ? " task-blocked" : "") + '" draggable="true" ondragstart="onDragStart(event, ' + task.id + ')" data-id="' + task.id + '" ondblclick="openEditTaskModal(' + task.id + ')" style="border-left:none;padding:0;overflow:visible;">';
+    html += '<div class="task-card-body">';
+    if (blocked) {
+      var blockers = getTaskDependencies(task.id).filter(function(b) {
+        return b && b.Status !== "done";
+      });
+      html += '<div class="blocked-badge">\u{1F512} ' + t("blockedBy") + " " + blockers.map(function(b) {
+        return sanitize(b.Title);
+      }).join(", ") + "</div>";
+    }
+    html += '<div class="task-card-header">';
+    html += '<div class="task-card-topline">';
+    if (cd.priority) html += '<div class="task-card-priority-text priority-text-' + (task.Priority || "medium") + '">' + priorityLabel(task.Priority) + "</div>";
+    html += '<div class="task-card-meta-actions">';
+    var _isExpanded = !!expandedKanbanCards[task.id];
+    html += '<button class="btn-icon task-card-expand-btn" onclick="event.stopPropagation();toggleCardExpand(' + task.id + ', event)" title="' + (currentLang === "fr" ? "D\xE9tails" : "Details") + '">' + (_isExpanded ? "\u25B2" : "\u25BC") + "</button>";
+    html += "</div></div>";
+    html += '<div class="task-card-title" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + "</div>";
+    if (projName) html += '<div class="task-card-project-name"><span style="background:' + projColor + ';"></span>' + sanitize(projName) + "</div>";
+    html += "</div>";
+    if (cd.description && task.Description) {
+      html += '<div class="task-card-desc">' + sanitize(task.Description) + "</div>";
+    }
+    var dateProgress = getTaskDateProgress(task);
+    if (dateProgress !== null) {
+      html += '<div class="task-date-progress" title="' + (currentLang === "fr" ? "Avancement selon les dates" : "Date progress") + '">';
+      html += '<div class="task-date-progress-fill" style="width:' + dateProgress + '%"></div>';
+      html += "</div>";
+    }
+    if (cd.subtasks && taskSubtasks.length > 0) {
+      var barClass = progressPct === 100 ? "bar-done" : progressPct >= 50 ? "bar-progress" : "bar-todo";
+      html += '<div class="task-card-subtasks">';
+      html += '<div class="subtask-progress-row">';
+      html += '<div class="subtask-progress-bar thin"><div class="subtask-progress-fill ' + barClass + '" style="width:' + progressPct + '%"></div></div>';
+      html += '<span class="subtask-count">' + completedCount + "/" + taskSubtasks.length + "</span>";
+      html += '<button class="subtask-mini-btn" onclick="event.stopPropagation();openCardSubtasksModal(' + task.id + ')" title="' + (currentLang === "fr" ? "Sous-t\xE2ches" : "Subtasks") + '">\u2611</button>';
+      html += "</div></div>";
+    }
+    html += '<div class="task-card-row">';
+    if (cd.date && task.Due_Date) {
+      html += '<span class="task-card-date">\u{1F4C5} ' + formatDate(task.Due_Date) + overdueHtml + "</span>";
+    }
+    if (cd.comments && taskComments.length > 0) {
+      html += '<button class="task-card-comments card-quick-btn" onclick="event.stopPropagation();openCardCommentsModal(' + task.id + ')" title="' + t("comments") + '">\u{1F4AC} ' + taskComments.length + "</button>";
+    }
+    if (taskAttachments.length > 0) {
+      html += '<button class="task-card-attachments card-quick-btn" onclick="event.stopPropagation();openCardAttachmentsModal(' + task.id + ')" title="' + (currentLang === "fr" ? "Pi\xE8ces jointes" : "Attachments") + '">\u{1F4CE} ' + taskAttachments.length + "</button>";
+    }
+    var totalTime = getTaskTotalTime(task.id);
+    var isTimerRunning = !!state.activeTimers[task.id];
+    if (cd.time && (totalTime > 0 || isTimerRunning)) {
+      html += '<span class="task-card-time' + (isTimerRunning ? " timer-running" : "") + '">\u23F1\uFE0F ' + formatDurationShort(totalTime) + (isTimerRunning ? " \u25CF" : "") + "</span>";
+      if (isTimerRunning) html += '<button class="task-card-pause-btn" onclick="event.stopPropagation();pauseTimer(' + task.id + ')" title="' + (currentLang === "fr" ? "Pause" : "Pause") + '">\u23F8</button>';
+    }
+    if (task.Recurrence && task.Recurrence !== "none") {
+      var recLabel = recurrenceSymbol(task.Recurrence);
+      html += '<span class="task-card-recurrence">' + recLabel + "</span>";
+    }
+    html += "</div>";
+    if (cd.category && task.Category || cd.tags && task.Tag) {
+      html += '<div class="task-card-row task-card-taxonomy">';
+      if (cd.category && task.Category) {
+        var catObj = state.categories.find(function(c) {
+          return c.Name === task.Category;
+        });
+        var catColor = catObj ? catObj.Color : "#6366f1";
+        html += '<span class="task-card-category" style="color:' + catColor + ';">' + sanitize(task.Category) + "</span>";
+      }
+      if (cd.tags && task.Tag) {
+        var tagList = task.Tag.split(",").map(function(tg) {
+          return tg.trim();
+        }).filter(Boolean);
+        for (var ti = 0; ti < tagList.length; ti++) {
+          var tagObj = state.tags.find(function(tg) {
+            return tg.Name === tagList[ti];
+          });
+          var tagColor = tagObj ? tagObj.Color : "#94a3b8";
+          html += '<span class="task-card-tag" style="border-color:' + tagColor + "80;color:" + tagColor + ';">' + sanitize(tagList[ti]) + "</span>";
+        }
+      }
+      html += "</div>";
+    }
+    if (cd.assignee && task.Assignee) {
+      html += '<div class="task-card-row task-card-assignee-row">';
+      var assigneeList = task.Assignee.split(",").map(function(a) {
+        return a.trim();
+      }).filter(Boolean);
+      if (state.raciEnabled) {
+        for (var ai = 0; ai < assigneeList.length; ai++) {
+          html += '<span class="task-card-assignee raci-badge raci-r">R ' + sanitize(getUserDisplayName(assigneeList[ai])) + "</span>";
+        }
+        var raciRoles = [
+          { arr: task.Accountable, cls: "raci-a", letter: "A" },
+          { arr: task.Consulted, cls: "raci-c", letter: "C" },
+          { arr: task.Informed, cls: "raci-i", letter: "I" }
+        ];
+        for (var ri = 0; ri < raciRoles.length; ri++) {
+          if (raciRoles[ri].arr) {
+            var rList = raciRoles[ri].arr.split(",").map(function(a) {
+              return a.trim();
+            }).filter(Boolean);
+            for (var rj = 0; rj < rList.length; rj++) {
+              html += '<span class="task-card-assignee raci-badge ' + raciRoles[ri].cls + '">' + raciRoles[ri].letter + " " + sanitize(getUserDisplayName(rList[rj])) + "</span>";
+            }
+          }
+        }
+      } else {
+        for (var ai2 = 0; ai2 < assigneeList.length; ai2++) {
+          html += '<span class="task-card-assignee">\u{1F464} ' + sanitize(getUserDisplayName(assigneeList[ai2])) + "</span>";
+        }
+      }
+      html += "</div>";
+    }
+    if (task.Status === "done") {
+      html += '<div class="task-card-row" style="justify-content:flex-end;"><button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();archiveTask(' + task.id + ')" title="' + (currentLang === "fr" ? "Archiver" : "Archive") + '">\u{1F4E6} ' + (currentLang === "fr" ? "Archiver" : "Archive") + "</button></div>";
+    }
+    if (task.Status === "archived") {
+      html += '<div class="task-card-row" style="justify-content:flex-end;"><button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:#dbeafe;border:1px solid #93c5fd;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();restoreTask(' + task.id + ')" title="' + (currentLang === "fr" ? "Restaurer" : "Restore") + '">\u267B\uFE0F ' + (currentLang === "fr" ? "Restaurer" : "Restore") + "</button></div>";
+    }
+    if (_isExpanded) {
+      var _fr = currentLang === "fr";
+      html += '<div class="task-card-detail" onclick="event.stopPropagation();">';
+      if (task.Description) {
+        html += '<div class="tcd-section"><div class="tcd-label">' + (_fr ? "Description" : "Description") + "</div>";
+        html += '<div class="tcd-desc">' + sanitize(task.Description) + "</div></div>";
+      }
+      if (taskSubtasks.length > 0) {
+        html += '<div class="tcd-section"><div class="tcd-label">' + (_fr ? "Sous-t\xE2ches" : "Subtasks") + " (" + completedCount + "/" + taskSubtasks.length + ")</div>";
+        taskSubtasks.forEach(function(st) {
+          html += '<label class="tcd-subtask"><input type="checkbox" ' + (st.Completed ? "checked" : "") + ' onclick="event.stopPropagation();toggleSubtaskFromCard(' + st.id + ', this.checked)">';
+          html += "<span" + (st.Completed ? ' style="text-decoration:line-through;color:#94a3b8;"' : "") + ">" + sanitize(st.Title) + "</span>";
+          if (st.Due_Date) html += '<span class="tcd-st-date">\u{1F4C5} ' + formatDate(st.Due_Date) + "</span>";
+          html += "</label>";
+        });
+        html += "</div>";
+      }
+      if (taskComments.length > 0) {
+        html += '<div class="tcd-section"><div class="tcd-label">' + (_fr ? "Commentaires" : "Comments") + " (" + taskComments.length + ")</div>";
+        taskComments.slice(-5).forEach(function(cmt) {
+          html += '<div class="tcd-comment"><span class="tcd-c-author">\u{1F464} ' + sanitize(cmt.Author || "?") + "</span> ";
+          html += '<span class="tcd-c-time">' + formatTimeAgo(cmt.Created_At) + "</span>";
+          html += '<div class="tcd-c-content">' + sanitize(cmt.Content) + "</div></div>";
+        });
+        html += "</div>";
+      }
+      if (!task.Description && taskSubtasks.length === 0 && taskComments.length === 0) {
+        html += '<div style="color:#94a3b8;font-size:12px;padding:4px 0;">' + (_fr ? "Aucun d\xE9tail pour le moment" : "No details yet") + "</div>";
+      }
+      html += '<div class="tcd-actions">';
+      html += '<button class="btn btn-sm" onclick="event.stopPropagation();openEditTaskModal(' + task.id + ')">\u270F\uFE0F ' + (_fr ? "\xC9diter la t\xE2che" : "Edit task") + "</button>";
+      if (state.isOwner) html += '<button class="btn btn-sm tcd-delete-btn" onclick="event.stopPropagation();deleteTask(' + task.id + ')">\u{1F5D1}\uFE0F ' + t("delete") + "</button>";
+      html += "</div>";
+      html += "</div>";
+    }
+    html += "</div></div>";
+    return html;
+  }
+  async function archiveTask(taskId) {
+    try {
+      var statusCol = getColumnName("tasks", "status");
+      var task = state.tasks.find(function(t2) {
+        return t2.id === taskId;
+      });
+      var oldStatus = task ? task.Status : "";
+      await grist.docApi.applyUserActions([["UpdateRecord", state.TASKS_TABLE, taskId, { [statusCol]: "archived" }]]);
+      if (task) task.Status = "archived";
+      showToast(currentLang === "fr" ? "T\xE2che archiv\xE9e" : "Task archived", "success");
+      logActivity("task_archived", taskId, task ? task.Title : "", "");
+      if (task && oldStatus !== "archived") {
+        await evaluateAutomationRules(Object.assign({}, task, { Status: "archived" }), { status: { from: oldStatus, to: "archived" } });
+      }
+      refreshAllViews();
+    } catch (e) {
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function restoreTask(taskId) {
+    try {
+      var statusCol = getColumnName("tasks", "status");
+      var task = state.tasks.find(function(t2) {
+        return t2.id === taskId;
+      });
+      var oldStatus = task ? task.Status : "";
+      await grist.docApi.applyUserActions([["UpdateRecord", state.TASKS_TABLE, taskId, { [statusCol]: "todo" }]]);
+      if (task) task.Status = "todo";
+      showToast(currentLang === "fr" ? "T\xE2che restaur\xE9e" : "Task restored", "success");
+      logActivity("task_restored", taskId, task ? task.Title : "", "");
+      if (task && oldStatus !== "todo") {
+        await evaluateAutomationRules(Object.assign({}, task, { Status: "todo" }), { status: { from: oldStatus, to: "todo" } });
+      }
+      refreshAllViews();
+    } catch (e) {
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  var draggedTaskId = null;
+  var _kanbanScrollInterval = null;
+  function onDragStart(e, taskId) {
+    draggedTaskId = taskId;
+    e.target.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    var board = document.getElementById("kanban-board");
+    if (board) {
+      document.addEventListener("dragover", function _autoScroll(ev) {
+        var rect = board.getBoundingClientRect();
+        var edge = 60;
+        var speed = 8;
+        if (ev.clientX > rect.right - edge) board.scrollLeft += speed;
+        else if (ev.clientX < rect.left + edge) board.scrollLeft -= speed;
+        if (!draggedTaskId) document.removeEventListener("dragover", _autoScroll);
+      });
+    }
+  }
+  function onDragOver(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add("drag-over");
+  }
+  function onDragLeave(e) {
+    e.currentTarget.classList.remove("drag-over");
+  }
+  async function onDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove("drag-over");
+    var field = e.currentTarget.getAttribute("data-field") || "Status";
+    var newValue = e.currentTarget.getAttribute("data-value");
+    if (draggedTaskId && newValue) {
+      if (field === "Status" && newValue === "done" && isTaskBlocked(draggedTaskId)) {
+        var blockers = getTaskDependencies(draggedTaskId).filter(function(b) {
+          return b && b.Status !== "done";
+        });
+        var blockerNames = blockers.map(function(b) {
+          return b.Title;
+        }).join(", ");
+        showToast((currentLang === "fr" ? "Impossible : t\xE2che bloqu\xE9e par " : "Cannot move: blocked by ") + blockerNames, "error");
+        draggedTaskId = null;
+        return;
+      }
+      try {
+        var draggedTask = state.tasks.find(function(t2) {
+          return t2.id === draggedTaskId;
+        });
+        var oldVal = draggedTask ? draggedTask[field] : "";
+        var record = {};
+        if (field === "Project_Id") {
+          record[field] = newValue ? parseInt(newValue) : null;
+        } else {
+          record[field] = newValue;
+        }
+        await grist.docApi.applyUserActions([["UpdateRecord", state.TASKS_TABLE, draggedTaskId, record]]);
+        for (var i = 0; i < state.tasks.length; i++) {
+          if (state.tasks[i].id === draggedTaskId) {
+            state.tasks[i][field] = record[field];
+            break;
+          }
+        }
+        showToast(t("taskMoved"), "success");
+        if (draggedTask && oldVal !== newValue) {
+          var dropChanges = {};
+          if (field === "Status") dropChanges.status = { from: oldVal, to: newValue };
+          if (field === "Priority") dropChanges.priority = { from: oldVal, to: newValue };
+          if (Object.keys(dropChanges).length > 0) {
+            await evaluateAutomationRules(Object.assign({}, draggedTask, record), dropChanges);
+          }
+          if (field === "Status" && newValue === "done" && oldVal !== "done") {
+            await notifyTaskCompleted(Object.assign({}, draggedTask, record));
+          }
+          logActivity("status_changed", draggedTaskId, draggedTask.Title, oldVal + " \u2192 " + newValue);
+        }
+        refreshAllViews();
+      } catch (err) {
+        console.error("Error moving task:", err);
+      }
+    }
+    draggedTaskId = null;
+  }
+  function toggleKanbanFullscreen() {
+    var el = document.getElementById("tab-kanban");
+    var btn = document.getElementById("kanban-fullscreen-btn");
+    if (!el) return;
+    var on = el.classList.toggle("kanban-fullscreen");
+    if (btn) {
+      var label = on ? currentLang === "fr" ? "Quitter le plein \xE9cran" : "Exit fullscreen" : currentLang === "fr" ? "Afficher le Kanban en plein \xE9cran" : "Show Kanban fullscreen";
+      btn.title = label;
+      btn.setAttribute("aria-label", label);
+      btn.textContent = on ? "\u2199" : "\u26F6";
+    }
+  }
+
   // src/domains/settings.js
   async function saveCardDisplaySettings() {
     await saveSetting("card_display", JSON.stringify(cardDisplaySettings));
@@ -3264,90 +5337,6 @@
     }
   }
 
-  // src/domains/activity-log.js
-  async function logActivity(action, taskId, taskTitle, details) {
-    try {
-      var record = {
-        Timestamp: Math.floor(Date.now() / 1e3),
-        User_Email: state.currentUserEmail || "unknown",
-        Action: action,
-        Task_Id: taskId || 0,
-        Task_Title: taskTitle || "",
-        Details: details || ""
-      };
-      await grist.docApi.applyUserActions([["AddRecord", state.ACTIVITY_LOG_TABLE, null, record]]);
-      state.activityLog.push(record);
-    } catch (e) {
-      console.log("[GristPM] Activity log skipped:", e.message);
-    }
-  }
-  var _activityLogLimit = 20;
-  function renderActivityLog() {
-    var container = document.getElementById("activity-log-list");
-    if (!container) return;
-    var sorted = state.activityLog.slice().sort(function(a, b) {
-      return (b.Timestamp || 0) - (a.Timestamp || 0);
-    });
-    var shown = sorted.slice(0, _activityLogLimit);
-    if (shown.length === 0) {
-      container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + t("actNoActivity") + "</div>";
-      return;
-    }
-    var ACTION_ICONS = {
-      task_created: "\u{1F195}",
-      task_updated: "\u270F\uFE0F",
-      task_deleted: "\u{1F5D1}\uFE0F",
-      status_changed: "\u{1F504}",
-      task_archived: "\u{1F4E6}",
-      task_restored: "\u267B\uFE0F",
-      comment_added: "\u{1F4AC}"
-    };
-    var ACTION_I18N = {
-      task_created: "actTaskCreated",
-      task_updated: "actTaskUpdated",
-      task_deleted: "actTaskDeleted",
-      status_changed: "actStatusChanged",
-      task_archived: "actTaskArchived",
-      task_restored: "actTaskRestored",
-      comment_added: "actCommentAdded"
-    };
-    var html = "";
-    var lastDateStr = "";
-    for (var i = 0; i < shown.length; i++) {
-      var entry = shown[i];
-      var dateObj = entry.Timestamp ? new Date(entry.Timestamp * 1e3) : /* @__PURE__ */ new Date();
-      var dateStr = dateObj.toLocaleDateString(currentLang === "fr" ? "fr-FR" : "en-US", { weekday: "long", day: "numeric", month: "long" });
-      if (dateStr !== lastDateStr) {
-        html += '<div style="font-size:11px;font-weight:700;color:#94a3b8;padding:8px 0 4px;border-bottom:1px solid #f1f5f9;text-transform:capitalize;">' + dateStr + "</div>";
-        lastDateStr = dateStr;
-      }
-      var icon = ACTION_ICONS[entry.Action] || "\u{1F4CB}";
-      var actionText = t(ACTION_I18N[entry.Action] || entry.Action);
-      var userName = getUserDisplayName(entry.User_Email);
-      var timeStr = dateObj.toLocaleTimeString(currentLang === "fr" ? "fr-FR" : "en-US", { hour: "2-digit", minute: "2-digit" });
-      html += '<div class="activity-entry" style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f8fafc;"';
-      if (entry.Task_Id) html += ' onclick="openEditTaskModal(' + entry.Task_Id + ')" style="cursor:pointer;"';
-      html += ">";
-      html += '<span style="font-size:16px;flex-shrink:0;margin-top:2px;">' + icon + "</span>";
-      html += '<div style="flex:1;min-width:0;">';
-      html += '<div style="font-size:13px;"><strong>' + sanitize(userName) + "</strong> " + actionText;
-      if (entry.Task_Title) html += ' <span style="color:#3b82f6;font-weight:600;">' + sanitize(entry.Task_Title) + "</span>";
-      html += "</div>";
-      if (entry.Details) html += '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + sanitize(entry.Details) + "</div>";
-      html += "</div>";
-      html += '<span style="font-size:10px;color:#94a3b8;white-space:nowrap;margin-top:3px;">' + timeStr + "</span>";
-      html += "</div>";
-    }
-    if (sorted.length > _activityLogLimit) {
-      html += '<div style="text-align:center;padding:12px;"><button class="btn btn-secondary btn-sm" onclick="expandActivityLog()">' + t("actLoadMore") + "</button></div>";
-    }
-    container.innerHTML = html;
-  }
-  function expandActivityLog() {
-    _activityLogLimit += 20;
-    renderActivityLog();
-  }
-
   // src/domains/templates.js
   function renderTemplatesView() {
     var search = (document.getElementById("template-search").value || "").toLowerCase();
@@ -3532,419 +5521,6 @@
       recurrence: tpl.Recurrence || "none",
       estimatedHours: tpl.Estimated_Hours || 0
     });
-  }
-
-  // src/domains/notifications.js
-  function getOverdueTasks() {
-    var now = Math.floor(Date.now() / 1e3);
-    return getFilteredTasks().filter(function(t2) {
-      return t2.Due_Date && t2.Due_Date < now && t2.Status !== "done" && t2.Status !== "archived";
-    });
-  }
-  function getUpcomingTasks() {
-    var now = Math.floor(Date.now() / 1e3);
-    var threeDays = now + 3 * 24 * 60 * 60;
-    return getFilteredTasks().filter(function(t2) {
-      return t2.Due_Date && t2.Due_Date >= now && t2.Due_Date <= threeDays && t2.Status !== "done" && t2.Status !== "archived";
-    });
-  }
-  function getMyNotifications() {
-    var email = (state.currentUserEmail || "").toLowerCase().trim();
-    if (!email) return [];
-    return state.pmNotifications.filter(function(n) {
-      return (n.User_Email || "").toLowerCase().trim() === email;
-    }).sort(function(a, b) {
-      return (b.Created_At || 0) - (a.Created_At || 0);
-    });
-  }
-  function getUnreadCount() {
-    return getMyNotifications().filter(function(n) {
-      return !n.Is_Read;
-    }).length;
-  }
-  function getComputedAlertKey(task, type) {
-    return "computed:" + type + ":" + Number(task && task.Due_Date || 0);
-  }
-  function isComputedAlertRead(taskId, type) {
-    var email = (state.currentUserEmail || "").toLowerCase().trim();
-    var task = state.tasks.find(function(item) {
-      return Number(item.id) === Number(taskId);
-    });
-    var alertKey = getComputedAlertKey(task, type);
-    return state.pmNotifications.some(function(n) {
-      return Number(n.Task_Id) === Number(taskId) && n.Type === type && n.Is_Read && (n.User_Email || "").toLowerCase().trim() === email && n.Rule_Id === alertKey;
-    });
-  }
-  function getUnreadComputedTasks(tasksList, type) {
-    return tasksList.filter(function(task) {
-      return !isComputedAlertRead(task.id, type);
-    });
-  }
-  function updateNotificationBadge() {
-    var unread = getUnreadCount();
-    var hasOverdueRule = state.automationRules.some(function(r) {
-      return r.enabled && r.trigger === "overdue";
-    });
-    var hasApproachingRule = state.automationRules.some(function(r) {
-      return r.enabled && r.trigger === "approaching_deadline";
-    });
-    var computed = 0;
-    if (!hasOverdueRule) computed += getUnreadComputedTasks(getOverdueTasks(), "computed_overdue").length;
-    if (!hasApproachingRule) computed += getUnreadComputedTasks(getUpcomingTasks(), "computed_upcoming").length;
-    var total = unread + computed;
-    var badge = document.getElementById("notif-badge");
-    if (badge) {
-      badge.textContent = total;
-      badge.classList.toggle("show", total > 0);
-    }
-  }
-  function showNotifications() {
-    var myNotifs = getMyNotifications();
-    var unread = myNotifs.filter(function(n2) {
-      return !n2.Is_Read;
-    });
-    var readRecent = myNotifs.filter(function(n2) {
-      return n2.Is_Read;
-    }).slice(0, 10);
-    var hasOverdueRule = state.automationRules.some(function(r) {
-      return r.enabled && r.trigger === "overdue";
-    });
-    var hasApproachingRule = state.automationRules.some(function(r) {
-      return r.enabled && r.trigger === "approaching_deadline";
-    });
-    var overdue = !hasOverdueRule ? getUnreadComputedTasks(getOverdueTasks(), "computed_overdue") : [];
-    var upcoming = !hasApproachingRule ? getUnreadComputedTasks(getUpcomingTasks(), "computed_upcoming") : [];
-    var html = '<div class="notif-dropdown" id="notif-dropdown">';
-    html += '<div class="notif-header" style="display:flex;justify-content:space-between;align-items:center;">';
-    html += "<span>\u{1F514} " + t("notifications") + "</span>";
-    if (unread.length > 0) {
-      html += '<button onclick="event.stopPropagation();markAllNotificationsRead();" style="background:#3b82f6;color:white;border:none;border-radius:4px;font-size:10px;padding:3px 8px;cursor:pointer;">' + t("markAllRead") + "</button>";
-    }
-    html += "</div>";
-    if (unread.length > 0) {
-      html += '<div style="padding:6px 16px;font-size:10px;color:#3b82f6;font-weight:700;">\u{1F535} ' + unread.length + " " + t("notifUnread") + "</div>";
-      for (var ui = 0; ui < unread.length; ui++) {
-        var n = unread[ui];
-        html += '<div class="notif-item" style="display:flex;align-items:center;gap:6px;font-weight:600;" onclick="openNotification(' + n.id + ", " + n.Task_Id + ');">';
-        html += '<div style="flex:1;">';
-        html += '<div class="notif-item-title">' + sanitize(n.Message) + "</div>";
-        html += '<div class="notif-item-date">' + formatDate(n.Created_At) + "</div>";
-        html += "</div>";
-        html += '<button onclick="event.stopPropagation();markNotificationRead(' + n.id + ');" style="background:none;border:none;color:#3b82f6;cursor:pointer;font-size:14px;" title="' + t("markAsRead") + '">\u2713</button>';
-        html += "</div>";
-      }
-    }
-    if (overdue.length > 0) {
-      html += '<div style="padding:6px 16px;font-size:10px;color:#ef4444;font-weight:700;">\u26A0\uFE0F ' + overdue.length + " " + t("overdueTasksAlert") + "</div>";
-      for (var oi = 0; oi < overdue.length; oi++) {
-        html += '<div class="notif-item overdue" onclick="openComputedNotification(' + overdue[oi].id + `, 'computed_overdue');">`;
-        html += '<div class="notif-item-title">' + sanitize(overdue[oi].Title) + "</div>";
-        html += '<div class="notif-item-date">\u{1F4C5} ' + formatDate(overdue[oi].Due_Date) + "</div>";
-        html += "</div>";
-      }
-    }
-    if (upcoming.length > 0) {
-      html += '<div style="padding:6px 16px;font-size:10px;color:#f59e0b;font-weight:700;">\u{1F4C5} ' + upcoming.length + " " + t("upcomingTasksAlert") + "</div>";
-      for (var upi = 0; upi < upcoming.length; upi++) {
-        html += '<div class="notif-item upcoming" onclick="openComputedNotification(' + upcoming[upi].id + `, 'computed_upcoming');">`;
-        html += '<div class="notif-item-title">' + sanitize(upcoming[upi].Title) + "</div>";
-        html += '<div class="notif-item-date">\u{1F4C5} ' + formatDate(upcoming[upi].Due_Date) + "</div>";
-        html += "</div>";
-      }
-    }
-    if (readRecent.length > 0) {
-      html += '<div style="padding:6px 16px;font-size:10px;color:#94a3b8;font-weight:700;border-top:1px solid #e2e8f0;">\u{1F4CB} ' + (currentLang === "fr" ? "Historique" : "History") + "</div>";
-      for (var ri = 0; ri < readRecent.length; ri++) {
-        var rn = readRecent[ri];
-        html += '<div class="notif-item" style="opacity:0.5;" onclick="openEditTaskModal(' + rn.Task_Id + '); closeNotifications();">';
-        html += '<div class="notif-item-title">' + sanitize(rn.Message) + "</div>";
-        html += '<div class="notif-item-date">' + formatDate(rn.Created_At) + "</div>";
-        html += "</div>";
-      }
-    }
-    if (unread.length === 0 && overdue.length === 0 && upcoming.length === 0 && readRecent.length === 0) {
-      html += '<div class="notif-empty">' + t("noAlerts") + "</div>";
-    }
-    html += "</div>";
-    closeNotifications();
-    var btn = document.getElementById("notifications-btn");
-    btn.style.position = "relative";
-    btn.insertAdjacentHTML("beforeend", html);
-    setTimeout(function() {
-      document.addEventListener("click", closeNotificationsOnOutsideClick);
-    }, 10);
-  }
-  function closeNotifications() {
-    var dropdown = document.getElementById("notif-dropdown");
-    if (dropdown) dropdown.remove();
-    document.removeEventListener("click", closeNotificationsOnOutsideClick);
-  }
-  function closeNotificationsOnOutsideClick(e) {
-    if (!e.target.closest("#notifications-btn")) {
-      closeNotifications();
-    }
-  }
-  async function openNotification(notifId, taskId) {
-    closeNotifications();
-    await markNotificationRead(notifId, false);
-    openEditTaskModal(taskId);
-  }
-  async function openComputedNotification(taskId, type) {
-    closeNotifications();
-    var task = state.tasks.find(function(item) {
-      return Number(item.id) === Number(taskId);
-    });
-    if (!task || !state.currentUserEmail || isComputedAlertRead(taskId, type)) {
-      openEditTaskModal(taskId);
-      return;
-    }
-    var messagePrefix = type === "computed_overdue" ? currentLang === "fr" ? "T\xE2che en retard : " : "Overdue task: " : currentLang === "fr" ? "\xC9ch\xE9ance proche : " : "Upcoming deadline: ";
-    var record = {
-      Task_Id: taskId,
-      User_Email: state.currentUserEmail,
-      Type: type,
-      Message: messagePrefix + (task.Title || ""),
-      Is_Read: true,
-      Created_At: Math.floor(Date.now() / 1e3),
-      Rule_Id: getComputedAlertKey(task, type)
-    };
-    try {
-      var result = await grist.docApi.applyUserActions([["AddRecord", state.NOTIFICATIONS_TABLE, null, record]]);
-      record.id = result && result.retValues && result.retValues[0] || (state.pmNotifications.length ? Math.max.apply(null, state.pmNotifications.map(function(n) {
-        return n.id;
-      })) + 1 : 1);
-      state.pmNotifications.push(record);
-      updateNotificationBadge();
-    } catch (e) {
-      console.error("[GristPM] Error dismissing computed notification:", e);
-    }
-    openEditTaskModal(taskId);
-  }
-  async function markNotificationRead(notifId, reopenDropdown) {
-    try {
-      await grist.docApi.applyUserActions([["UpdateRecord", state.NOTIFICATIONS_TABLE, notifId, { Is_Read: true }]]);
-      var n = state.pmNotifications.find(function(x) {
-        return x.id === notifId;
-      });
-      if (n) n.Is_Read = true;
-      updateNotificationBadge();
-      if (reopenDropdown !== false) showNotifications();
-    } catch (e) {
-      console.error("[GristPM] Error marking notification read:", e);
-    }
-  }
-  async function markAllNotificationsRead() {
-    var myUnread = getMyNotifications().filter(function(n) {
-      return !n.Is_Read;
-    });
-    if (myUnread.length === 0) return;
-    try {
-      var ids = myUnread.map(function(n) {
-        return n.id;
-      });
-      var flags = ids.map(function() {
-        return true;
-      });
-      await grist.docApi.applyUserActions([["BulkUpdateRecord", state.NOTIFICATIONS_TABLE, ids, { Is_Read: flags }]]);
-      myUnread.forEach(function(n) {
-        n.Is_Read = true;
-      });
-      updateNotificationBadge();
-      showNotifications();
-    } catch (e) {
-      console.error("[GristPM] Error marking all read:", e);
-    }
-  }
-  async function createNotification(taskId, userEmail, type, message, ruleId) {
-    try {
-      var resolvedEmail = resolveUserEmail(userEmail);
-      if (!resolvedEmail || resolvedEmail.toLowerCase() === (state.currentUserEmail || "").toLowerCase().trim()) return;
-      var record = {
-        Task_Id: taskId,
-        User_Email: resolvedEmail,
-        Type: type,
-        Message: message,
-        Is_Read: false,
-        Created_At: Math.floor(Date.now() / 1e3),
-        Rule_Id: ruleId || ""
-      };
-      await grist.docApi.applyUserActions([["AddRecord", state.NOTIFICATIONS_TABLE, null, record]]);
-      record.id = state.pmNotifications.length > 0 ? Math.max.apply(null, state.pmNotifications.map(function(n) {
-        return n.id;
-      })) + 1 : 1;
-      state.pmNotifications.push(record);
-    } catch (e) {
-      console.error("[GristPM] Error creating notification:", e);
-    }
-  }
-  function splitRecipientValues(value) {
-    if (Array.isArray(value)) return value;
-    return String(value || "").split(",").map(function(item) {
-      return item.trim();
-    }).filter(Boolean);
-  }
-  function resolveUserEmail(value) {
-    var raw = String(value || "").trim();
-    if (!raw) return "";
-    var key = raw.toLowerCase();
-    var user = state.users.find(function(candidate) {
-      return String(candidate.Email || "").trim().toLowerCase() === key || String(candidate.Name || "").trim().toLowerCase() === key;
-    });
-    if (user && user.Email) return String(user.Email).trim();
-    return raw.indexOf("@") > 0 ? raw : "";
-  }
-  function getProjectLead(task) {
-    var projectId = Number(task && task.Project_Id || 0);
-    var project = state.projects.find(function(item) {
-      return Number(item.id) === projectId;
-    });
-    return project ? resolveUserEmail(project.Lead) : "";
-  }
-  async function notifyTaskCompleted(task) {
-    if (!task) return;
-    var lead = getProjectLead(task);
-    if (!lead) return;
-    await notifyConcernedUsers(task.id, [lead], "task_completed", task.Title || "");
-  }
-  async function notifyConcernedUsers(taskId, emails, eventType, title) {
-    if (!state.notifyConcernedEnabled) return;
-    var me = (state.currentUserEmail || "").toLowerCase().trim();
-    var seen = {}, recipients = [];
-    (emails || []).forEach(function(e) {
-      var v = resolveUserEmail(e);
-      var k = v.toLowerCase();
-      if (v && k !== me && !seen[k]) {
-        seen[k] = 1;
-        recipients.push(v);
-      }
-    });
-    if (!recipients.length) return;
-    var messages = {
-      task_assigned: currentLang === "fr" ? "Une t\xE2che vous a \xE9t\xE9 assign\xE9e : " : "A task was assigned to you: ",
-      task_completed: currentLang === "fr" ? "T\xE2che termin\xE9e : " : "Task completed: ",
-      task_updated: currentLang === "fr" ? "T\xE2che modifi\xE9e : " : "Task updated: "
-    };
-    var msg = (messages[eventType] || messages.task_updated) + title;
-    var now = Math.floor(Date.now() / 1e3);
-    var actions = recipients.map(function(email) {
-      return ["AddRecord", state.NOTIFICATIONS_TABLE, null, { Task_Id: taskId, User_Email: email, Type: eventType, Message: msg, Is_Read: false, Created_At: now, Rule_Id: "builtin" }];
-    });
-    try {
-      await grist.docApi.applyUserActions(actions);
-    } catch (e) {
-      console.error("[GristPM] notifyConcernedUsers", e);
-    }
-  }
-  function resolveRecipients(action, actionTarget, task) {
-    if (action === "notify_assignee") {
-      return splitRecipientValues(task.Assignee).map(resolveUserEmail).filter(Boolean);
-    }
-    if (action === "notify_project_lead") {
-      var lead = getProjectLead(task);
-      return lead ? [lead] : [];
-    }
-    if (action === "notify_specific" && actionTarget) {
-      return [actionTarget];
-    }
-    if (action === "notify_all") {
-      return state.users.map(function(u) {
-        return u.Email;
-      }).filter(Boolean);
-    }
-    return [];
-  }
-  function renderAutoMessage(template, task) {
-    var statusLabel2 = "";
-    var statuses = getKanbanStatuses();
-    for (var si = 0; si < statuses.length; si++) {
-      if (statuses[si].key === task.Status) {
-        statusLabel2 = currentLang === "fr" ? statuses[si].label_fr : statuses[si].label_en;
-        break;
-      }
-    }
-    return (template || "").replace(/\{title\}/g, task.Title || "").replace(/\{status\}/g, statusLabel2 || task.Status || "").replace(/\{priority\}/g, task.Priority || "").replace(/\{assignee\}/g, task.Assignee || "");
-  }
-  async function evaluateAutomationRules(task, changes) {
-    if (!state.automationRules || state.automationRules.length === 0) return;
-    for (var i = 0; i < state.automationRules.length; i++) {
-      var rule = state.automationRules[i];
-      if (!rule.enabled) continue;
-      var triggered = false;
-      if (rule.trigger === "status_change" && changes.status) {
-        var mf = !rule.condition || !rule.condition.from || rule.condition.from === changes.status.from;
-        var mt = !rule.condition || !rule.condition.to || rule.condition.to === changes.status.to;
-        triggered = mf && mt;
-      } else if (rule.trigger === "priority_change" && changes.priority) {
-        var mf2 = !rule.condition || !rule.condition.from || rule.condition.from === changes.priority.from;
-        var mt2 = !rule.condition || !rule.condition.to || rule.condition.to === changes.priority.to;
-        triggered = mf2 && mt2;
-      } else if (rule.trigger === "assignment_change" && changes.assignee) {
-        triggered = true;
-      }
-      if (triggered) {
-        var msgTpl = currentLang === "fr" ? rule.message_fr || rule.message_en || "" : rule.message_en || rule.message_fr || "";
-        var message = renderAutoMessage(msgTpl, task);
-        var recipients = resolveRecipients(rule.action, rule.action_target, task);
-        for (var r = 0; r < recipients.length; r++) {
-          await createNotification(task.id, recipients[r], rule.trigger, message, rule.id);
-        }
-      }
-    }
-    updateNotificationBadge();
-  }
-  async function checkTimeBasedAutomations() {
-    if (!state.automationRules || state.automationRules.length === 0) return;
-    var now = Math.floor(Date.now() / 1e3);
-    var todayStart = now - now % 86400;
-    var threeDays = now + 3 * 24 * 60 * 60;
-    for (var i = 0; i < state.automationRules.length; i++) {
-      var rule = state.automationRules[i];
-      if (!rule.enabled) continue;
-      if (rule.trigger !== "overdue" && rule.trigger !== "approaching_deadline") continue;
-      var matching = state.tasks.filter(function(t2) {
-        if (t2.Status === "done" || t2.Status === "archived" || !t2.Due_Date) return false;
-        if (rule.trigger === "overdue") return t2.Due_Date < now;
-        return t2.Due_Date >= now && t2.Due_Date <= threeDays;
-      });
-      for (var j = 0; j < matching.length; j++) {
-        var task = matching[j];
-        var recipients = resolveRecipients(rule.action, rule.action_target, task);
-        for (var r = 0; r < recipients.length; r++) {
-          var already = state.pmNotifications.some(function(n) {
-            return n.Rule_Id === rule.id && n.Task_Id === task.id && n.User_Email === recipients[r] && n.Created_At >= todayStart;
-          });
-          if (already) continue;
-          var msgTpl = currentLang === "fr" ? rule.message_fr || rule.message_en || "" : rule.message_en || rule.message_fr || "";
-          var message = renderAutoMessage(msgTpl, task);
-          await createNotification(task.id, recipients[r], rule.trigger, message, rule.id);
-        }
-      }
-    }
-    updateNotificationBadge();
-  }
-  async function cleanupOldNotifications() {
-    var now = Math.floor(Date.now() / 1e3);
-    var thirtyDays = 30 * 86400;
-    var ninetyDays = 90 * 86400;
-    var toDelete = state.pmNotifications.filter(function(n) {
-      var age = now - (n.Created_At || 0);
-      return n.Is_Read && age > thirtyDays || age > ninetyDays;
-    });
-    if (toDelete.length === 0) return;
-    try {
-      var ids = toDelete.map(function(n) {
-        return n.id;
-      });
-      var actions = ids.map(function(id) {
-        return ["RemoveRecord", state.NOTIFICATIONS_TABLE, id];
-      });
-      await grist.docApi.applyUserActions(actions);
-      state.pmNotifications = state.pmNotifications.filter(function(n) {
-        return ids.indexOf(n.id) === -1;
-      });
-    } catch (e) {
-      console.log("[GristPM] Notification cleanup skipped:", e.message);
-    }
   }
 
   // src/domains/stats.js
@@ -4516,996 +6092,6 @@
       console.error("Error deleting project:", e);
       showToast("Error: " + e.message, "error");
     }
-  }
-
-  // src/domains/custom-fields.js
-  function getTaskCustomFieldValue(taskId, fieldId) {
-    var cfv = state.customFieldValues.find(function(v) {
-      return v.Task_Id === taskId && v.Field_Id === fieldId;
-    });
-    return cfv ? cfv.Value : "";
-  }
-  function getTaskCustomFieldsText(taskId) {
-    return state.customFieldValues.filter(function(v) {
-      return v.Task_Id === taskId && v.Value;
-    }).map(function(v) {
-      return String(v.Value);
-    }).join(" ");
-  }
-  function getCustomFieldTypeLabel(type) {
-    switch (type) {
-      case "text":
-        return t("typeText");
-      case "number":
-        return t("typeNumber");
-      case "date":
-        return t("typeDate");
-      case "checkbox":
-        return t("typeCheckbox");
-      case "select":
-        return t("typeSelect");
-      default:
-        return type;
-    }
-  }
-  function renderCustomFieldInput(field, taskId, value) {
-    var inputId = "cf-" + field.id;
-    var html = "";
-    switch (field.Type) {
-      case "text":
-        html = '<input type="text" id="' + inputId + '" class="cf-input" value="' + sanitize(value) + '" onchange="updateCustomFieldValue(' + taskId + ", " + field.id + ', this.value)" />';
-        break;
-      case "number":
-        html = '<input type="number" id="' + inputId + '" class="cf-input cf-number" value="' + sanitize(value) + '" onchange="updateCustomFieldValue(' + taskId + ", " + field.id + ', this.value)" />';
-        break;
-      case "date":
-        var dateVal = value ? new Date(parseInt(value) * 1e3).toISOString().split("T")[0] : "";
-        html = '<input type="date" id="' + inputId + '" class="cf-input cf-date" value="' + dateVal + '" onchange="updateCustomFieldValue(' + taskId + ", " + field.id + `, this.value ? Math.floor(new Date(this.value).getTime()/1000) : '')" />`;
-        break;
-      case "checkbox":
-        var checked = value === "true" || value === "1";
-        html = '<input type="checkbox" id="' + inputId + '" class="cf-checkbox" ' + (checked ? "checked" : "") + ' onchange="updateCustomFieldValue(' + taskId + ", " + field.id + `, this.checked ? 'true' : 'false')" />`;
-        break;
-      case "select":
-        var options = field.Options ? field.Options.split(",").map(function(o) {
-          return o.trim();
-        }) : [];
-        html = '<select id="' + inputId + '" class="cf-select" onchange="updateCustomFieldValue(' + taskId + ", " + field.id + ', this.value)">';
-        html += '<option value="">--</option>';
-        for (var oi = 0; oi < options.length; oi++) {
-          html += '<option value="' + sanitize(options[oi]) + '"' + (value === options[oi] ? " selected" : "") + ">" + sanitize(options[oi]) + "</option>";
-        }
-        html += "</select>";
-        break;
-      default:
-        html = '<input type="text" id="' + inputId + '" class="cf-input" value="' + sanitize(value) + '" />';
-    }
-    return html;
-  }
-  async function updateCustomFieldValue(taskId, fieldId, value) {
-    var existing = state.customFieldValues.find(function(v) {
-      return v.Task_Id === taskId && v.Field_Id === fieldId;
-    });
-    try {
-      if (existing) {
-        await grist.docApi.applyUserActions([
-          ["UpdateRecord", state.CUSTOM_FIELD_VALUES_TABLE, existing.id, { Value: String(value) }]
-        ]);
-        existing.Value = String(value);
-      } else {
-        await grist.docApi.applyUserActions([
-          ["AddRecord", state.CUSTOM_FIELD_VALUES_TABLE, null, {
-            Task_Id: taskId,
-            Field_Id: fieldId,
-            Value: String(value)
-          }]
-        ]);
-        await loadAllData();
-      }
-    } catch (e) {
-      console.error("Error updating custom field value:", e);
-    }
-  }
-  function openCustomFieldsModal() {
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal modal-cf" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>\u{1F3F7}\uFE0F ' + t("manageCustomFields") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="cf-list">';
-    if (state.customFields.length === 0) {
-      html += '<div class="cf-empty-modal">' + t("noCustomFields") + "</div>";
-    } else {
-      for (var i = 0; i < state.customFields.length; i++) {
-        var cf = state.customFields[i];
-        html += '<div class="cf-list-item">';
-        html += '<span class="cf-list-name">' + sanitize(cf.Name) + "</span>";
-        html += '<span class="cf-list-type">' + getCustomFieldTypeLabel(cf.Type) + "</span>";
-        html += '<button class="cf-delete-btn" onclick="deleteCustomField(' + cf.id + ')">\u{1F5D1}\uFE0F</button>';
-        html += "</div>";
-      }
-    }
-    html += "</div>";
-    html += '<div class="cf-add-form">';
-    html += "<h4>" + t("addCustomField") + "</h4>";
-    html += '<div class="cf-form-row">';
-    html += '<input type="text" id="new-cf-name" placeholder="' + t("customFieldName") + '" class="cf-form-input" />';
-    html += '<select id="new-cf-type" class="cf-form-select" onchange="toggleCfOptions()">';
-    html += '<option value="text">' + t("typeText") + "</option>";
-    html += '<option value="number">' + t("typeNumber") + "</option>";
-    html += '<option value="date">' + t("typeDate") + "</option>";
-    html += '<option value="checkbox">' + t("typeCheckbox") + "</option>";
-    html += '<option value="select">' + t("typeSelect") + "</option>";
-    html += "</select>";
-    html += "</div>";
-    html += '<div id="cf-options-row" class="cf-form-row" style="display:none;">';
-    html += '<input type="text" id="new-cf-options" placeholder="' + t("fieldOptions") + '" class="cf-form-input" />';
-    html += "</div>";
-    html += '<button class="btn btn-primary" onclick="addCustomField()">' + t("addCustomField") + "</button>";
-    html += "</div>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function toggleCfOptions() {
-    var type = document.getElementById("new-cf-type").value;
-    document.getElementById("cf-options-row").style.display = type === "select" ? "flex" : "none";
-  }
-  async function addCustomField() {
-    var name = document.getElementById("new-cf-name").value.trim();
-    var type = document.getElementById("new-cf-type").value;
-    var options = document.getElementById("new-cf-options").value.trim();
-    if (!name) return;
-    var maxOrder = state.customFields.length > 0 ? Math.max.apply(null, state.customFields.map(function(cf) {
-      return cf.Order || 0;
-    })) : 0;
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.CUSTOM_FIELDS_TABLE, null, {
-          Name: name,
-          Type: type,
-          Options: type === "select" ? options : "",
-          Order: maxOrder + 1,
-          Created_At: Math.floor(Date.now() / 1e3)
-        }]
-      ]);
-      showToast(t("customFieldCreated"), "success");
-      await loadAllData();
-      openCustomFieldsModal();
-    } catch (e) {
-      console.error("Error adding custom field:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function deleteCustomField(fieldId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(
-      currentLang === "fr" ? "Supprimer ce champ personnalis\xE9 et toutes ses valeurs ?" : "Delete this custom field and all its values?",
-      currentLang === "fr" ? "Supprimer le champ" : "Delete field"
-    );
-    if (!confirmed) return;
-    try {
-      var valuesToDelete = state.customFieldValues.filter(function(v) {
-        return v.Field_Id === fieldId;
-      });
-      for (var i = 0; i < valuesToDelete.length; i++) {
-        await grist.docApi.applyUserActions([
-          ["RemoveRecord", state.CUSTOM_FIELD_VALUES_TABLE, valuesToDelete[i].id]
-        ]);
-      }
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.CUSTOM_FIELDS_TABLE, fieldId]
-      ]);
-      showToast(t("customFieldDeleted"), "info");
-      await loadAllData();
-      openCustomFieldsModal();
-    } catch (e) {
-      console.error("Error deleting custom field:", e);
-    }
-  }
-
-  // src/domains/comments.js
-  function getTaskComments(taskId) {
-    return state.comments.filter(function(c) {
-      return c.Task_Id === taskId;
-    }).sort(function(a, b) {
-      return (b.Created_At || 0) - (a.Created_At || 0);
-    });
-  }
-
-  // src/domains/time-tracking.js
-  function getTaskTimeEntries(taskId) {
-    return state.timeEntries.filter(function(te) {
-      return te.Task_Id === taskId;
-    }).sort(function(a, b) {
-      return (b.Start_Time || 0) - (a.Start_Time || 0);
-    });
-  }
-  function getTaskTotalTime(taskId) {
-    var entries = getTaskTimeEntries(taskId);
-    var total = 0;
-    for (var i = 0; i < entries.length; i++) {
-      total += entries[i].Duration || 0;
-    }
-    if (state.activeTimers[taskId]) {
-      total += Math.floor(Date.now() / 1e3) - state.activeTimers[taskId];
-    }
-    return total;
-  }
-  function formatDuration(seconds) {
-    if (!seconds || seconds < 0) return "0" + t("minutes");
-    var hours = Math.floor(seconds / 3600);
-    var mins = Math.floor(seconds % 3600 / 60);
-    if (hours > 0) {
-      return hours + t("hours") + " " + mins + t("minutes");
-    }
-    return mins + t("minutes");
-  }
-  function formatDurationShort(seconds) {
-    if (!seconds || seconds < 0) return "0m";
-    var hours = Math.floor(seconds / 3600);
-    var mins = Math.floor(seconds % 3600 / 60);
-    if (hours > 0) {
-      return hours + "h" + (mins > 0 ? mins + "m" : "");
-    }
-    return mins + "m";
-  }
-  async function startTimer(taskId) {
-    if (state.activeTimers[taskId]) return;
-    var now = Math.floor(Date.now() / 1e3);
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
-          Task_Id: taskId,
-          User: state.currentUserEmail || "Utilisateur",
-          Start_Time: now,
-          End_Time: null,
-          Duration: 0,
-          Description: currentLang === "fr" ? "Timer en cours" : "Running timer"
-        }]
-      ]);
-      state.activeTimers[taskId] = now;
-      await loadAllData();
-      openEditTaskModal(taskId);
-    } catch (e) {
-      console.error("Error starting timer:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function stopTimer(taskId) {
-    if (!state.activeTimers[taskId]) return;
-    var startTime = state.activeTimers[taskId];
-    var endTime = Math.floor(Date.now() / 1e3);
-    var duration = endTime - startTime;
-    var openEntry = state.timeEntries.find(function(te) {
-      return te.Task_Id === taskId && te.Start_Time === startTime && !te.End_Time;
-    });
-    try {
-      if (openEntry) {
-        await grist.docApi.applyUserActions([
-          ["UpdateRecord", state.TIME_ENTRIES_TABLE, openEntry.id, {
-            End_Time: endTime,
-            Duration: duration,
-            Description: ""
-          }]
-        ]);
-      } else {
-        await grist.docApi.applyUserActions([
-          ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
-            Task_Id: taskId,
-            User: state.currentUserEmail || "Utilisateur",
-            Start_Time: startTime,
-            End_Time: endTime,
-            Duration: duration,
-            Description: ""
-          }]
-        ]);
-      }
-      delete state.activeTimers[taskId];
-      showToast(t("timeEntryAdded"), "success");
-      await loadAllData();
-      openEditTaskModal(taskId);
-    } catch (e) {
-      console.error("Error stopping timer:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function pauseTimer(taskId) {
-    await stopTimer(taskId);
-  }
-  async function addManualTimeEntry(taskId) {
-    var hours = parseInt(document.getElementById("manual-hours").value) || 0;
-    var minutes = parseInt(document.getElementById("manual-minutes").value) || 0;
-    var duration = hours * 3600 + minutes * 60;
-    if (duration <= 0) {
-      showToast(currentLang === "fr" ? "Entrez une dur\xE9e valide" : "Enter a valid duration", "error");
-      return;
-    }
-    var now = Math.floor(Date.now() / 1e3);
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.TIME_ENTRIES_TABLE, null, {
-          Task_Id: taskId,
-          User: state.currentUserEmail || "Utilisateur",
-          Start_Time: now - duration,
-          End_Time: now,
-          Duration: duration,
-          Description: currentLang === "fr" ? "Saisie manuelle" : "Manual entry"
-        }]
-      ]);
-      showToast(t("timeEntryAdded"), "success");
-      await loadAllData();
-      openEditTaskModal(taskId);
-    } catch (e) {
-      console.error("Error adding manual time entry:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-
-  // src/domains/dependencies.js
-  function getTaskDependencies(taskId) {
-    return state.dependencies.filter(function(d) {
-      return d.Task_Id === taskId;
-    }).map(function(d) {
-      return state.tasks.find(function(t2) {
-        return t2.id === d.Depends_On_Task_Id;
-      });
-    }).filter(Boolean);
-  }
-  function getTasksDependingOn(taskId) {
-    return state.dependencies.filter(function(d) {
-      return d.Depends_On_Task_Id === taskId;
-    }).map(function(d) {
-      return state.tasks.find(function(t2) {
-        return t2.id === d.Task_Id;
-      });
-    }).filter(Boolean);
-  }
-  function isTaskBlocked(taskId) {
-    var blockers = getTaskDependencies(taskId);
-    return blockers.some(function(blocker) {
-      return blocker && blocker.Status !== "done";
-    });
-  }
-  function ganttDepBadge(task) {
-    var deps = getTaskDependencies(task.id);
-    var blocks = getTasksDependingOn(task.id);
-    var html = "";
-    if (deps.length > 0) {
-      var dependsText = (currentLang === "fr" ? "Cette t\xE2che d\xE9pend de : " : "This task depends on: ") + deps.map(function(d) {
-        return d.Title;
-      }).join(", ") + ".";
-      html += ' <button type="button" class="gantt-dep-badge gantt-dep-depends" data-tooltip="' + sanitize(dependsText) + '" aria-label="' + sanitize(dependsText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">\u{1F517}' + deps.length + "</button>";
-    }
-    if (blocks.length > 0) {
-      var blocksText = (currentLang === "fr" ? "Cette t\xE2che bloque : " : "This task blocks: ") + blocks.map(function(d) {
-        return d.Title;
-      }).join(", ") + (currentLang === "fr" ? ". La t\xE2che indiqu\xE9e attend que celle-ci soit termin\xE9e." : ". The listed task is waiting for this one to be completed.");
-      html += ' <button type="button" class="gantt-dep-badge gantt-dep-blocks" data-tooltip="' + sanitize(blocksText) + '" aria-label="' + sanitize(blocksText) + '" onmouseenter="showGanttDependencyTooltip(event)" onmouseleave="hideGanttDependencyTooltip()" onfocus="showGanttDependencyTooltip(event)" onblur="hideGanttDependencyTooltip()" onclick="event.stopPropagation();showGanttDependencyTooltip(event)">\u23F3' + blocks.length + "</button>";
-    }
-    return html;
-  }
-  function showGanttDependencyTooltip(event) {
-    var target = event && event.currentTarget;
-    if (!target) return;
-    var message = target.getAttribute("data-tooltip");
-    if (!message) return;
-    var tooltip = document.getElementById("gantt-dependency-tooltip");
-    if (!tooltip) {
-      tooltip = document.createElement("div");
-      tooltip.id = "gantt-dependency-tooltip";
-      tooltip.setAttribute("role", "tooltip");
-      document.body.appendChild(tooltip);
-    }
-    tooltip.textContent = message;
-    tooltip.style.display = "block";
-    var rect = target.getBoundingClientRect();
-    var left = Math.min(Math.max(8, rect.left), window.innerWidth - tooltip.offsetWidth - 8);
-    var top = rect.bottom + 8;
-    if (top + tooltip.offsetHeight > window.innerHeight - 8) top = rect.top - tooltip.offsetHeight - 8;
-    tooltip.style.left = left + "px";
-    tooltip.style.top = Math.max(8, top) + "px";
-  }
-  function hideGanttDependencyTooltip() {
-    var tooltip = document.getElementById("gantt-dependency-tooltip");
-    if (tooltip) tooltip.style.display = "none";
-  }
-  function normalizeDependencyProjectId(value) {
-    var parsed = parseInt(value, 10);
-    return isNaN(parsed) ? 0 : parsed;
-  }
-  function getDependencyCandidates(taskId, projectId, query) {
-    var normalizedProjectId = normalizeDependencyProjectId(projectId);
-    if (!normalizedProjectId) return [];
-    var normalizedQuery = String(query || "").trim().toLowerCase();
-    var existingDependencyIds = {};
-    getTaskDependencies(taskId).forEach(function(dependency) {
-      existingDependencyIds[dependency.id] = true;
-    });
-    return state.tasks.filter(function(candidate) {
-      if (candidate.id === taskId || candidate.Status === "archived" || existingDependencyIds[candidate.id]) return false;
-      if (normalizeDependencyProjectId(candidate.Project_Id) !== normalizedProjectId) return false;
-      if (normalizedQuery && String(candidate.Title || "").toLowerCase().indexOf(normalizedQuery) === -1) return false;
-      if (shouldLimitToMyProjects()) {
-        var myIds = myProjectIdSet();
-        if (!(candidate.Project_Id && myIds[candidate.Project_Id] || taskConcernsCurrentUser(candidate))) return false;
-      }
-      return true;
-    }).sort(function(a, b) {
-      return String(a.Title || "").localeCompare(String(b.Title || ""));
-    });
-  }
-  function refreshDependencyTaskOptions(taskId, resetSelection) {
-    var selectedInput = document.getElementById("dep-select");
-    var optionsContainer = document.getElementById("dep-options");
-    if (!selectedInput || !optionsContainer) return;
-    var projectEl = document.getElementById("task-project");
-    var searchEl = document.getElementById("dep-search");
-    if (resetSelection) {
-      selectedInput.value = "";
-      if (searchEl) searchEl.value = "";
-    }
-    var candidates = getDependencyCandidates(taskId, projectEl ? projectEl.value : 0, searchEl ? searchEl.value : "");
-    optionsContainer.innerHTML = "";
-    if (!normalizeDependencyProjectId(projectEl ? projectEl.value : 0)) {
-      var noProject = document.createElement("div");
-      noProject.className = "dep-option-empty";
-      noProject.textContent = currentLang === "fr" ? "Choisissez d\u2019abord un projet." : "Choose a project first.";
-      optionsContainer.appendChild(noProject);
-      return;
-    }
-    if (!candidates.length) {
-      var empty = document.createElement("div");
-      empty.className = "dep-option-empty";
-      empty.textContent = currentLang === "fr" ? "Aucune t\xE2che correspondante." : "No matching task.";
-      optionsContainer.appendChild(empty);
-      return;
-    }
-    candidates.forEach(function(candidate) {
-      var option = document.createElement("button");
-      option.type = "button";
-      option.className = "dep-option";
-      option.setAttribute("role", "option");
-      option.textContent = candidate.Title || "";
-      option.onclick = function() {
-        selectDependencyTask(candidate.id);
-      };
-      optionsContainer.appendChild(option);
-    });
-  }
-  function clearDependencyTaskSelection() {
-    var selectedInput = document.getElementById("dep-select");
-    if (selectedInput) selectedInput.value = "";
-  }
-  function openDependencyTaskOptions(taskId) {
-    refreshDependencyTaskOptions(taskId);
-    var combobox = document.getElementById("dep-combobox");
-    var searchEl = document.getElementById("dep-search");
-    if (combobox) combobox.classList.add("open");
-    if (searchEl) searchEl.setAttribute("aria-expanded", "true");
-  }
-  function closeDependencyTaskOptions() {
-    var combobox = document.getElementById("dep-combobox");
-    var searchEl = document.getElementById("dep-search");
-    if (combobox) combobox.classList.remove("open");
-    if (searchEl) searchEl.setAttribute("aria-expanded", "false");
-  }
-  function toggleDependencyTaskOptions(taskId) {
-    var combobox = document.getElementById("dep-combobox");
-    if (combobox && combobox.classList.contains("open")) closeDependencyTaskOptions();
-    else openDependencyTaskOptions(taskId);
-  }
-  function selectDependencyTask(taskId) {
-    var selectedTask = state.tasks.find(function(candidate) {
-      return candidate.id === taskId;
-    });
-    var selectedInput = document.getElementById("dep-select");
-    var searchEl = document.getElementById("dep-search");
-    if (!selectedTask || !selectedInput || !searchEl) return;
-    selectedInput.value = String(selectedTask.id);
-    searchEl.value = selectedTask.Title || "";
-    closeDependencyTaskOptions();
-  }
-
-  // src/domains/table-view.js
-  var tableFilterStatuses = [];
-  var tableFilterPriorities = [];
-  function renderMultiFilter(kind) {
-    var containerId = kind === "status" ? "ms-status" : "ms-priority";
-    var c = document.getElementById(containerId);
-    if (!c) return;
-    var opts, selected, placeholder;
-    if (kind === "status") {
-      opts = getKanbanStatuses().map(function(s) {
-        return { value: s.key, label: currentLang === "fr" ? s.label_fr : s.label_en };
-      });
-      selected = tableFilterStatuses;
-      placeholder = currentLang === "fr" ? "Tous les statuts" : "All statuses";
-    } else {
-      opts = [
-        { value: "high", label: t("priorityHigh") },
-        { value: "medium", label: t("priorityMedium") },
-        { value: "low", label: t("priorityLow") }
-      ];
-      selected = tableFilterPriorities;
-      placeholder = currentLang === "fr" ? "Toutes priorit\xE9s" : "All priorities";
-    }
-    var labelText = selected.length === 0 ? placeholder : opts.filter(function(o) {
-      return selected.indexOf(o.value) !== -1;
-    }).map(function(o) {
-      return o.label;
-    }).join(", ");
-    var h = '<button type="button" class="filter-combo-btn' + (selected.length ? " active" : "") + `" onclick="toggleMsFilter('` + containerId + `')" id="` + containerId + '-btn">';
-    h += '<span class="filter-combo-label">' + sanitize(labelText) + '</span><span class="filter-combo-chevron">\u25BE</span></button>';
-    h += '<div class="filter-combo-dd" id="' + containerId + '-dd"><div class="filter-combo-list">';
-    if (selected.length) {
-      h += `<div class="filter-combo-opt" onclick="clearMsFilter('` + kind + `')" style="color:#ef4444;font-weight:600;">\u2715 ` + (currentLang === "fr" ? "Effacer" : "Clear") + "</div>";
-    }
-    opts.forEach(function(o) {
-      var on = selected.indexOf(o.value) !== -1;
-      h += '<div class="filter-combo-opt' + (on ? " selected" : "") + `" onclick="toggleMsOption('` + kind + "','" + sanitize(o.value).replace(/'/g, "\\'") + `')">`;
-      h += '<span style="display:inline-block;width:16px;">' + (on ? "\u2713" : "") + "</span>" + sanitize(o.label) + "</div>";
-    });
-    h += "</div></div>";
-    var prevDd = document.getElementById(containerId + "-dd");
-    var wasOpen = prevDd && prevDd.classList.contains("show");
-    c.innerHTML = h;
-    if (wasOpen) {
-      var newDd = document.getElementById(containerId + "-dd");
-      var newBtn = document.getElementById(containerId + "-btn");
-      if (newDd) newDd.classList.add("show");
-      if (newBtn) newBtn.classList.add("open");
-    }
-  }
-  function toggleMsFilter(containerId) {
-    var dd = document.getElementById(containerId + "-dd");
-    var btn = document.getElementById(containerId + "-btn");
-    if (!dd) return;
-    var isOpen = dd.classList.contains("show");
-    document.querySelectorAll(".filter-combo-dd.show").forEach(function(d) {
-      d.classList.remove("show");
-    });
-    document.querySelectorAll(".filter-combo-btn.open").forEach(function(b) {
-      b.classList.remove("open");
-    });
-    if (!isOpen) {
-      dd.classList.add("show");
-      if (btn) btn.classList.add("open");
-      setTimeout(function() {
-        document.addEventListener("mousedown", function hideMs(e) {
-          var box = document.getElementById(containerId);
-          if (box && !box.contains(e.target)) {
-            var dd2 = document.getElementById(containerId + "-dd");
-            var btn2 = document.getElementById(containerId + "-btn");
-            if (dd2) dd2.classList.remove("show");
-            if (btn2) btn2.classList.remove("open");
-            document.removeEventListener("mousedown", hideMs);
-          }
-        });
-      }, 0);
-    }
-  }
-  function toggleMsOption(kind, value) {
-    var arr = kind === "status" ? tableFilterStatuses : tableFilterPriorities;
-    var i = arr.indexOf(value);
-    if (i === -1) arr.push(value);
-    else arr.splice(i, 1);
-    renderTableView();
-  }
-  function clearMsFilter(kind) {
-    if (kind === "status") tableFilterStatuses = [];
-    else tableFilterPriorities = [];
-    renderMultiFilter(kind);
-    renderTableView();
-  }
-  var tableSortField = null;
-  var tableSortAsc = true;
-  function sortTable(field) {
-    if (tableSortField === field) {
-      tableSortAsc = !tableSortAsc;
-    } else {
-      tableSortField = field;
-      tableSortAsc = true;
-    }
-    renderTableView();
-  }
-  function renderTableView() {
-    var _prevView = document.getElementById("table-view");
-    var _expandedParents = [];
-    if (_prevView) {
-      _prevView.querySelectorAll(".toggle-btn.expanded").forEach(function(b) {
-        _expandedParents.push(b.id.replace("toggle-", ""));
-      });
-    }
-    var _scrollEl = document.scrollingElement || document.documentElement;
-    var _scrollTop = _scrollEl ? _scrollEl.scrollTop : window.scrollY || 0;
-    renderMultiFilter("status");
-    renderMultiFilter("priority");
-    var search = (document.getElementById("table-search").value || "").toLowerCase();
-    var filtered = getFilteredTasks().filter(function(task2) {
-      if (tableFilterStatuses.length && tableFilterStatuses.indexOf(task2.Status) === -1) return false;
-      if (tableFilterPriorities.length && tableFilterPriorities.indexOf(task2.Priority) === -1) return false;
-      if (search) {
-        var text = (task2.Title + " " + task2.Description + " " + task2.Assignee + " " + getTaskCustomFieldsText(task2.id)).toLowerCase();
-        if (text.indexOf(search) === -1) return false;
-      }
-      return true;
-    });
-    if (tableSortField) {
-      var dir = tableSortAsc ? 1 : -1;
-      filtered.sort(function(a, b) {
-        var va, vb;
-        switch (tableSortField) {
-          case "Title":
-            va = (a.Title || "").toLowerCase();
-            vb = (b.Title || "").toLowerCase();
-            break;
-          case "Project":
-            va = getProjectName(a.Project_Id).toLowerCase();
-            vb = getProjectName(b.Project_Id).toLowerCase();
-            break;
-          case "Status":
-            va = a.Status || "";
-            vb = b.Status || "";
-            break;
-          case "Priority":
-            var po = { high: 0, medium: 1, low: 2 };
-            va = po[a.Priority] !== void 0 ? po[a.Priority] : 3;
-            vb = po[b.Priority] !== void 0 ? po[b.Priority] : 3;
-            break;
-          case "Assignee":
-            va = (a.Assignee || "").toLowerCase();
-            vb = (b.Assignee || "").toLowerCase();
-            break;
-          case "Start_Date":
-            va = a.Start_Date || 0;
-            vb = b.Start_Date || 0;
-            break;
-          case "Due_Date":
-            va = a.Due_Date || 0;
-            vb = b.Due_Date || 0;
-            break;
-          default:
-            va = "";
-            vb = "";
-        }
-        if (va < vb) return -1 * dir;
-        if (va > vb) return 1 * dir;
-        return 0;
-      });
-    }
-    function sortIcon(field) {
-      return tableSortField === field ? tableSortAsc ? " \u25B2" : " \u25BC" : " \u21C5";
-    }
-    var thStyle = "cursor:pointer;user-select:none;";
-    var html = '<table class="data-table">';
-    html += "<thead><tr>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Title')">` + t("colTaskName") + sortIcon("Title") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Project')">` + (currentLang === "fr" ? "Projet" : "Project") + sortIcon("Project") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Status')">` + t("colStatus") + sortIcon("Status") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Priority')">` + t("colPriority") + sortIcon("Priority") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Assignee')">` + t("colAssignee") + sortIcon("Assignee") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Start_Date')">` + t("colStartDate") + sortIcon("Start_Date") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Due_Date')">` + t("colDueDate") + sortIcon("Due_Date") + "</th>";
-    html += "<th>" + t("colActions") + "</th>";
-    html += "</tr></thead><tbody>";
-    for (var i = 0; i < filtered.length; i++) {
-      var task = filtered[i];
-      var statusClass = "status-" + task.Status;
-      var overdueHtml = isOverdue(task) ? " \u26A0\uFE0F" : "";
-      var dotClass = task.Priority === "high" ? "dot-high" : task.Priority === "medium" ? "dot-medium" : "dot-low";
-      var taskSubtasks = getTaskSubtasks(task.id);
-      var completedSt = taskSubtasks.filter(function(st2) {
-        return st2.Completed;
-      }).length;
-      var taskProjColor = getProjectColor(task.Project_Id);
-      var taskProjName = getProjectName(task.Project_Id);
-      html += '<tr class="task-row clickable-row" onclick="openEditTaskModal(' + task.id + ')">';
-      html += '<td><div style="display:flex;align-items:center;gap:8px;border-left:3px solid ' + taskProjColor + ';padding-left:6px;">';
-      if (taskSubtasks.length > 0) {
-        html += '<button class="toggle-btn" onclick="event.stopPropagation(); toggleSubtasks(' + task.id + ')" id="toggle-' + task.id + '">\u25B6</button>';
-      } else {
-        html += '<span style="width:18px;"></span>';
-      }
-      html += '<div><div style="font-weight:700;">' + sanitize(task.Title) + "</div>";
-      if (task.Description) html += '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + sanitize(task.Description).substring(0, 80) + "</div>";
-      html += "</div></div></td>";
-      html += "<td>" + (taskProjName ? '<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:' + taskProjColor + ';display:inline-block;"></span>' + sanitize(taskProjName) + "</span>" : "") + "</td>";
-      html += '<td><span class="status-badge ' + statusClass + '">\u25CF ' + statusLabel(task.Status) + "</span>";
-      if (taskSubtasks.length > 0) html += ' <span class="st-badge">' + completedSt + "/" + taskSubtasks.length + "</span>";
-      html += "</td>";
-      html += '<td><span class="priority-dot ' + dotClass + '"></span> ' + priorityLabel(task.Priority) + "</td>";
-      var assigneeDisplay = task.Assignee ? task.Assignee.split(",").map(function(a) {
-        return getUserDisplayName(a.trim());
-      }).join(", ") : "";
-      html += "<td>" + (assigneeDisplay ? '<span class="assignee-chip">\u{1F464} ' + sanitize(assigneeDisplay) + "</span>" : "") + "</td>";
-      html += "<td>" + (task.Start_Date ? formatDate(task.Start_Date) : t("notDefined")) + "</td>";
-      html += '<td style="' + (isOverdue(task) ? "color:#dc2626;font-weight:700;" : "") + '">' + (task.Due_Date ? formatDate(task.Due_Date) + overdueHtml : t("noDate")) + "</td>";
-      html += '<td onclick="event.stopPropagation();">';
-      if (state.isOwner) html += '<button class="btn-icon" onclick="deleteTask(' + task.id + ')">\u{1F5D1}\uFE0F</button>';
-      html += "</td>";
-      html += "</tr>";
-      var _nowSec = Math.floor(Date.now() / 1e3);
-      for (var si = 0; si < taskSubtasks.length; si++) {
-        var st = taskSubtasks[si];
-        html += '<tr class="subtask-row clickable-row" data-parent="' + task.id + '" style="display:none;cursor:pointer;" onclick="openEditTaskModal(' + task.id + ", true); setTimeout(function(){startEditSubtask(" + st.id + ')},100);">';
-        var stStatus = st.Status || (st.Completed ? "done" : "todo");
-        var stDotClass = st.Priority === "high" ? "dot-high" : st.Priority === "medium" ? "dot-medium" : "dot-low";
-        var stAssignee = st.Assignee ? st.Assignee.split(",").map(function(a) {
-          return getUserDisplayName(a.trim());
-        }).join(", ") : "";
-        var stOverdue = st.Due_Date && !st.Completed && st.Due_Date < _nowSec;
-        var stMilestoneMark = st.Type === "milestone" ? '<span title="Jalon" style="color:#7c3aed;margin-right:3px;">\u25C6</span>' : "";
-        html += '<td><div class="subtask-indent"><span class="subtask-arrow">\u2514</span><input type="checkbox" class="subtask-checkbox" ' + (st.Completed ? "checked" : "") + ' onclick="event.stopPropagation();toggleSubtask(' + st.id + ", " + !st.Completed + ')" style="cursor:pointer;width:14px;height:14px;margin-right:6px;flex-shrink:0;" />' + stMilestoneMark + '<span class="subtask-name' + (st.Completed ? " completed" : "") + '">' + sanitize(st.Title) + "</span></div></td>";
-        html += "<td></td>";
-        var stStatusDef = getKanbanStatuses().find(function(s) {
-          return s.key === stStatus;
-        });
-        var stStatusColor = stStatusDef && stStatusDef.color ? stStatusDef.color : "#94a3b8";
-        html += '<td><span class="status-badge" style="background:' + stStatusColor + "20;color:" + stStatusColor + ';">\u25CF ' + statusLabel(stStatus) + "</span></td>";
-        html += '<td><span class="priority-dot ' + stDotClass + '"></span> ' + priorityLabel(st.Priority) + "</td>";
-        html += "<td>" + (stAssignee ? '<span class="assignee-chip">\u{1F464} ' + sanitize(stAssignee) + "</span>" : "") + "</td>";
-        html += "<td>" + (st.Start_Date ? formatDate(st.Start_Date) : "") + "</td>";
-        html += '<td style="' + (stOverdue ? "color:#dc2626;font-weight:700;" : "") + '">' + (st.Due_Date ? formatDate(st.Due_Date) + (stOverdue ? " \u26A0\uFE0F" : "") : "") + "</td>";
-        html += "<td></td>";
-        html += "</tr>";
-      }
-    }
-    if (filtered.length === 0) {
-      html += '<tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8;">' + t("noTasks") + "</td></tr>";
-    }
-    html += "</tbody></table>";
-    document.getElementById("table-view").innerHTML = html;
-    _expandedParents.forEach(function(pid) {
-      var rows = document.querySelectorAll('.subtask-row[data-parent="' + pid + '"]');
-      var btn = document.getElementById("toggle-" + pid);
-      for (var i2 = 0; i2 < rows.length; i2++) rows[i2].style.display = "table-row";
-      if (btn) {
-        btn.textContent = "\u25BC";
-        btn.classList.add("expanded");
-      }
-    });
-    if (_scrollEl && _scrollTop) _scrollEl.scrollTop = _scrollTop;
-  }
-
-  // src/domains/subtasks.js
-  function getTaskSubtasks(taskId) {
-    return state.subtasks.filter(function(st) {
-      return st.Parent_Task_Id === taskId;
-    }).sort(function(a, b) {
-      var da = a.Due_Date || null;
-      var db = b.Due_Date || null;
-      if (da && db) {
-        if (da !== db) return da - db;
-      } else if (da) {
-        return -1;
-      } else if (db) {
-        return 1;
-      }
-      return (a.Order || 0) - (b.Order || 0);
-    });
-  }
-  function getTaskProgress(task) {
-    var taskSubtasks = getTaskSubtasks(task.id);
-    if (taskSubtasks.length === 0) {
-      return task.Status === "done" ? 100 : task.Status === "progress" ? 50 : 10;
-    }
-    var completed = taskSubtasks.filter(function(st) {
-      return st.Completed;
-    }).length;
-    return Math.round(completed / taskSubtasks.length * 100);
-  }
-  function isSubtaskBlocked(subtask) {
-    if (!subtask.Blocked_By_Subtask_Id) return false;
-    var blocker = state.subtasks.find(function(st) {
-      return st.id === subtask.Blocked_By_Subtask_Id;
-    });
-    return blocker && !blocker.Completed;
-  }
-  function getSubtaskBlocker(subtask) {
-    if (!subtask.Blocked_By_Subtask_Id) return null;
-    return state.subtasks.find(function(st) {
-      return st.id === subtask.Blocked_By_Subtask_Id;
-    });
-  }
-  async function toggleSubtaskFromPopup(subtaskId, taskId, completed) {
-    await toggleSubtaskFromCard(subtaskId, completed);
-    await loadAllData();
-    openCardSubtasksModal(taskId);
-    renderKanbanView();
-  }
-  async function toggleSubtaskFromCard(subtaskId, completed) {
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, { Completed: completed }]
-      ]);
-      for (var i = 0; i < state.subtasks.length; i++) {
-        if (state.subtasks[i].id === subtaskId) {
-          state.subtasks[i].Completed = completed;
-          break;
-        }
-      }
-      renderKanbanView();
-    } catch (e) {
-      console.error("toggleSubtaskFromCard:", e);
-    }
-  }
-  function toggleSubtasks(taskId) {
-    var rows = document.querySelectorAll('.subtask-row[data-parent="' + taskId + '"]');
-    var btn = document.getElementById("toggle-" + taskId);
-    var isExpanded = rows.length > 0 && rows[0].style.display !== "none";
-    for (var i = 0; i < rows.length; i++) {
-      rows[i].style.display = isExpanded ? "none" : "table-row";
-    }
-    if (btn) {
-      btn.textContent = isExpanded ? "\u25B6" : "\u25BC";
-      btn.classList.toggle("expanded", !isExpanded);
-    }
-  }
-  function expandAllSubtasks() {
-    var rows = document.querySelectorAll(".subtask-row");
-    var btns = document.querySelectorAll(".toggle-btn");
-    for (var i = 0; i < rows.length; i++) rows[i].style.display = "table-row";
-    for (var i = 0; i < btns.length; i++) {
-      btns[i].textContent = "\u25BC";
-      btns[i].classList.add("expanded");
-    }
-  }
-  function collapseAllSubtasks() {
-    var rows = document.querySelectorAll(".subtask-row");
-    var btns = document.querySelectorAll(".toggle-btn");
-    for (var i = 0; i < rows.length; i++) rows[i].style.display = "none";
-    for (var i = 0; i < btns.length; i++) {
-      btns[i].textContent = "\u25B6";
-      btns[i].classList.remove("expanded");
-    }
-  }
-  async function toggleSubtaskFromTable(subtaskId, completed) {
-    var subtask = state.subtasks.find(function(st) {
-      return st.id === subtaskId;
-    });
-    var parentTaskId = subtask ? subtask.Parent_Task_Id : null;
-    var expandedTasks = [];
-    document.querySelectorAll(".toggle-btn.expanded").forEach(function(btn) {
-      var taskId = btn.id.replace("toggle-", "");
-      expandedTasks.push(parseInt(taskId));
-    });
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, { Completed: completed }]
-      ]);
-      for (var i = 0; i < state.subtasks.length; i++) {
-        if (state.subtasks[i].id === subtaskId) {
-          state.subtasks[i].Completed = completed;
-          break;
-        }
-      }
-      renderTableView();
-      expandedTasks.forEach(function(taskId) {
-        var rows = document.querySelectorAll('.subtask-row[data-parent="' + taskId + '"]');
-        var btn = document.getElementById("toggle-" + taskId);
-        for (var i2 = 0; i2 < rows.length; i2++) {
-          rows[i2].style.display = "table-row";
-        }
-        if (btn) {
-          btn.textContent = "\u25BC";
-          btn.classList.add("expanded");
-        }
-      });
-      var modal = document.getElementById("edit-task-modal");
-      if (modal && modal.style.display !== "none" && parentTaskId) {
-        openEditTaskModal(parentTaskId);
-      }
-    } catch (e) {
-      console.error("Error toggling subtask:", e);
-    }
-  }
-  function openSubtaskDepModal(subtaskId, taskId) {
-    var subtask = state.subtasks.find(function(st) {
-      return st.id === subtaskId;
-    });
-    if (!subtask) return;
-    var taskSubtasks = getTaskSubtasks(taskId);
-    var otherSubtasks = taskSubtasks.filter(function(st) {
-      return st.id !== subtaskId;
-    });
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" style="max-width:400px;" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>\u{1F517} ' + t("dependencies") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<p style="margin-bottom:12px;font-size:12px;color:#64748b;">' + sanitize(subtask.Title) + "</p>";
-    html += '<div class="form-group"><label>' + t("blockedBy") + "</label>";
-    html += '<select id="subtask-blocker-select">';
-    html += '<option value="">-- ' + t("noDependencies") + " --</option>";
-    for (var i = 0; i < otherSubtasks.length; i++) {
-      var ost = otherSubtasks[i];
-      var sel = subtask.Blocked_By_Subtask_Id === ost.id ? " selected" : "";
-      html += '<option value="' + ost.id + '"' + sel + ">" + sanitize(ost.Title) + "</option>";
-    }
-    html += "</select></div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="updateSubtaskDep(' + subtaskId + ", " + taskId + ')">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  async function updateSubtaskDep(subtaskId, taskId) {
-    var select = document.getElementById("subtask-blocker-select");
-    var blockerId = select.value ? parseInt(select.value) : null;
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, { Blocked_By_Subtask_Id: blockerId }]
-      ]);
-      showToast(t("dependencyAdded"), "success");
-      closeModalForce();
-      await loadAllData();
-      openEditTaskModal(taskId);
-    } catch (e) {
-      console.error("Error updating subtask dependency:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  function setStStatus(subtaskId, value, btn) {
-    var hidden = document.getElementById("st-status-" + subtaskId);
-    if (hidden) hidden.value = value;
-    var grp = btn.parentNode;
-    if (grp) grp.querySelectorAll(".st-pill").forEach(function(p) {
-      p.className = "st-pill";
-      p.style.background = "";
-      p.style.color = "";
-      p.style.borderColor = "";
-    });
-    var def = getKanbanStatuses().find(function(s) {
-      return s.key === value;
-    });
-    var color = def && def.color ? def.color : "#3b82f6";
-    btn.style.background = color;
-    btn.style.color = "#fff";
-    btn.style.borderColor = color;
-  }
-  function setStType(subtaskId, value, btn) {
-    var hidden = document.getElementById("st-type-" + subtaskId);
-    if (hidden) hidden.value = value;
-    var grp = btn.parentNode;
-    if (grp) grp.querySelectorAll(".st-pill").forEach(function(p) {
-      p.className = "st-pill";
-    });
-    btn.className = "st-pill active-progress";
-  }
-  function setStPill(field, subtaskId, value, btn) {
-    var group = document.getElementById("st-" + field + "-group-" + subtaskId);
-    var hidden = document.getElementById("st-" + field + "-" + subtaskId);
-    if (!group || !hidden) return;
-    hidden.value = value;
-    var pills = group.querySelectorAll(".st-pill");
-    pills.forEach(function(p) {
-      p.className = "st-pill";
-    });
-    btn.className = "st-pill active-" + value;
-  }
-  function startEditSubtask(subtaskId) {
-    var viewEl = document.getElementById("st-view-" + subtaskId);
-    var editEl = document.getElementById("st-edit-" + subtaskId);
-    if (viewEl) viewEl.style.display = "none";
-    if (editEl) {
-      editEl.style.display = "flex";
-      var t2 = document.getElementById("st-title-" + subtaskId);
-      if (t2) t2.focus();
-    }
-  }
-  function cancelEditSubtask(subtaskId) {
-    var viewEl = document.getElementById("st-view-" + subtaskId);
-    var editEl = document.getElementById("st-edit-" + subtaskId);
-    if (viewEl) viewEl.style.display = "flex";
-    if (editEl) editEl.style.display = "none";
-  }
-  function filterStAssignees(subtaskId, query) {
-    var box = document.getElementById("st-assignee-" + subtaskId);
-    if (!box) return;
-    var q = (query || "").toLowerCase().trim();
-    box.querySelectorAll("label").forEach(function(lbl) {
-      var name = (lbl.textContent || "").toLowerCase();
-      lbl.style.display = !q || name.indexOf(q) !== -1 ? "" : "none";
-    });
   }
 
   // src/domains/recurrence.js
@@ -6930,74 +7516,7 @@
     useTemplate,
     viewAttachment
   });
-  var kanbanGroupBy = "status";
   var kanbanSort = "manual";
-  var expandedKanbanCards = {};
-  var collapsedKanbanCols = {};
-  var defaultKanbanStatuses = [
-    { key: "todo", label_fr: "\xC0 faire", label_en: "To do", color: "#f59e0b", cssClass: "col-todo" },
-    { key: "progress", label_fr: "En cours", label_en: "In progress", color: "#3b82f6", cssClass: "col-progress" },
-    { key: "done", label_fr: "Termin\xE9", label_en: "Done", color: "#22c55e", cssClass: "col-done" }
-  ];
-  var customKanbanStatuses = null;
-  function getKanbanStatuses() {
-    return customKanbanStatuses || defaultKanbanStatuses;
-  }
-  async function saveKanbanStatuses() {
-    await saveSetting("kanban_statuses", JSON.stringify(customKanbanStatuses));
-    await syncTaskStatusChoices();
-    syncSubtaskStatusChoices();
-  }
-  async function syncTaskStatusChoices() {
-    try {
-      var statuses = getKanbanStatuses();
-      var choices = statuses.map(function(s) {
-        return s.key;
-      });
-      if (choices.indexOf("archived") === -1) choices.push("archived");
-      var choiceOptions = {};
-      statuses.forEach(function(s) {
-        if (s.color) choiceOptions[s.key] = { fillColor: s.color, textColor: "#271A79" };
-      });
-      choiceOptions.archived = { fillColor: "#EEFFEE", textColor: "#271A79" };
-      var statusCol = getColumnName("tasks", "status");
-      await grist.docApi.applyUserActions([
-        ["ModifyColumn", state.TASKS_TABLE, statusCol, { widgetOptions: JSON.stringify({ choices, choiceOptions }) }]
-      ]);
-      state.taskTableColumns = null;
-    } catch (e) {
-      console.log("syncTaskStatusChoices:", e.message);
-    }
-  }
-  async function syncSubtaskStatusChoices() {
-    try {
-      var statuses = getKanbanStatuses();
-      var choices = statuses.map(function(s) {
-        return s.key;
-      });
-      if (choices.indexOf("archived") === -1) choices.push("archived");
-      var choiceOptions = {};
-      statuses.forEach(function(s) {
-        if (s.color) choiceOptions[s.key] = { fillColor: s.color, textColor: "#ffffff" };
-      });
-      var widgetOptions = JSON.stringify({ widget: "TextBox", choices, choiceOptions });
-      if (typeof localStorage !== "undefined" && localStorage.getItem("pm_subtask_status_sig") === widgetOptions) return;
-      await grist.docApi.applyUserActions([
-        ["ModifyColumn", state.SUBTASKS_TABLE, "Status", { widgetOptions }]
-      ]);
-      if (typeof localStorage !== "undefined") localStorage.setItem("pm_subtask_status_sig", widgetOptions);
-    } catch (e) {
-      console.log("syncSubtaskStatusChoices:", e.message);
-    }
-  }
-  function getStatusLabel(key) {
-    var statuses = getKanbanStatuses();
-    var found = statuses.find(function(s) {
-      return s.key === key;
-    });
-    if (found) return currentLang === "fr" ? found.label_fr : found.label_en;
-    return key;
-  }
   var defaultCardDisplay = { description: true, priority: true, date: true, assignee: true, tags: true, category: true, time: true, subtasks: true, comments: true };
   var cardDisplaySettings = Object.assign({}, defaultCardDisplay);
   async function loadSettings() {
@@ -8015,515 +8534,10 @@
     }
     applyBusinessRoleRestrictions();
   }
-  function setKanbanGroupBy(value) {
-    kanbanGroupBy = value;
-    renderKanbanView();
-  }
   function setKanbanSort(value) {
     kanbanSort = value;
     saveSetting("kanban_sort", value);
     renderKanbanView();
-  }
-  function sortKanbanTasks(list) {
-    var arr = list.slice();
-    if (kanbanSort === "alpha") {
-      arr.sort(function(a, b) {
-        return (a.Title || "").localeCompare(b.Title || "");
-      });
-    } else if (kanbanSort === "alpha-desc") {
-      arr.sort(function(a, b) {
-        return (b.Title || "").localeCompare(a.Title || "");
-      });
-    } else if (kanbanSort === "due") {
-      arr.sort(function(a, b) {
-        var da = a.Due_Date || null, db = b.Due_Date || null;
-        if (da && db) return da - db;
-        if (da) return -1;
-        if (db) return 1;
-        return 0;
-      });
-    } else if (kanbanSort === "priority") {
-      var po = { high: 0, medium: 1, low: 2 };
-      arr.sort(function(a, b) {
-        var pa = po[a.Priority] !== void 0 ? po[a.Priority] : 3;
-        var pb = po[b.Priority] !== void 0 ? po[b.Priority] : 3;
-        return pa - pb;
-      });
-    }
-    return arr;
-  }
-  function toggleKanbanCol(key) {
-    collapsedKanbanCols[key] = !collapsedKanbanCols[key];
-    renderKanbanView();
-  }
-  function toggleCardExpand(taskId, ev) {
-    if (ev) {
-      ev.stopPropagation();
-      ev.preventDefault();
-    }
-    if (expandedKanbanCards[taskId]) delete expandedKanbanCards[taskId];
-    else expandedKanbanCards[taskId] = true;
-    renderKanbanView();
-  }
-  function getTaskDateProgress(task) {
-    if (!task || !task.Start_Date || !task.Due_Date || task.Due_Date <= task.Start_Date) return null;
-    var now = Math.floor(Date.now() / 1e3);
-    if (now <= task.Start_Date) return 0;
-    if (now >= task.Due_Date) return 100;
-    return Math.max(0, Math.min(100, Math.round((now - task.Start_Date) / (task.Due_Date - task.Start_Date) * 100)));
-  }
-  function openCardSubtasksModal(taskId) {
-    var task = state.tasks.find(function(t2) {
-      return t2.id === taskId;
-    });
-    if (!task) return;
-    var taskSubtasks = getTaskSubtasks(taskId);
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal compact-subtasks-modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + (currentLang === "fr" ? "Sous-t\xE2ches" : "Subtasks") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="compact-subtasks-title">' + sanitize(task.Title || "") + "</div>";
-    if (taskSubtasks.length === 0) {
-      html += '<div class="subtasks-empty">' + t("noSubtasks") + "</div>";
-    } else {
-      html += '<div class="compact-subtasks-list">';
-      taskSubtasks.forEach(function(st) {
-        html += '<label class="compact-subtask-item">';
-        html += '<input type="checkbox" ' + (st.Completed ? "checked" : "") + ' onchange="toggleSubtaskFromPopup(' + st.id + ", " + taskId + ', this.checked)">';
-        html += '<span class="' + (st.Completed ? "completed" : "") + '">' + sanitize(st.Title) + "</span>";
-        html += "</label>";
-      });
-      html += "</div>";
-    }
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function openCardCommentsModal(taskId) {
-    var task = state.tasks.find(function(t2) {
-      return t2.id === taskId;
-    });
-    var taskComments = getTaskComments(taskId);
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal compact-subtasks-modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("comments") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    if (task) html += '<div class="compact-subtasks-title">' + sanitize(task.Title || "") + "</div>";
-    if (taskComments.length === 0) {
-      html += '<div class="comments-empty">' + t("noComments") + "</div>";
-    } else {
-      html += '<div class="quick-comments-list">';
-      taskComments.forEach(function(cmt) {
-        html += '<div class="quick-comment-item">';
-        html += '<div class="quick-comment-meta">\u{1F464} ' + sanitize(cmt.Author || "Anonyme") + " \xB7 " + formatTimeAgo(cmt.Created_At) + "</div>";
-        html += '<div class="quick-comment-content">' + sanitize(cmt.Content) + "</div>";
-        html += "</div>";
-      });
-      html += "</div>";
-    }
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function openCardAttachmentsModal(taskId) {
-    var task = state.tasks.find(function(t2) {
-      return t2.id === taskId;
-    });
-    var list = getTaskAttachments(taskId);
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal compact-subtasks-modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + (currentLang === "fr" ? "Pi\xE8ces jointes" : "Attachments") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    if (task) html += '<div class="compact-subtasks-title">' + sanitize(task.Title || "") + "</div>";
-    if (list.length === 0) {
-      html += '<div class="attach-empty">' + (currentLang === "fr" ? "Aucune pi\xE8ce jointe" : "No attachments") + "</div>";
-    } else {
-      html += '<div class="quick-attachments-list">';
-      list.forEach(function(att) {
-        html += '<div class="quick-attachment-item">';
-        html += '<span class="quick-attachment-name">\u{1F4CE} ' + sanitize(att.File_Name || "") + "</span>";
-        html += '<span class="quick-attachment-size">' + formatFileSize(att.File_Size) + "</span>";
-        html += '<button class="attach-btn" onclick="openAttachmentInNewTab(' + att.id + ')">' + (currentLang === "fr" ? "Ouvrir" : "Open") + "</button>";
-        html += '<button class="attach-btn" onclick="downloadAttachment(' + att.id + ')">' + (currentLang === "fr" ? "T\xE9l\xE9charger" : "Download") + "</button>";
-        html += "</div>";
-      });
-      html += "</div>";
-    }
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function renderKanbanView() {
-    var board = document.getElementById("kanban-board");
-    var sel = document.getElementById("kanban-groupby");
-    if (sel && sel.value !== kanbanGroupBy) sel.value = kanbanGroupBy;
-    var sortSel = document.getElementById("kanban-sort");
-    if (sortSel && sortSel.value !== kanbanSort) sortSel.value = kanbanSort;
-    var columns = [];
-    var filteredTasks = getFilteredTasks();
-    if (kanbanGroupBy === "priority") {
-      columns = [
-        { key: "high", label: "\u{1F534} " + t("priorityHigh"), cssClass: "col-todo", field: "Priority" },
-        { key: "medium", label: "\u{1F7E1} " + t("priorityMedium"), cssClass: "col-progress", field: "Priority" },
-        { key: "low", label: "\u{1F7E2} " + t("priorityLow"), cssClass: "col-done", field: "Priority" }
-      ];
-    } else if (kanbanGroupBy === "project") {
-      var projMap = {};
-      filteredTasks.forEach(function(task) {
-        var pid = task.Project_Id || 0;
-        if (!projMap[pid]) {
-          projMap[pid] = { key: String(pid), label: pid ? getProjectName(pid) || "Projet " + pid : currentLang === "fr" ? "Sans projet" : "No project", cssClass: "col-todo", field: "Project_Id", tasks: [], color: getProjectColor(pid || null) };
-        }
-        projMap[pid].tasks.push(task);
-      });
-      columns = Object.values(projMap).sort(function(a, b) {
-        return a.label.localeCompare(b.label);
-      });
-    } else if (showArchivedTasks) {
-      columns = [
-        { key: "archived", label: currentLang === "fr" ? "\u{1F4E6} Archives" : "\u{1F4E6} Archives", cssClass: "col-custom", field: "Status", color: "#94a3b8" }
-      ];
-    } else {
-      var statuses = getKanbanStatuses();
-      columns = statuses.map(function(s2) {
-        return {
-          key: s2.key,
-          label: (s2.emoji ? s2.emoji + " " : "") + (currentLang === "fr" ? s2.label_fr : s2.label_en),
-          cssClass: s2.cssClass || "col-custom",
-          field: "Status",
-          color: s2.color
-        };
-      });
-    }
-    var html = "";
-    for (var s = 0; s < columns.length; s++) {
-      var col = columns[s];
-      var colTasks = col.tasks || filteredTasks.filter(function(task) {
-        if (col.field === "Status") return task.Status === col.key;
-        if (col.field === "Priority") return task.Priority === col.key;
-        return false;
-      });
-      colTasks = sortKanbanTasks(colTasks);
-      var dotStyle = col.color ? "display:inline-block;width:10px;height:10px;border-radius:50%;background:" + col.color + ";margin-right:6px;" : "display:none;";
-      var isCollapsed = !!collapsedKanbanCols[col.key];
-      if (isCollapsed) {
-        var collapsedStyle = col.color ? "background:" + col.color + "15;border-left:3px solid " + col.color + ";color:" + col.color + ";" : "";
-        html += '<div class="kanban-column kanban-column-collapsed ' + col.cssClass + `" onclick="toggleKanbanCol('` + sanitize(col.key) + `')" title="` + col.label + '" style="' + collapsedStyle + '">';
-        html += '<div class="kanban-col-header-collapsed">';
-        html += '<span class="col-collapse-icon">\u21C4</span>';
-        html += '<span class="col-collapsed-label">' + col.label + " (" + colTasks.length + ")</span>";
-        html += "</div></div>";
-        continue;
-      }
-      html += '<div class="kanban-column ' + col.cssClass + '">';
-      var headerStyle = col.color ? "border-bottom-color:" + col.color + ";color:" + col.color + ";" : "";
-      html += '<div class="kanban-col-header" style="' + headerStyle + '">';
-      html += '<div style="display:flex;align-items:center;gap:4px;"><span style="' + dotStyle + '"></span>' + col.label + ' <span class="col-count">' + colTasks.length + "</span></div>";
-      html += '<div style="display:flex;align-items:center;gap:4px;">';
-      if (kanbanGroupBy === "status") html += `<button class="col-add" onclick="openNewTaskModal('` + col.key + `')" title="` + (currentLang === "fr" ? "Nouvelle t\xE2che" : "New task") + '">+</button>';
-      var collapseColor = col.color ? "color:" + col.color + ";background:white;" : "";
-      html += `<button class="col-add" onclick="toggleKanbanCol('` + sanitize(col.key) + `')" title="` + (currentLang === "fr" ? "R\xE9duire" : "Collapse") + '" style="' + collapseColor + '">\u21C4</button>';
-      html += "</div>";
-      html += "</div>";
-      html += '<div class="kanban-cards" data-groupby="' + kanbanGroupBy + '" data-value="' + sanitize(col.key) + '" data-field="' + col.field + '" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragleave="onDragLeave(event)">';
-      if (colTasks.length === 0) {
-        html += '<div class="kanban-empty"><div class="kanban-empty-icon">\u{1F4DD}</div>' + t("noTasks") + "</div>";
-      } else {
-        for (var i = 0; i < colTasks.length; i++) {
-          html += renderTaskCard(colTasks[i]);
-        }
-      }
-      html += "</div>";
-      if (kanbanGroupBy === "status") html += `<button class="kanban-add-btn" onclick="openNewTaskModal('` + col.key + `')">` + t("addTask") + "</button>";
-      html += "</div>";
-    }
-    board.innerHTML = html;
-  }
-  function renderTaskCard(task) {
-    var cd = cardDisplaySettings;
-    var overdueHtml = isOverdue(task) ? ' <span class="overdue-badge">' + t("overdue") + "</span>" : "";
-    var taskSubtasks = getTaskSubtasks(task.id);
-    var progressPct = getTaskProgress(task);
-    var completedCount = taskSubtasks.filter(function(st) {
-      return st.Completed;
-    }).length;
-    var blocked = isTaskBlocked(task.id);
-    var taskComments = getTaskComments(task.id);
-    var taskAttachments = getTaskAttachments(task.id);
-    var priorityClass = "priority-" + (task.Priority || "medium");
-    var projColor = getProjectColor(task.Project_Id);
-    var projName = getProjectName(task.Project_Id);
-    var html = '<div class="task-card ' + priorityClass + (blocked ? " task-blocked" : "") + '" draggable="true" ondragstart="onDragStart(event, ' + task.id + ')" data-id="' + task.id + '" ondblclick="openEditTaskModal(' + task.id + ')" style="border-left:none;padding:0;overflow:visible;">';
-    html += '<div class="task-card-body">';
-    if (blocked) {
-      var blockers = getTaskDependencies(task.id).filter(function(b) {
-        return b && b.Status !== "done";
-      });
-      html += '<div class="blocked-badge">\u{1F512} ' + t("blockedBy") + " " + blockers.map(function(b) {
-        return sanitize(b.Title);
-      }).join(", ") + "</div>";
-    }
-    html += '<div class="task-card-header">';
-    html += '<div class="task-card-topline">';
-    if (cd.priority) html += '<div class="task-card-priority-text priority-text-' + (task.Priority || "medium") + '">' + priorityLabel(task.Priority) + "</div>";
-    html += '<div class="task-card-meta-actions">';
-    var _isExpanded = !!expandedKanbanCards[task.id];
-    html += '<button class="btn-icon task-card-expand-btn" onclick="event.stopPropagation();toggleCardExpand(' + task.id + ', event)" title="' + (currentLang === "fr" ? "D\xE9tails" : "Details") + '">' + (_isExpanded ? "\u25B2" : "\u25BC") + "</button>";
-    html += "</div></div>";
-    html += '<div class="task-card-title" onclick="openEditTaskModal(' + task.id + ')">' + sanitize(task.Title) + "</div>";
-    if (projName) html += '<div class="task-card-project-name"><span style="background:' + projColor + ';"></span>' + sanitize(projName) + "</div>";
-    html += "</div>";
-    if (cd.description && task.Description) {
-      html += '<div class="task-card-desc">' + sanitize(task.Description) + "</div>";
-    }
-    var dateProgress = getTaskDateProgress(task);
-    if (dateProgress !== null) {
-      html += '<div class="task-date-progress" title="' + (currentLang === "fr" ? "Avancement selon les dates" : "Date progress") + '">';
-      html += '<div class="task-date-progress-fill" style="width:' + dateProgress + '%"></div>';
-      html += "</div>";
-    }
-    if (cd.subtasks && taskSubtasks.length > 0) {
-      var barClass = progressPct === 100 ? "bar-done" : progressPct >= 50 ? "bar-progress" : "bar-todo";
-      html += '<div class="task-card-subtasks">';
-      html += '<div class="subtask-progress-row">';
-      html += '<div class="subtask-progress-bar thin"><div class="subtask-progress-fill ' + barClass + '" style="width:' + progressPct + '%"></div></div>';
-      html += '<span class="subtask-count">' + completedCount + "/" + taskSubtasks.length + "</span>";
-      html += '<button class="subtask-mini-btn" onclick="event.stopPropagation();openCardSubtasksModal(' + task.id + ')" title="' + (currentLang === "fr" ? "Sous-t\xE2ches" : "Subtasks") + '">\u2611</button>';
-      html += "</div></div>";
-    }
-    html += '<div class="task-card-row">';
-    if (cd.date && task.Due_Date) {
-      html += '<span class="task-card-date">\u{1F4C5} ' + formatDate(task.Due_Date) + overdueHtml + "</span>";
-    }
-    if (cd.comments && taskComments.length > 0) {
-      html += '<button class="task-card-comments card-quick-btn" onclick="event.stopPropagation();openCardCommentsModal(' + task.id + ')" title="' + t("comments") + '">\u{1F4AC} ' + taskComments.length + "</button>";
-    }
-    if (taskAttachments.length > 0) {
-      html += '<button class="task-card-attachments card-quick-btn" onclick="event.stopPropagation();openCardAttachmentsModal(' + task.id + ')" title="' + (currentLang === "fr" ? "Pi\xE8ces jointes" : "Attachments") + '">\u{1F4CE} ' + taskAttachments.length + "</button>";
-    }
-    var totalTime = getTaskTotalTime(task.id);
-    var isTimerRunning = !!state.activeTimers[task.id];
-    if (cd.time && (totalTime > 0 || isTimerRunning)) {
-      html += '<span class="task-card-time' + (isTimerRunning ? " timer-running" : "") + '">\u23F1\uFE0F ' + formatDurationShort(totalTime) + (isTimerRunning ? " \u25CF" : "") + "</span>";
-      if (isTimerRunning) html += '<button class="task-card-pause-btn" onclick="event.stopPropagation();pauseTimer(' + task.id + ')" title="' + (currentLang === "fr" ? "Pause" : "Pause") + '">\u23F8</button>';
-    }
-    if (task.Recurrence && task.Recurrence !== "none") {
-      var recLabel = recurrenceSymbol(task.Recurrence);
-      html += '<span class="task-card-recurrence">' + recLabel + "</span>";
-    }
-    html += "</div>";
-    if (cd.category && task.Category || cd.tags && task.Tag) {
-      html += '<div class="task-card-row task-card-taxonomy">';
-      if (cd.category && task.Category) {
-        var catObj = state.categories.find(function(c) {
-          return c.Name === task.Category;
-        });
-        var catColor = catObj ? catObj.Color : "#6366f1";
-        html += '<span class="task-card-category" style="color:' + catColor + ';">' + sanitize(task.Category) + "</span>";
-      }
-      if (cd.tags && task.Tag) {
-        var tagList = task.Tag.split(",").map(function(tg) {
-          return tg.trim();
-        }).filter(Boolean);
-        for (var ti = 0; ti < tagList.length; ti++) {
-          var tagObj = state.tags.find(function(tg) {
-            return tg.Name === tagList[ti];
-          });
-          var tagColor = tagObj ? tagObj.Color : "#94a3b8";
-          html += '<span class="task-card-tag" style="border-color:' + tagColor + "80;color:" + tagColor + ';">' + sanitize(tagList[ti]) + "</span>";
-        }
-      }
-      html += "</div>";
-    }
-    if (cd.assignee && task.Assignee) {
-      html += '<div class="task-card-row task-card-assignee-row">';
-      var assigneeList = task.Assignee.split(",").map(function(a) {
-        return a.trim();
-      }).filter(Boolean);
-      if (state.raciEnabled) {
-        for (var ai = 0; ai < assigneeList.length; ai++) {
-          html += '<span class="task-card-assignee raci-badge raci-r">R ' + sanitize(getUserDisplayName(assigneeList[ai])) + "</span>";
-        }
-        var raciRoles = [
-          { arr: task.Accountable, cls: "raci-a", letter: "A" },
-          { arr: task.Consulted, cls: "raci-c", letter: "C" },
-          { arr: task.Informed, cls: "raci-i", letter: "I" }
-        ];
-        for (var ri = 0; ri < raciRoles.length; ri++) {
-          if (raciRoles[ri].arr) {
-            var rList = raciRoles[ri].arr.split(",").map(function(a) {
-              return a.trim();
-            }).filter(Boolean);
-            for (var rj = 0; rj < rList.length; rj++) {
-              html += '<span class="task-card-assignee raci-badge ' + raciRoles[ri].cls + '">' + raciRoles[ri].letter + " " + sanitize(getUserDisplayName(rList[rj])) + "</span>";
-            }
-          }
-        }
-      } else {
-        for (var ai2 = 0; ai2 < assigneeList.length; ai2++) {
-          html += '<span class="task-card-assignee">\u{1F464} ' + sanitize(getUserDisplayName(assigneeList[ai2])) + "</span>";
-        }
-      }
-      html += "</div>";
-    }
-    if (task.Status === "done") {
-      html += '<div class="task-card-row" style="justify-content:flex-end;"><button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();archiveTask(' + task.id + ')" title="' + (currentLang === "fr" ? "Archiver" : "Archive") + '">\u{1F4E6} ' + (currentLang === "fr" ? "Archiver" : "Archive") + "</button></div>";
-    }
-    if (task.Status === "archived") {
-      html += '<div class="task-card-row" style="justify-content:flex-end;"><button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:#dbeafe;border:1px solid #93c5fd;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();restoreTask(' + task.id + ')" title="' + (currentLang === "fr" ? "Restaurer" : "Restore") + '">\u267B\uFE0F ' + (currentLang === "fr" ? "Restaurer" : "Restore") + "</button></div>";
-    }
-    if (_isExpanded) {
-      var _fr = currentLang === "fr";
-      html += '<div class="task-card-detail" onclick="event.stopPropagation();">';
-      if (task.Description) {
-        html += '<div class="tcd-section"><div class="tcd-label">' + (_fr ? "Description" : "Description") + "</div>";
-        html += '<div class="tcd-desc">' + sanitize(task.Description) + "</div></div>";
-      }
-      if (taskSubtasks.length > 0) {
-        html += '<div class="tcd-section"><div class="tcd-label">' + (_fr ? "Sous-t\xE2ches" : "Subtasks") + " (" + completedCount + "/" + taskSubtasks.length + ")</div>";
-        taskSubtasks.forEach(function(st) {
-          html += '<label class="tcd-subtask"><input type="checkbox" ' + (st.Completed ? "checked" : "") + ' onclick="event.stopPropagation();toggleSubtaskFromCard(' + st.id + ', this.checked)">';
-          html += "<span" + (st.Completed ? ' style="text-decoration:line-through;color:#94a3b8;"' : "") + ">" + sanitize(st.Title) + "</span>";
-          if (st.Due_Date) html += '<span class="tcd-st-date">\u{1F4C5} ' + formatDate(st.Due_Date) + "</span>";
-          html += "</label>";
-        });
-        html += "</div>";
-      }
-      if (taskComments.length > 0) {
-        html += '<div class="tcd-section"><div class="tcd-label">' + (_fr ? "Commentaires" : "Comments") + " (" + taskComments.length + ")</div>";
-        taskComments.slice(-5).forEach(function(cmt) {
-          html += '<div class="tcd-comment"><span class="tcd-c-author">\u{1F464} ' + sanitize(cmt.Author || "?") + "</span> ";
-          html += '<span class="tcd-c-time">' + formatTimeAgo(cmt.Created_At) + "</span>";
-          html += '<div class="tcd-c-content">' + sanitize(cmt.Content) + "</div></div>";
-        });
-        html += "</div>";
-      }
-      if (!task.Description && taskSubtasks.length === 0 && taskComments.length === 0) {
-        html += '<div style="color:#94a3b8;font-size:12px;padding:4px 0;">' + (_fr ? "Aucun d\xE9tail pour le moment" : "No details yet") + "</div>";
-      }
-      html += '<div class="tcd-actions">';
-      html += '<button class="btn btn-sm" onclick="event.stopPropagation();openEditTaskModal(' + task.id + ')">\u270F\uFE0F ' + (_fr ? "\xC9diter la t\xE2che" : "Edit task") + "</button>";
-      if (state.isOwner) html += '<button class="btn btn-sm tcd-delete-btn" onclick="event.stopPropagation();deleteTask(' + task.id + ')">\u{1F5D1}\uFE0F ' + t("delete") + "</button>";
-      html += "</div>";
-      html += "</div>";
-    }
-    html += "</div></div>";
-    return html;
-  }
-  async function archiveTask(taskId) {
-    try {
-      var statusCol = getColumnName("tasks", "status");
-      var task = state.tasks.find(function(t2) {
-        return t2.id === taskId;
-      });
-      var oldStatus = task ? task.Status : "";
-      await grist.docApi.applyUserActions([["UpdateRecord", state.TASKS_TABLE, taskId, { [statusCol]: "archived" }]]);
-      if (task) task.Status = "archived";
-      showToast(currentLang === "fr" ? "T\xE2che archiv\xE9e" : "Task archived", "success");
-      logActivity("task_archived", taskId, task ? task.Title : "", "");
-      if (task && oldStatus !== "archived") {
-        await evaluateAutomationRules(Object.assign({}, task, { Status: "archived" }), { status: { from: oldStatus, to: "archived" } });
-      }
-      refreshAllViews();
-    } catch (e) {
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function restoreTask(taskId) {
-    try {
-      var statusCol = getColumnName("tasks", "status");
-      var task = state.tasks.find(function(t2) {
-        return t2.id === taskId;
-      });
-      var oldStatus = task ? task.Status : "";
-      await grist.docApi.applyUserActions([["UpdateRecord", state.TASKS_TABLE, taskId, { [statusCol]: "todo" }]]);
-      if (task) task.Status = "todo";
-      showToast(currentLang === "fr" ? "T\xE2che restaur\xE9e" : "Task restored", "success");
-      logActivity("task_restored", taskId, task ? task.Title : "", "");
-      if (task && oldStatus !== "todo") {
-        await evaluateAutomationRules(Object.assign({}, task, { Status: "todo" }), { status: { from: oldStatus, to: "todo" } });
-      }
-      refreshAllViews();
-    } catch (e) {
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  var draggedTaskId = null;
-  var _kanbanScrollInterval = null;
-  function onDragStart(e, taskId) {
-    draggedTaskId = taskId;
-    e.target.classList.add("dragging");
-    e.dataTransfer.effectAllowed = "move";
-    var board = document.getElementById("kanban-board");
-    if (board) {
-      document.addEventListener("dragover", function _autoScroll(ev) {
-        var rect = board.getBoundingClientRect();
-        var edge = 60;
-        var speed = 8;
-        if (ev.clientX > rect.right - edge) board.scrollLeft += speed;
-        else if (ev.clientX < rect.left + edge) board.scrollLeft -= speed;
-        if (!draggedTaskId) document.removeEventListener("dragover", _autoScroll);
-      });
-    }
-  }
-  function onDragOver(e) {
-    e.preventDefault();
-    e.currentTarget.classList.add("drag-over");
-  }
-  function onDragLeave(e) {
-    e.currentTarget.classList.remove("drag-over");
-  }
-  async function onDrop(e) {
-    e.preventDefault();
-    e.currentTarget.classList.remove("drag-over");
-    var field = e.currentTarget.getAttribute("data-field") || "Status";
-    var newValue = e.currentTarget.getAttribute("data-value");
-    if (draggedTaskId && newValue) {
-      if (field === "Status" && newValue === "done" && isTaskBlocked(draggedTaskId)) {
-        var blockers = getTaskDependencies(draggedTaskId).filter(function(b) {
-          return b && b.Status !== "done";
-        });
-        var blockerNames = blockers.map(function(b) {
-          return b.Title;
-        }).join(", ");
-        showToast((currentLang === "fr" ? "Impossible : t\xE2che bloqu\xE9e par " : "Cannot move: blocked by ") + blockerNames, "error");
-        draggedTaskId = null;
-        return;
-      }
-      try {
-        var draggedTask = state.tasks.find(function(t2) {
-          return t2.id === draggedTaskId;
-        });
-        var oldVal = draggedTask ? draggedTask[field] : "";
-        var record = {};
-        if (field === "Project_Id") {
-          record[field] = newValue ? parseInt(newValue) : null;
-        } else {
-          record[field] = newValue;
-        }
-        await grist.docApi.applyUserActions([["UpdateRecord", state.TASKS_TABLE, draggedTaskId, record]]);
-        for (var i = 0; i < state.tasks.length; i++) {
-          if (state.tasks[i].id === draggedTaskId) {
-            state.tasks[i][field] = record[field];
-            break;
-          }
-        }
-        showToast(t("taskMoved"), "success");
-        if (draggedTask && oldVal !== newValue) {
-          var dropChanges = {};
-          if (field === "Status") dropChanges.status = { from: oldVal, to: newValue };
-          if (field === "Priority") dropChanges.priority = { from: oldVal, to: newValue };
-          if (Object.keys(dropChanges).length > 0) {
-            await evaluateAutomationRules(Object.assign({}, draggedTask, record), dropChanges);
-          }
-          if (field === "Status" && newValue === "done" && oldVal !== "done") {
-            await notifyTaskCompleted(Object.assign({}, draggedTask, record));
-          }
-          logActivity("status_changed", draggedTaskId, draggedTask.Title, oldVal + " \u2192 " + newValue);
-        }
-        refreshAllViews();
-      } catch (err) {
-        console.error("Error moving task:", err);
-      }
-    }
-    draggedTaskId = null;
   }
   function getGanttSubtasks(taskId) {
     return getTaskSubtasks(taskId);
@@ -9392,18 +9406,6 @@
       btn.title = label;
       btn.setAttribute("aria-label", label);
       btn.setAttribute("data-tooltip", label);
-    }
-  }
-  function toggleKanbanFullscreen() {
-    var el = document.getElementById("tab-kanban");
-    var btn = document.getElementById("kanban-fullscreen-btn");
-    if (!el) return;
-    var on = el.classList.toggle("kanban-fullscreen");
-    if (btn) {
-      var label = on ? currentLang === "fr" ? "Quitter le plein \xE9cran" : "Exit fullscreen" : currentLang === "fr" ? "Afficher le Kanban en plein \xE9cran" : "Show Kanban fullscreen";
-      btn.title = label;
-      btn.setAttribute("aria-label", label);
-      btn.textContent = on ? "\u2199" : "\u26F6";
     }
   }
   function renderCategoriesList() {

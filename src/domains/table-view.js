@@ -6,10 +6,11 @@ import { state } from '../store.js';
 import { getTaskCustomFieldsText } from './custom-fields.js';
 import { getTaskSubtasks } from './subtasks.js';
 import { getFilteredTasks, getProjectName, getProjectColor } from './filters.js';
+import { getKanbanStatuses } from './kanban.js';
 // Temporary backwards imports: none of these are extracted yet
-// (isOverdue/statusLabel -> tasks, getKanbanStatuses -> kanban, getUserDisplayName -> team).
+// (isOverdue/statusLabel -> tasks, getUserDisplayName -> team).
 import {
-  isOverdue, statusLabel, getKanbanStatuses, getUserDisplayName
+  isOverdue, statusLabel, getUserDisplayName
 } from '../main.js';
 
 // B2 : multi-filtres statut/priorité du tableau (tableau vide = tous)

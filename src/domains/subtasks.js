@@ -4,13 +4,9 @@ import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
 import { renderTableView } from './table-view.js';
 import { loadAllData } from './data-loader.js';
-// Temporary backwards imports: none of these are extracted yet
-// (openEditTaskModal/closeModalForce -> task-modal,
-// openCardSubtasksModal/renderKanbanView -> kanban, getKanbanStatuses -> kanban domain).
-import {
-  openEditTaskModal, closeModalForce, openCardSubtasksModal,
-  renderKanbanView, getKanbanStatuses
-} from '../main.js';
+import { openCardSubtasksModal, renderKanbanView, getKanbanStatuses } from './kanban.js';
+// Temporary backwards import: openEditTaskModal/closeModalForce aren't extracted yet (task-modal).
+import { openEditTaskModal, closeModalForce } from '../main.js';
 
 export function getTaskSubtasks(taskId) {
   // D1 : tri par échéance croissante (sans date en dernier), Order en départage
