@@ -465,7 +465,7 @@
     cardDisplay: "Affichage des cartes",
     raci: "Mode RACI",
     automations: "Automatisations",
-    notifications: "Notifications & e-mail",
+    notifications: "Notifications",
     security: "S\xE9curit\xE9 du document",
     mapping: "Configuration avanc\xE9e"
   };

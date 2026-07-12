@@ -27,7 +27,7 @@ export const defaultUiLabels = {
   cardDisplay: 'Affichage des cartes',
   raci: 'Mode RACI',
   automations: 'Automatisations',
-  notifications: 'Notifications & e-mail',
+  notifications: 'Notifications',
   security: 'Sécurité du document',
   mapping: 'Configuration avancée'
 };
