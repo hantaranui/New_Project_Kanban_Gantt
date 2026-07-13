@@ -15,12 +15,18 @@ import { isOverdue } from './tasks.js';
 
 export var ganttMode = 'days';
 export var ganttSort = 'default'; // 'default' | 'priority' | 'alpha' | 'due'
+export var ganttFilterStatus = ''; // '' = tous les statuts, sinon la clé d'un statut Kanban
 export var ganttCustomStart = ''; // mode 'custom' : date de début (YYYY-MM-DD)
 export var ganttCustomEnd = '';   // mode 'custom' : date de fin (YYYY-MM-DD)
 export var ganttYear = new Date().getFullYear();
 export var ganttMonth = new Date().getMonth();
 export var expandedGanttTasks = {}; // taskId -> true quand les sous-tâches sont visibles dans le Gantt
 export var selectedGanttTaskId = null;
+
+export function setGanttStatusFilter(value) {
+  ganttFilterStatus = value;
+  renderGanttView();
+}
 
 export function getGanttSubtasks(taskId) {
   return getTaskSubtasks(taskId);
@@ -194,7 +200,22 @@ export function renderGanttView() {
     btn.classList.toggle('active', btn.getAttribute('data-gantt-mode') === ganttMode);
   });
 
+  // Filtre par statut : options reconstruites à chaque rendu pour suivre les
+  // statuts Kanban personnalisés (couleur/libellé/ajout/suppression).
+  var statusFilterSel = document.getElementById('gantt-status-filter');
+  if (statusFilterSel) {
+    var ganttStatuses = getKanbanStatuses();
+    var statusOptsHtml = '<option value="">' + (currentLang === 'fr' ? 'Tous les statuts' : 'All statuses') + '</option>';
+    ganttStatuses.forEach(function(s) {
+      var sLbl = currentLang === 'fr' ? s.label_fr : s.label_en;
+      statusOptsHtml += '<option value="' + s.key + '">' + sanitize(sLbl) + '</option>';
+    });
+    if (statusFilterSel.innerHTML !== statusOptsHtml) statusFilterSel.innerHTML = statusOptsHtml;
+    statusFilterSel.value = ganttFilterStatus;
+  }
+
   var tasksWithDates = getFilteredTasks().filter(function(task) { return task.Start_Date || task.Due_Date; });
+  if (ganttFilterStatus) tasksWithDates = tasksWithDates.filter(function(task) { return task.Status === ganttFilterStatus; });
   // A8 : tri du Gantt
   var ganttSortSel = document.getElementById('gantt-sort');
   if (ganttSortSel && ganttSortSel.value !== ganttSort) ganttSortSel.value = ganttSort;

@@ -58,10 +58,9 @@ import {
   renderAutoMessage, evaluateAutomationRules, checkTimeBasedAutomations
 } from './domains/notifications.js';
 import {
-  renderTeamView, renderUsersList, renderGroupsList, getRoleChoicesFromGrist, openManageRolesModal,
+  renderTeamView, renderUsersList, getRoleChoicesFromGrist, openManageRolesModal,
   renderManageRolesModal, addRoleChoice, removeRoleChoice, saveRoleChoices, openEditUserModal,
-  openEditGroupModal, updateUser, updateGroup, openNewUserModal, openNewGroupModal, createUser,
-  createGroup, deleteUser, deleteGroup
+  updateUser, openNewUserModal, createUser, deleteUser
 } from './domains/team.js';
 import {
   saveCardDisplaySettings, saveSetting, uiLabel, saveUiLabels, renderSettingsView,
@@ -89,7 +88,7 @@ import {
 import {
   renderGanttView, toggleGanttSubtask, focusGanttTask, setGanttYear, ganttNav, ganttToday,
   ganttExpandAll, ganttCollapseAll, setGanttMode, setGanttCustomRange, setGanttSort,
-  exportGanttPdf, toggleGanttFullscreen
+  setGanttStatusFilter, exportGanttPdf, toggleGanttFullscreen
 } from './domains/gantt.js';
 import {
   applyFrenchTableNames, hasFrenchClientTables, isInsideGrist, shouldShowClientSetup,
@@ -112,8 +111,8 @@ Object.assign(window, {
   addRaciChip, addRoleChoice, addSubtask, addTagChip, addTagSetting, applySecurityRules, archiveTask,
   cancelEditSubtask, closeAttachmentViewer, closeAutomationModal,
   closeConfirmModal, closeModal, closeModalForce, closeNotifications, closeProjectModal, closePromptModal,
-  createGroup, createTask, createUser,
-  deleteAttachment, deleteAutomationRule, deleteComment, deleteGroup,
+  createTask, createUser,
+  deleteAttachment, deleteAutomationRule, deleteComment,
   deleteProject, deleteSubtask, deleteTask, deleteUser,
   detectProjectColumns, detectTaskColumns, detectUserColumns, dismissNotification, dismissAllNotifications,
   downloadAttachment, editCategorySetting, editKanbanStatus,
@@ -123,8 +122,8 @@ Object.assign(window, {
   onAutoTriggerChange, onDragLeave,
   onDragOver, onDragStart, onDrop, openAddAutomationRuleModal, openAttachmentInNewTab, openCardAttachmentsModal,
   openCardCommentsModal, openCardSubtasksModal, openColumnMappingModal,
-  openEditAutomationRuleModal, openEditGroupModal, openEditTaskModal, openEditUserModal, openManageRolesModal,
-  openNewGroupModal, openNewTaskModal, openNewUserModal, openNotification,
+  openEditAutomationRuleModal, openEditTaskModal, openEditUserModal, openManageRolesModal,
+  openNewTaskModal, openNewUserModal, openNotification,
   openProjectModal, openProjectModalForEdit, openSubtaskDepModal, pauseTimer, quickAction,
   removeCategorySetting, removeKanbanStatus, removeRaciChip, removeRoleChoice, removeSecurityRules,
   removeTagChip, removeTagSetting,
@@ -132,14 +131,14 @@ Object.assign(window, {
   resetFilters, restoreTask, runSetupDiagnostic, saveAutomationRuleFromModal,
   saveColumnMapping, saveEditSubtask, saveInlineProjectEdit, saveProject, saveRoleChoices,
   saveTaskFromFooter, saveUiLabelSettings, selectEmoji, selectFilterCombo, selectProjectOption,
-  setGanttCustomRange, setGanttMode, setGanttSort, setGanttYear, setKanbanGroupBy,
+  setGanttCustomRange, setGanttMode, setGanttSort, setGanttStatusFilter, setGanttYear, setKanbanGroupBy,
   setKanbanSort, setStPill, setStStatus, setStType, setupCreateFrenchTables, setupUseExistingTables,
   showNotifications, startEditSubtask, startTimer, submitPromptModal,
   switchTab, toggleArchiveView, toggleAutomationRule, toggleCardDisplay, toggleCardExpand,
   toggleEmojiPicker, toggleFilterCombo, toggleGanttFullscreen, toggleGanttSubtask, toggleKanbanCol,
   toggleKanbanFullscreen, toggleMyProjects, toggleNotifyConcerned, toggleProjectDropdown,
   toggleRaci, toggleSubtask, toggleSubtaskFromCard, toggleSubtaskFromPopup,
-  updateGroup, updateSubtaskDep, updateTask, updateUser, uploadTaskAttachments,
+  updateSubtaskDep, updateTask, updateUser, uploadTaskAttachments,
   viewAttachment
 });
 

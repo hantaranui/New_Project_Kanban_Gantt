@@ -13,7 +13,6 @@ import { loadSettings } from '../main.js';
 export function applyFrenchTableNames(updateDefaults) {
   state.TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
   state.USERS_TABLE = CLIENT_TABLE_NAMES.users;
-  state.GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
   state.SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
   state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
   state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
@@ -320,15 +319,6 @@ export async function ensureTables() {
           { id: 'Recurrence', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['none', 'daily', 'weekly', 'monthly'] }) },
           { id: 'Estimated_Hours', type: 'Numeric' },
           { id: 'Created_At', type: 'Date' }
-        ]]
-      ]);
-    }
-
-    if (!skipAutoCreateWorkTables && (existingTables.indexOf(state.GROUPS_TABLE) === -1)) {
-      await grist.docApi.applyUserActions([
-        ['AddTable', state.GROUPS_TABLE, [
-          { id: 'Name', type: 'Text' },
-          { id: 'Description', type: 'Text' }
         ]]
       ]);
     }

@@ -121,7 +121,7 @@
       tagsSubtitle: "G\xE9rez les tags pour vos t\xE2ches",
       addCategory: "Ajouter",
       categories: "Cat\xE9gories",
-      tabTeam: "\xC9quipe",
+      tabTeam: "Utilisateurs",
       teamUsersTitle: "Utilisateurs",
       teamUsersSubtitle: "G\xE9rez les membres de votre \xE9quipe",
       manageRoles: "R\xF4les",
@@ -132,12 +132,8 @@
       rolesUpdated: "R\xF4les mis \xE0 jour !",
       confirmDeleteRole: "Supprimer ce r\xF4le ?",
       cannotDeleteUsedRole: "Ce r\xF4le est utilis\xE9 par des utilisateurs",
-      teamGroupsTitle: "Groupes",
-      teamGroupsSubtitle: "Organisez vos utilisateurs en groupes",
       addUser: "Ajouter",
-      addGroup: "Ajouter",
       modalNewUser: "Nouvel utilisateur",
-      modalNewGroup: "Nouveau groupe",
       fieldName: "Nom *",
       fieldEmail: "Email",
       fieldRole: "R\xF4le",
@@ -146,13 +142,8 @@
       roleViewer: "Lecteur",
       userCreated: "Utilisateur ajout\xE9 !",
       userDeleted: "Utilisateur supprim\xE9.",
-      groupCreated: "Groupe cr\xE9\xE9 !",
-      groupDeleted: "Groupe supprim\xE9.",
       confirmDeleteUser: "Supprimer cet utilisateur ?",
-      confirmDeleteGroup: "Supprimer ce groupe ?",
       noUsers: "Aucun utilisateur",
-      noGroups: "Aucun groupe",
-      members: "membres",
       progression: "Progression",
       advancement: "Avancement",
       startLabel: "D\xE9but :",
@@ -305,7 +296,6 @@
   var state = {
     tasks: [],
     users: [],
-    groups: [],
     subtasks: [],
     comments: [],
     timeEntries: [],
@@ -324,7 +314,6 @@
     _settingsCache: {},
     TASKS_TABLE: "PM_Tasks",
     USERS_TABLE: "PM_Users",
-    GROUPS_TABLE: "PM_Groups",
     SUBTASKS_TABLE: "PM_Subtasks",
     COMMENTS_TABLE: "PM_Comments",
     TIME_ENTRIES_TABLE: "PM_TimeEntries",
@@ -380,7 +369,6 @@
   var CLIENT_TABLE_NAMES = {
     tasks: "Taches",
     users: "Utilisateurs",
-    groups: "Equipes",
     subtasks: "Sous_taches",
     comments: "Commentaires",
     timeEntries: "Suivi_temps",
@@ -1860,7 +1848,6 @@
   }
   function renderTeamView() {
     renderUsersList();
-    renderGroupsList();
     renderCategoriesList();
   }
   function renderUsersList() {
@@ -1899,44 +1886,47 @@
     html += "</tbody></table>";
     container.innerHTML = html;
   }
-  function renderGroupsList() {
-    var container = document.getElementById("groups-list");
-    if (!container) return;
-    if (state.groups.length === 0) {
-      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noGroups") + "</div>";
-      return;
-    }
-    var html = "";
-    for (var i = 0; i < state.groups.length; i++) {
-      var g = state.groups[i];
-      var memberCount = state.users.filter(function(u) {
-        return u.Group_Name === g.Name;
-      }).length;
-      var memberNames = state.users.filter(function(u) {
-        return u.Group_Name === g.Name;
-      }).map(function(u) {
-        return u.Name || u.Email;
-      });
-      html += '<div class="template-card">';
-      html += '<div class="template-card-info">';
-      html += "<h4>\u{1F465} " + sanitize(g.Name) + "</h4>";
-      html += '<div class="template-meta">';
-      html += memberCount + " " + t("members");
-      if (g.Description) html += " \u2022 " + sanitize(g.Description);
-      html += "</div>";
-      if (memberNames.length > 0) {
-        html += '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">';
-        for (var j = 0; j < memberNames.length; j++) {
-          html += '<span class="assignee-chip">\u{1F464} ' + sanitize(memberNames[j]) + "</span>";
+  async function getGroupChoicesFromGrist() {
+    var groupSet = {};
+    try {
+      var groupColName = getColumnName("users", "group");
+      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
+      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
+      var tableRowId = null;
+      if (tablesData && tablesData.id && tablesData.tableId) {
+        for (var i = 0; i < tablesData.id.length; i++) {
+          if (tablesData.tableId[i] === state.USERS_TABLE) {
+            tableRowId = tablesData.id[i];
+            break;
+          }
         }
-        html += "</div>";
       }
-      html += "</div>";
-      html += '<button class="btn-icon" onclick="openEditGroupModal(' + g.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
-      html += '<button class="btn-icon" onclick="deleteGroup(' + g.id + ')">\u{1F5D1}\uFE0F</button>';
-      html += "</div>";
+      if (tableRowId !== null && columnsData && columnsData.id) {
+        for (var j = 0; j < columnsData.id.length; j++) {
+          if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === groupColName) {
+            var wo = columnsData.widgetOptions[j];
+            if (wo) {
+              try {
+                var opts = JSON.parse(wo);
+                if (opts.choices && Array.isArray(opts.choices)) {
+                  opts.choices.forEach(function(c) {
+                    groupSet[c] = true;
+                  });
+                }
+              } catch (e) {
+              }
+            }
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Could not fetch group choices from Grist metadata:", e);
     }
-    container.innerHTML = html;
+    state.users.forEach(function(u) {
+      if (u.Group_Name) groupSet[u.Group_Name] = true;
+    });
+    return Object.keys(groupSet).sort();
   }
   async function getRoleChoicesFromGrist() {
     var roleSet = {};
@@ -2107,10 +2097,14 @@
       return u.id === userId;
     });
     if (!user) return;
+    var groupChoices = await getGroupChoicesFromGrist();
     var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      var sel = state.groups[i].Name === user.Group_Name ? " selected" : "";
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + ">" + sanitize(state.groups[i].Name) + "</option>";
+    if (user.Group_Name && groupChoices.indexOf(user.Group_Name) === -1) {
+      groupOptions += '<option value="' + sanitize(user.Group_Name) + '" selected>' + sanitize(user.Group_Name) + "</option>";
+    }
+    for (var i = 0; i < groupChoices.length; i++) {
+      var sel = groupChoices[i] === user.Group_Name ? " selected" : "";
+      groupOptions += '<option value="' + sanitize(groupChoices[i]) + '"' + sel + ">" + sanitize(groupChoices[i]) + "</option>";
     }
     var roleChoices = await getRoleChoicesFromGrist();
     var html = '<div class="modal-overlay" onclick="closeModal(event)">';
@@ -2139,24 +2133,6 @@
     html += "</div></div></div>";
     document.getElementById("modal-container").innerHTML = html;
   }
-  function openEditGroupModal(groupId) {
-    var group = state.groups.find(function(g) {
-      return g.id === groupId;
-    });
-    if (!group) return;
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(group.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" value="' + sanitize(group.Name) + '" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc">' + sanitize(group.Description || "") + "</textarea></div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="updateGroup(' + groupId + ')">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
   async function updateUser(userId) {
     var name = document.getElementById("user-name").value.trim();
     if (!name) return;
@@ -2177,28 +2153,11 @@
       showToast("Error: " + e.message, "error");
     }
   }
-  async function updateGroup(groupId) {
-    var name = document.getElementById("group-name").value.trim();
-    if (!name) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.GROUPS_TABLE, groupId, {
-          Name: name,
-          Description: document.getElementById("group-desc").value.trim()
-        }]
-      ]);
-      showToast(t("taskUpdated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error updating group:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
   async function openNewUserModal() {
+    var groupChoices = await getGroupChoicesFromGrist();
     var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + "</option>";
+    for (var i = 0; i < groupChoices.length; i++) {
+      groupOptions += '<option value="' + sanitize(groupChoices[i]) + '">' + sanitize(groupChoices[i]) + "</option>";
     }
     var roleChoices = await getRoleChoicesFromGrist();
     var html = '<div class="modal-overlay" onclick="closeModal(event)">';
@@ -2224,20 +2183,6 @@
     html += "</div></div></div>";
     document.getElementById("modal-container").innerHTML = html;
   }
-  function openNewGroupModal() {
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("modalNewGroup") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc"></textarea></div>';
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="createGroup()">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
   async function createUser() {
     var name = document.getElementById("user-name").value.trim();
     if (!name) return;
@@ -2258,25 +2203,6 @@
       showToast("Error: " + e.message, "error");
     }
   }
-  async function createGroup() {
-    var name = document.getElementById("group-name").value.trim();
-    if (!name) return;
-    var record = {
-      Name: name,
-      Description: document.getElementById("group-desc").value.trim()
-    };
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.GROUPS_TABLE, null, record]
-      ]);
-      showToast(t("groupCreated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error creating group:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
   async function deleteUser(userId) {
     if (!state.isOwner) return;
     var confirmed = await showConfirmModal(t("confirmDeleteUser"), currentLang === "fr" ? "Supprimer l'utilisateur" : "Delete user");
@@ -2289,20 +2215,6 @@
       await loadAllData();
     } catch (e) {
       console.error("Error deleting user:", e);
-    }
-  }
-  async function deleteGroup(groupId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(t("confirmDeleteGroup"), currentLang === "fr" ? "Supprimer le groupe" : "Delete group");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.GROUPS_TABLE, groupId]
-      ]);
-      showToast(t("groupDeleted"), "info");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error deleting group:", e);
     }
   }
 
@@ -2319,12 +2231,17 @@
   // src/domains/gantt.js
   var ganttMode = "days";
   var ganttSort = "default";
+  var ganttFilterStatus = "";
   var ganttCustomStart = "";
   var ganttCustomEnd = "";
   var ganttYear = (/* @__PURE__ */ new Date()).getFullYear();
   var ganttMonth = (/* @__PURE__ */ new Date()).getMonth();
   var expandedGanttTasks = {};
   var selectedGanttTaskId = null;
+  function setGanttStatusFilter(value) {
+    ganttFilterStatus = value;
+    renderGanttView();
+  }
   function getGanttSubtasks(taskId) {
     return getTaskSubtasks(taskId);
   }
@@ -2483,8 +2400,22 @@
     document.querySelectorAll("[data-gantt-mode]").forEach(function(btn) {
       btn.classList.toggle("active", btn.getAttribute("data-gantt-mode") === ganttMode);
     });
+    var statusFilterSel = document.getElementById("gantt-status-filter");
+    if (statusFilterSel) {
+      var ganttStatuses = getKanbanStatuses();
+      var statusOptsHtml = '<option value="">' + (currentLang === "fr" ? "Tous les statuts" : "All statuses") + "</option>";
+      ganttStatuses.forEach(function(s) {
+        var sLbl = currentLang === "fr" ? s.label_fr : s.label_en;
+        statusOptsHtml += '<option value="' + s.key + '">' + sanitize(sLbl) + "</option>";
+      });
+      if (statusFilterSel.innerHTML !== statusOptsHtml) statusFilterSel.innerHTML = statusOptsHtml;
+      statusFilterSel.value = ganttFilterStatus;
+    }
     var tasksWithDates = getFilteredTasks().filter(function(task2) {
       return task2.Start_Date || task2.Due_Date;
+    });
+    if (ganttFilterStatus) tasksWithDates = tasksWithDates.filter(function(task2) {
+      return task2.Status === ganttFilterStatus;
     });
     var ganttSortSel = document.getElementById("gantt-sort");
     if (ganttSortSel && ganttSortSel.value !== ganttSort) ganttSortSel.value = ganttSort;
@@ -3493,7 +3424,6 @@
       description: getInputValue("task-desc"),
       status: getInputValue("task-status"),
       priority: getInputValue("task-priority"),
-      group: getInputValue("task-group"),
       start: getInputValue("task-start"),
       due: getInputValue("task-due"),
       category: getInputValue("task-category"),
@@ -3511,7 +3441,6 @@
       ["task-desc", state2.description],
       ["task-status", state2.status],
       ["task-priority", state2.priority],
-      ["task-group", state2.group],
       ["task-start", state2.start],
       ["task-due", state2.due],
       ["task-category", state2.category],
@@ -3648,11 +3577,6 @@
       }).filter(Boolean) : [];
       editTags = Array.isArray(task.Tag) ? task.Tag.slice() : [];
     }
-    var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      var sel = state.groups[i].Name === task.Group_Name ? " selected" : "";
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + ">" + sanitize(state.groups[i].Name) + "</option>";
-    }
     var startVal = task.Start_Date ? new Date(task.Start_Date * 1e3).toISOString().split("T")[0] : "";
     var dueVal = task.Due_Date ? new Date(task.Due_Date * 1e3).toISOString().split("T")[0] : "";
     var progressPct = getTaskProgress(task);
@@ -3662,7 +3586,6 @@
     html += '<div class="modal modal-detail" onclick="event.stopPropagation()">';
     html += '<div class="modal-detail-top">';
     html += '<span class="group-dot" style="background:' + dotColor + '"></span>';
-    if (task.Group_Name) html += '<span style="font-size:12px;color:#64748b;">' + sanitize(task.Group_Name) + "</span>";
     html += '<span class="status-badge status-' + task.Status + '">\u25CF ' + statusLabel(task.Status) + "</span>";
     html += '<div style="flex:1;"></div>';
     html += '<button type="button" id="task-save-top-' + task.id + '" class="btn btn-primary" onclick="event.preventDefault();event.stopPropagation();updateTask(' + task.id + ')" style="padding:6px 16px;font-size:12px;border-radius:8px;margin-right:8px;">\u{1F4BE} ' + t("save") + "</button>";
@@ -3727,11 +3650,6 @@
     html += '<option value="medium"' + (task.Priority === "medium" ? " selected" : "") + ">" + t("priorityMedium") + "</option>";
     html += '<option value="low"' + (task.Priority === "low" ? " selected" : "") + ">" + t("priorityLow") + "</option>";
     html += "</select></div></div>";
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F465}</span>';
-    html += '<span class="detail-field-label">' + t("fieldGroup") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-group">' + groupOptions + "</select></div>";
-    html += "</div>";
     var projectOptions = '<option value="">' + t("noProject") + "</option>";
     for (var pi = 0; pi < state.projects.length; pi++) {
       var projSel = state.projects[pi].id === task.Project_Id ? " selected" : "";
@@ -4512,7 +4430,6 @@
       record.Consulted = editConsulted.join(", ");
       record.Informed = editInformed.join(", ");
     }
-    setField(record, "tasks", "group", getInputValue("task-group"));
     setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
     setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
     setField(record, "tasks", "category", getInputValue("task-category").trim());
@@ -4569,7 +4486,6 @@
       record.Consulted = editConsulted.join(", ");
       record.Informed = editInformed.join(", ");
     }
-    setField(record, "tasks", "group", getInputValue("task-group"));
     setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
     setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
     setField(record, "tasks", "category", getInputValue("task-category").trim());
@@ -6081,7 +5997,6 @@
       { tableId: state.COMMENTS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" },
       { tableId: state.TIME_ENTRIES_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCU-D" },
       { tableId: state.USERS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
-      { tableId: state.GROUPS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
       { tableId: state.PROJECTS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+R-CUD" },
       { tableId: state.USER_INFO_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCUD" },
       { tableId: state.NOTIFICATIONS_TABLE, ownerPerms: "+CRUDS", editorPerms: "+RCUD" },
@@ -6852,21 +6767,6 @@
       }
     });
     try {
-      var groupData = await grist.docApi.fetchTable(state.GROUPS_TABLE);
-      state.groups = [];
-      if (groupData && groupData.id) {
-        for (var i = 0; i < groupData.id.length; i++) {
-          state.groups.push({
-            id: groupData.id[i],
-            Name: groupData.Name ? groupData.Name[i] : "",
-            Description: groupData.Description ? groupData.Description[i] : ""
-          });
-        }
-      }
-    } catch (e) {
-      state.groups = [];
-    }
-    try {
       var subtaskData = await grist.docApi.fetchTable(state.SUBTASKS_TABLE);
       state.subtasks = [];
       if (subtaskData && subtaskData.id) {
@@ -7369,7 +7269,6 @@
   function applyFrenchTableNames(updateDefaults) {
     state.TASKS_TABLE = CLIENT_TABLE_NAMES.tasks;
     state.USERS_TABLE = CLIENT_TABLE_NAMES.users;
-    state.GROUPS_TABLE = CLIENT_TABLE_NAMES.groups;
     state.SUBTASKS_TABLE = CLIENT_TABLE_NAMES.subtasks;
     state.COMMENTS_TABLE = CLIENT_TABLE_NAMES.comments;
     state.TIME_ENTRIES_TABLE = CLIENT_TABLE_NAMES.timeEntries;
@@ -7660,14 +7559,6 @@
             { id: "Recurrence", type: "Choice", widgetOptions: JSON.stringify({ choices: ["none", "daily", "weekly", "monthly"] }) },
             { id: "Estimated_Hours", type: "Numeric" },
             { id: "Created_At", type: "Date" }
-          ]]
-        ]);
-      }
-      if (!skipAutoCreateWorkTables && existingTables.indexOf(state.GROUPS_TABLE) === -1) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.GROUPS_TABLE, [
-            { id: "Name", type: "Text" },
-            { id: "Description", type: "Text" }
           ]]
         ]);
       }
@@ -8171,13 +8062,11 @@
     closeNotifications,
     closeProjectModal,
     closePromptModal,
-    createGroup,
     createTask,
     createUser,
     deleteAttachment,
     deleteAutomationRule,
     deleteComment,
-    deleteGroup,
     deleteProject,
     deleteSubtask,
     deleteTask,
@@ -8216,11 +8105,9 @@
     openCardSubtasksModal,
     openColumnMappingModal,
     openEditAutomationRuleModal,
-    openEditGroupModal,
     openEditTaskModal,
     openEditUserModal,
     openManageRolesModal,
-    openNewGroupModal,
     openNewTaskModal,
     openNewUserModal,
     openNotification,
@@ -8256,6 +8143,7 @@
     setGanttCustomRange,
     setGanttMode,
     setGanttSort,
+    setGanttStatusFilter,
     setGanttYear,
     setKanbanGroupBy,
     setKanbanSort,
@@ -8286,7 +8174,6 @@
     toggleSubtask,
     toggleSubtaskFromCard,
     toggleSubtaskFromPopup,
-    updateGroup,
     updateSubtaskDep,
     updateTask,
     updateUser,

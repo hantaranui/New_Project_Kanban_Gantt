@@ -136,7 +136,6 @@ export function captureTaskFormState() {
     description: getInputValue('task-desc'),
     status: getInputValue('task-status'),
     priority: getInputValue('task-priority'),
-    group: getInputValue('task-group'),
     start: getInputValue('task-start'),
     due: getInputValue('task-due'),
     category: getInputValue('task-category'),
@@ -155,7 +154,6 @@ export function restoreTaskFormState(state) {
     ['task-desc', state.description],
     ['task-status', state.status],
     ['task-priority', state.priority],
-    ['task-group', state.group],
     ['task-start', state.start],
     ['task-due', state.due],
     ['task-category', state.category],
@@ -287,12 +285,6 @@ export function openEditTaskModal(taskId, preserveAssignees) {
     editTags = Array.isArray(task.Tag) ? task.Tag.slice() : [];
   }
 
-  var groupOptions = '<option value="">--</option>';
-  for (var i = 0; i < state.groups.length; i++) {
-    var sel = state.groups[i].Name === task.Group_Name ? ' selected' : '';
-    groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + '>' + sanitize(state.groups[i].Name) + '</option>';
-  }
-
   var startVal = task.Start_Date ? new Date(task.Start_Date * 1000).toISOString().split('T')[0] : '';
   var dueVal = task.Due_Date ? new Date(task.Due_Date * 1000).toISOString().split('T')[0] : '';
 
@@ -309,7 +301,6 @@ export function openEditTaskModal(taskId, preserveAssignees) {
   // Top bar: group + status badge
   html += '<div class="modal-detail-top">';
   html += '<span class="group-dot" style="background:' + dotColor + '"></span>';
-  if (task.Group_Name) html += '<span style="font-size:12px;color:#64748b;">' + sanitize(task.Group_Name) + '</span>';
   html += '<span class="status-badge status-' + task.Status + '">● ' + statusLabel(task.Status) + '</span>';
   html += '<div style="flex:1;"></div>';
   html += '<button type="button" id="task-save-top-' + task.id + '" class="btn btn-primary" onclick="event.preventDefault();event.stopPropagation();updateTask(' + task.id + ')" style="padding:6px 16px;font-size:12px;border-radius:8px;margin-right:8px;">💾 ' + t('save') + '</button>';
@@ -389,13 +380,6 @@ export function openEditTaskModal(taskId, preserveAssignees) {
   html += '<option value="medium"' + (task.Priority === 'medium' ? ' selected' : '') + '>' + t('priorityMedium') + '</option>';
   html += '<option value="low"' + (task.Priority === 'low' ? ' selected' : '') + '>' + t('priorityLow') + '</option>';
   html += '</select></div></div>';
-
-  // Group
-  html += '<div class="detail-field">';
-  html += '<span class="detail-field-icon">👥</span>';
-  html += '<span class="detail-field-label">' + t('fieldGroup') + '</span>';
-  html += '<div class="detail-field-value"><select id="task-group">' + groupOptions + '</select></div>';
-  html += '</div>';
 
   // Project
   var projectOptions = '<option value="">' + t('noProject') + '</option>';
@@ -1257,7 +1241,6 @@ export async function createTask() {
     record.Consulted = editConsulted.join(', ');
     record.Informed = editInformed.join(', ');
   }
-  setField(record, 'tasks', 'group', getInputValue('task-group'));
   setField(record, 'tasks', 'startDate', toEpoch(getInputValue('task-start')));
   setField(record, 'tasks', 'dueDate', toEpoch(getInputValue('task-due')));
   setField(record, 'tasks', 'category', getInputValue('task-category').trim());
@@ -1319,7 +1302,6 @@ export async function updateTask(taskId) {
     record.Consulted = editConsulted.join(', ');
     record.Informed = editInformed.join(', ');
   }
-  setField(record, 'tasks', 'group', getInputValue('task-group'));
   setField(record, 'tasks', 'startDate', toEpoch(getInputValue('task-start')));
   setField(record, 'tasks', 'dueDate', toEpoch(getInputValue('task-due')));
   setField(record, 'tasks', 'category', getInputValue('task-category').trim());

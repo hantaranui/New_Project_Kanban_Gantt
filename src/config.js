@@ -5,7 +5,6 @@ import { state } from './store.js';
 export const CLIENT_TABLE_NAMES = {
   tasks: 'Taches',
   users: 'Utilisateurs',
-  groups: 'Equipes',
   subtasks: 'Sous_taches',
   comments: 'Commentaires',
   timeEntries: 'Suivi_temps',

@@ -1239,28 +1239,6 @@
       justify-content: space-between;
     }
 
-    /* ========== CARD LIST (used by Team/Groups view) ========== */
-    .template-card {
-      background: white;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      padding: 14px;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .template-card-info { flex: 1; }
-    .template-card-info h4 { font-size: 14px; font-weight: 700; }
-    .template-card-info .template-meta {
-      font-size: 11px;
-      color: #94a3b8;
-      margin-top: 4px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
     /* ========== MODAL ========== */
     .modal-overlay {
       position: fixed;
@@ -3904,7 +3882,7 @@
         <div class="tabs-bar">
           <button class="tab-btn active" data-tab="kanban" onclick="switchTab('kanban')"><span data-i18n="tabKanban">Kanban</span></button>
           <button class="tab-btn" data-tab="gantt" onclick="switchTab('gantt')"><span data-i18n="tabGantt">Gantt</span></button>
-          <button class="tab-btn" data-tab="team" onclick="switchTab('team')"><span data-i18n="tabTeam">Équipe</span></button>
+          <button class="tab-btn" data-tab="team" onclick="switchTab('team')"><span data-i18n="tabTeam">Utilisateurs</span></button>
           <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')"><span data-i18n="tabSettings">Paramètres</span></button>
         </div>
       </div>
@@ -3965,6 +3943,8 @@
           <option value="alpha" data-i18n="ganttSortAlpha">A → Z</option>
           <option value="due" data-i18n="ganttSortDue">Échéance</option>
         </select>
+        <span style="margin-left:8px;">Statut :</span>
+        <select id="gantt-status-filter" onchange="setGanttStatusFilter(this.value)"></select>
         <div style="flex:1;"></div>
         <div style="display:flex;gap:4px;">
           <button class="btn-secondary btn-sm gantt-help-btn" onclick="ganttExpandAll()" title="Afficher toutes les sous-tâches" aria-label="Afficher toutes les sous-tâches" data-tooltip="Afficher toutes les sous-tâches">⊞</button>
@@ -3993,36 +3973,17 @@
 
     <!-- TAB: TEAM -->
     <div class="tab-content" id="tab-team">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-
-        <!-- USERS SECTION -->
+      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
         <div>
-          <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
-            <div>
-              <h2 data-i18n="teamUsersTitle">Utilisateurs</h2>
-              <p data-i18n="teamUsersSubtitle">Gérez les membres de votre équipe</p>
-            </div>
-            <div style="display:flex;gap:8px;">
-              <button class="btn btn-secondary btn-sm" onclick="openManageRolesModal()" title="Gérer les rôles" data-i18n-title="manageRolesTitle">⚙️ <span data-i18n="manageRoles">Rôles</span></button>
-              <button class="btn btn-primary btn-sm" onclick="openNewUserModal()">+ <span data-i18n="addUser">Ajouter</span></button>
-            </div>
-          </div>
-          <div id="users-list"></div>
+          <h2 data-i18n="teamUsersTitle">Utilisateurs</h2>
+          <p data-i18n="teamUsersSubtitle">Gérez les membres de votre équipe</p>
         </div>
-
-        <!-- GROUPS SECTION -->
-        <div>
-          <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
-            <div>
-              <h2 data-i18n="teamGroupsTitle">Groupes</h2>
-              <p data-i18n="teamGroupsSubtitle">Organisez vos utilisateurs en groupes</p>
-            </div>
-            <button class="btn btn-primary btn-sm" onclick="openNewGroupModal()">+ <span data-i18n="addGroup">Ajouter</span></button>
-          </div>
-          <div id="groups-list"></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary btn-sm" onclick="openManageRolesModal()" title="Gérer les rôles" data-i18n-title="manageRolesTitle">⚙️ <span data-i18n="manageRoles">Rôles</span></button>
+          <button class="btn btn-primary btn-sm" onclick="openNewUserModal()">+ <span data-i18n="addUser">Ajouter</span></button>
         </div>
-
       </div>
+      <div id="users-list"></div>
     </div>
 
     <!-- TAB: SETTINGS -->
@@ -4326,7 +4287,7 @@
     </div>
   </div>
 
-  <script src="widget.js?v=183"></script>
+  <script src="widget.js?v=184"></script>
   <footer style="position: fixed; bottom: 0; left: 0; right: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 4px 12px; font-size: 0.7em; color: #94a3b8; display: flex; justify-content: space-between; z-index: 1000;">
     <span>© 2026 isaytoo</span>
     <a href="https://gristup.fr" target="_blank" style="color: #3b82f6; text-decoration: none;">gristup.fr</a>

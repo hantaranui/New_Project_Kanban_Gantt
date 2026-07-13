@@ -30,7 +30,6 @@ export function getUserDisplayName(emailOrName) {
 
 export function renderTeamView() {
   renderUsersList();
-  renderGroupsList();
   renderCategoriesList();
 }
 
@@ -76,42 +75,47 @@ export function renderUsersList() {
   container.innerHTML = html;
 }
 
-export function renderGroupsList() {
-  var container = document.getElementById('groups-list');
-  if (!container) return;
+// Lit les choix existants de la colonne Grist Group_Name (Choice), sur le
+// même modèle que getRoleChoicesFromGrist() ci-dessous : la liste de groupes
+// se gère nativement dans Grist (colonne Choice), plus de table dédiée.
+export async function getGroupChoicesFromGrist() {
+  var groupSet = {};
+  try {
+    var groupColName = getColumnName('users', 'group');
+    var tablesData = await grist.docApi.fetchTable('_grist_Tables');
+    var columnsData = await grist.docApi.fetchTable('_grist_Tables_column');
 
-  if (state.groups.length === 0) {
-    container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t('noGroups') + '</div>';
-    return;
-  }
-
-  var html = '';
-  for (var i = 0; i < state.groups.length; i++) {
-    var g = state.groups[i];
-    var memberCount = state.users.filter(function(u) { return u.Group_Name === g.Name; }).length;
-    var memberNames = state.users.filter(function(u) { return u.Group_Name === g.Name; }).map(function(u) { return u.Name || u.Email; });
-
-    html += '<div class="template-card">';
-    html += '<div class="template-card-info">';
-    html += '<h4>👥 ' + sanitize(g.Name) + '</h4>';
-    html += '<div class="template-meta">';
-    html += memberCount + ' ' + t('members');
-    if (g.Description) html += ' • ' + sanitize(g.Description);
-    html += '</div>';
-    if (memberNames.length > 0) {
-      html += '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">';
-      for (var j = 0; j < memberNames.length; j++) {
-        html += '<span class="assignee-chip">👤 ' + sanitize(memberNames[j]) + '</span>';
+    var tableRowId = null;
+    if (tablesData && tablesData.id && tablesData.tableId) {
+      for (var i = 0; i < tablesData.id.length; i++) {
+        if (tablesData.tableId[i] === state.USERS_TABLE) { tableRowId = tablesData.id[i]; break; }
       }
-      html += '</div>';
     }
-    html += '</div>';
-    html += '<button class="btn-icon" onclick="openEditGroupModal(' + g.id + ')" title="' + t('edit') + '">✏️</button>';
-    html += '<button class="btn-icon" onclick="deleteGroup(' + g.id + ')">🗑️</button>';
-    html += '</div>';
+
+    if (tableRowId !== null && columnsData && columnsData.id) {
+      for (var j = 0; j < columnsData.id.length; j++) {
+        if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === groupColName) {
+          var wo = columnsData.widgetOptions[j];
+          if (wo) {
+            try {
+              var opts = JSON.parse(wo);
+              if (opts.choices && Array.isArray(opts.choices)) {
+                opts.choices.forEach(function(c) { groupSet[c] = true; });
+              }
+            } catch (e) { /* ignore parse errors */ }
+          }
+          break;
+        }
+      }
+    }
+  } catch (e) {
+    console.log('Could not fetch group choices from Grist metadata:', e);
   }
 
-  container.innerHTML = html;
+  // Toujours inclure les groupes déjà assignés à un utilisateur (aucun ne se retrouve orphelin)
+  state.users.forEach(function(u) { if (u.Group_Name) groupSet[u.Group_Name] = true; });
+
+  return Object.keys(groupSet).sort();
 }
 
 export async function getRoleChoicesFromGrist() {
@@ -291,10 +295,14 @@ export async function openEditUserModal(userId) {
   var user = state.users.find(function(u) { return u.id === userId; });
   if (!user) return;
 
+  var groupChoices = await getGroupChoicesFromGrist();
   var groupOptions = '<option value="">--</option>';
-  for (var i = 0; i < state.groups.length; i++) {
-    var sel = state.groups[i].Name === user.Group_Name ? ' selected' : '';
-    groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + '>' + sanitize(state.groups[i].Name) + '</option>';
+  if (user.Group_Name && groupChoices.indexOf(user.Group_Name) === -1) {
+    groupOptions += '<option value="' + sanitize(user.Group_Name) + '" selected>' + sanitize(user.Group_Name) + '</option>';
+  }
+  for (var i = 0; i < groupChoices.length; i++) {
+    var sel = groupChoices[i] === user.Group_Name ? ' selected' : '';
+    groupOptions += '<option value="' + sanitize(groupChoices[i]) + '"' + sel + '>' + sanitize(groupChoices[i]) + '</option>';
   }
 
   var roleChoices = await getRoleChoicesFromGrist();
@@ -328,25 +336,6 @@ export async function openEditUserModal(userId) {
   document.getElementById('modal-container').innerHTML = html;
 }
 
-export function openEditGroupModal(groupId) {
-  var group = state.groups.find(function(g) { return g.id === groupId; });
-  if (!group) return;
-
-  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-  html += '<div class="modal" onclick="event.stopPropagation()">';
-  html += '<div class="modal-header"><h3>' + t('edit') + ' - ' + sanitize(group.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">✕</button></div>';
-  html += '<div class="modal-body">';
-  html += '<div class="form-group"><label>' + t('fieldName') + '</label><input type="text" id="group-name" value="' + sanitize(group.Name) + '" /></div>';
-  html += '<div class="form-group"><label>' + t('fieldDescription') + '</label><textarea id="group-desc">' + sanitize(group.Description || '') + '</textarea></div>';
-  html += '</div>';
-  html += '<div class="modal-footer">';
-  html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t('cancel') + '</button>';
-  html += '<button class="btn btn-primary" onclick="updateGroup(' + groupId + ')">' + t('save') + '</button>';
-  html += '</div></div></div>';
-
-  document.getElementById('modal-container').innerHTML = html;
-}
-
 export async function updateUser(userId) {
   var name = document.getElementById('user-name').value.trim();
   if (!name) return;
@@ -370,30 +359,11 @@ export async function updateUser(userId) {
   }
 }
 
-export async function updateGroup(groupId) {
-  var name = document.getElementById('group-name').value.trim();
-  if (!name) return;
-
-  try {
-    await grist.docApi.applyUserActions([
-      ['UpdateRecord', state.GROUPS_TABLE, groupId, {
-        Name: name,
-        Description: document.getElementById('group-desc').value.trim()
-      }]
-    ]);
-    showToast(t('taskUpdated'), 'success');
-    closeModalForce();
-    await loadAllData();
-  } catch (e) {
-    console.error('Error updating group:', e);
-    showToast('Error: ' + e.message, 'error');
-  }
-}
-
 export async function openNewUserModal() {
+  var groupChoices = await getGroupChoicesFromGrist();
   var groupOptions = '<option value="">--</option>';
-  for (var i = 0; i < state.groups.length; i++) {
-    groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + '</option>';
+  for (var i = 0; i < groupChoices.length; i++) {
+    groupOptions += '<option value="' + sanitize(groupChoices[i]) + '">' + sanitize(groupChoices[i]) + '</option>';
   }
 
   var roleChoices = await getRoleChoicesFromGrist();
@@ -423,22 +393,6 @@ export async function openNewUserModal() {
   document.getElementById('modal-container').innerHTML = html;
 }
 
-export function openNewGroupModal() {
-  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-  html += '<div class="modal" onclick="event.stopPropagation()">';
-  html += '<div class="modal-header"><h3>' + t('modalNewGroup') + '</h3><button class="modal-close" onclick="closeModalForce()">✕</button></div>';
-  html += '<div class="modal-body">';
-  html += '<div class="form-group"><label>' + t('fieldName') + '</label><input type="text" id="group-name" /></div>';
-  html += '<div class="form-group"><label>' + t('fieldDescription') + '</label><textarea id="group-desc"></textarea></div>';
-  html += '</div>';
-  html += '<div class="modal-footer">';
-  html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t('cancel') + '</button>';
-  html += '<button class="btn btn-primary" onclick="createGroup()">' + t('save') + '</button>';
-  html += '</div></div></div>';
-
-  document.getElementById('modal-container').innerHTML = html;
-}
-
 export async function createUser() {
   var name = document.getElementById('user-name').value.trim();
   if (!name) return;
@@ -462,28 +416,6 @@ export async function createUser() {
   }
 }
 
-export async function createGroup() {
-  var name = document.getElementById('group-name').value.trim();
-  if (!name) return;
-
-  var record = {
-    Name: name,
-    Description: document.getElementById('group-desc').value.trim()
-  };
-
-  try {
-    await grist.docApi.applyUserActions([
-      ['AddRecord', state.GROUPS_TABLE, null, record]
-    ]);
-    showToast(t('groupCreated'), 'success');
-    closeModalForce();
-    await loadAllData();
-  } catch (e) {
-    console.error('Error creating group:', e);
-    showToast('Error: ' + e.message, 'error');
-  }
-}
-
 export async function deleteUser(userId) {
   if (!state.isOwner) return;
   var confirmed = await showConfirmModal(t('confirmDeleteUser'), currentLang === 'fr' ? 'Supprimer l\'utilisateur' : 'Delete user');
@@ -499,17 +431,3 @@ export async function deleteUser(userId) {
   }
 }
 
-export async function deleteGroup(groupId) {
-  if (!state.isOwner) return;
-  var confirmed = await showConfirmModal(t('confirmDeleteGroup'), currentLang === 'fr' ? 'Supprimer le groupe' : 'Delete group');
-  if (!confirmed) return;
-  try {
-    await grist.docApi.applyUserActions([
-      ['RemoveRecord', state.GROUPS_TABLE, groupId]
-    ]);
-    showToast(t('groupDeleted'), 'info');
-    await loadAllData();
-  } catch (e) {
-    console.error('Error deleting group:', e);
-  }
-}

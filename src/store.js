@@ -9,7 +9,6 @@ import { defaultUiLabels } from './config.js';
 export const state = {
   tasks: [],
   users: [],
-  groups: [],
   subtasks: [],
   comments: [],
   timeEntries: [],
@@ -28,7 +27,6 @@ export const state = {
   _settingsCache: {},
   TASKS_TABLE: 'PM_Tasks',
   USERS_TABLE: 'PM_Users',
-  GROUPS_TABLE: 'PM_Groups',
   SUBTASKS_TABLE: 'PM_Subtasks',
   COMMENTS_TABLE: 'PM_Comments',
   TIME_ENTRIES_TABLE: 'PM_TimeEntries',

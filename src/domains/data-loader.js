@@ -110,22 +110,6 @@ export async function loadAllData() {
   });
 
   try {
-    var groupData = await grist.docApi.fetchTable(state.GROUPS_TABLE);
-    state.groups = [];
-    if (groupData && groupData.id) {
-      for (var i = 0; i < groupData.id.length; i++) {
-        state.groups.push({
-          id: groupData.id[i],
-          Name: groupData.Name ? groupData.Name[i] : '',
-          Description: groupData.Description ? groupData.Description[i] : ''
-        });
-      }
-    }
-  } catch (e) {
-    state.groups = [];
-  }
-
-  try {
     var subtaskData = await grist.docApi.fetchTable(state.SUBTASKS_TABLE);
     state.subtasks = [];
     if (subtaskData && subtaskData.id) {
