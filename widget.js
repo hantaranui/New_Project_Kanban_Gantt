@@ -3583,6 +3583,11 @@
   }
   async function startNewTask(defaultStatus, dateStr, prefill) {
     prefill = prefill || {};
+    editAssignees = [];
+    editAccountable = [];
+    editConsulted = [];
+    editInformed = [];
+    editTags = [];
     var statuses = getKanbanStatuses();
     if (shouldLimitToMyProjects() && editAssignees.length === 0) {
       var mine = myAssigneeValue();
@@ -3680,7 +3685,7 @@
       html += '<span class="detail-field-label">' + t("fieldAssignee") + "</span>";
       html += '<div class="detail-field-value">';
       html += '<div class="assignee-chips" id="assignee-chips">';
-      html += renderRaciChips("editAssignees");
+      html += renderRaciChips("editAssignees", "assignee");
       html += "</div>";
       html += '<div class="assignee-add-row">';
       html += '<select id="assignee-select">';
@@ -4067,7 +4072,7 @@
     if (varName === "editInformed") return editInformed;
     return [];
   }
-  function renderRaciChips(varName) {
+  function renderRaciChips(varName, selectSuffix) {
     var arr = getRaciArray(varName);
     var html = "";
     for (var i = 0; i < arr.length; i++) {
@@ -4079,7 +4084,7 @@
           break;
         }
       }
-      html += '<span class="assignee-chip-tag">' + sanitize(displayName) + ` <span class="chip-remove" onclick="removeRaciChip('` + varName + "'," + i + ",'" + varName.replace("edit", "").toLowerCase() + `')">\u2715</span></span>`;
+      html += '<span class="assignee-chip-tag">' + sanitize(displayName) + ` <span class="chip-remove" onclick="removeRaciChip('` + varName + "'," + i + ",'" + selectSuffix + `')">\u2715</span></span>`;
     }
     return html;
   }
@@ -4091,7 +4096,7 @@
     html += '<span class="detail-field-label">' + label + "</span>";
     html += '<div class="detail-field-value">';
     html += '<div class="assignee-chips" id="' + selectSuffix + '-chips">';
-    html += renderRaciChips(varName);
+    html += renderRaciChips(varName, selectSuffix);
     html += "</div>";
     html += '<div class="assignee-add-row">';
     html += '<select id="' + selectSuffix + '-select">';
@@ -4112,14 +4117,14 @@
     if (!val || arr.indexOf(val) !== -1) return;
     arr.push(val);
     var container = document.getElementById(selectSuffix + "-chips");
-    if (container) container.innerHTML = renderRaciChips(varName);
+    if (container) container.innerHTML = renderRaciChips(varName, selectSuffix);
     sel.value = "";
   }
   function removeRaciChip(varName, index, selectSuffix) {
     var arr = getRaciArray(varName);
     arr.splice(index, 1);
-    var container = document.getElementById(selectSuffix + "-chips") || document.getElementById(varName.replace("edit", "").toLowerCase() + "-chips");
-    if (container) container.innerHTML = renderRaciChips(varName);
+    var container = document.getElementById(selectSuffix + "-chips");
+    if (container) container.innerHTML = renderRaciChips(varName, selectSuffix);
   }
   async function quickAction(taskId, newStatus) {
     var task = state.tasks.find(function(t2) {
@@ -4476,12 +4481,6 @@
     if (draftTaskId != null) {
       var did = draftTaskId;
       draftTaskId = null;
-      var ti = document.getElementById("task-title");
-      var titleVal = ti ? ti.value.trim() : "";
-      if (titleVal) {
-        updateTask(did);
-        return;
-      }
       removeDraftChildren(did).then(function() {
         return grist.docApi.applyUserActions([["RemoveRecord", state.TASKS_TABLE, did]]);
       }).then(function() {

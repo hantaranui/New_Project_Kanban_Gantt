@@ -234,6 +234,14 @@ export function removeTagChip(index) {
 // À la fermeture : si un titre a été saisi -> enregistrée ; sinon -> brouillon supprimé.
 export async function startNewTask(defaultStatus, dateStr, prefill) {
   prefill = prefill || {};
+  // Repartir d'une ardoise vierge : sans ce reset, les assignés/rôles RACI/tags
+  // laissés par la dernière tâche éditée seraient écrits tels quels dans cette
+  // nouvelle tâche dès sa création.
+  editAssignees = [];
+  editAccountable = [];
+  editConsulted = [];
+  editInformed = [];
+  editTags = [];
   var statuses = getKanbanStatuses();
   if (shouldLimitToMyProjects() && editAssignees.length === 0) {
     var mine = myAssigneeValue();
@@ -332,7 +340,7 @@ export function openEditTaskModal(taskId, preserveAssignees) {
     html += '<span class="detail-field-label">' + t('fieldAssignee') + '</span>';
     html += '<div class="detail-field-value">';
     html += '<div class="assignee-chips" id="assignee-chips">';
-    html += renderRaciChips('editAssignees');
+    html += renderRaciChips('editAssignees', 'assignee');
     html += '</div>';
     html += '<div class="assignee-add-row">';
     html += '<select id="assignee-select">';
@@ -785,7 +793,7 @@ export function getRaciArray(varName) {
   return [];
 }
 
-export function renderRaciChips(varName) {
+export function renderRaciChips(varName, selectSuffix) {
   var arr = getRaciArray(varName);
   var html = '';
   for (var i = 0; i < arr.length; i++) {
@@ -797,7 +805,7 @@ export function renderRaciChips(varName) {
         break;
       }
     }
-    html += '<span class="assignee-chip-tag">' + sanitize(displayName) + ' <span class="chip-remove" onclick="removeRaciChip(\'' + varName + '\',' + i + ',\'' + varName.replace('edit', '').toLowerCase() + '\')">✕</span></span>';
+    html += '<span class="assignee-chip-tag">' + sanitize(displayName) + ' <span class="chip-remove" onclick="removeRaciChip(\'' + varName + '\',' + i + ',\'' + selectSuffix + '\')">✕</span></span>';
   }
   return html;
 }
@@ -810,7 +818,7 @@ export function renderRaciField(letter, label, selectSuffix, varName) {
   html += '<span class="detail-field-label">' + label + '</span>';
   html += '<div class="detail-field-value">';
   html += '<div class="assignee-chips" id="' + selectSuffix + '-chips">';
-  html += renderRaciChips(varName);
+  html += renderRaciChips(varName, selectSuffix);
   html += '</div>';
   html += '<div class="assignee-add-row">';
   html += '<select id="' + selectSuffix + '-select">';
@@ -832,15 +840,15 @@ export function addRaciChip(varName, selectSuffix) {
   if (!val || arr.indexOf(val) !== -1) return;
   arr.push(val);
   var container = document.getElementById(selectSuffix + '-chips');
-  if (container) container.innerHTML = renderRaciChips(varName);
+  if (container) container.innerHTML = renderRaciChips(varName, selectSuffix);
   sel.value = '';
 }
 
 export function removeRaciChip(varName, index, selectSuffix) {
   var arr = getRaciArray(varName);
   arr.splice(index, 1);
-  var container = document.getElementById(selectSuffix + '-chips') || document.getElementById(varName.replace('edit', '').toLowerCase() + '-chips');
-  if (container) container.innerHTML = renderRaciChips(varName);
+  var container = document.getElementById(selectSuffix + '-chips');
+  if (container) container.innerHTML = renderRaciChips(varName, selectSuffix);
 }
 
 export async function quickAction(taskId, newStatus) {
@@ -1209,12 +1217,11 @@ export function closeModal(e) {
 }
 
 export function closeModalForce() {
-  // Gestion du brouillon de nouvelle tâche : titre saisi -> on enregistre ; sinon -> on supprime
+  // Fermer sans avoir cliqué sur Enregistrer ne doit jamais rien persister :
+  // un brouillon de nouvelle tâche est donc toujours abandonné ici, même si
+  // un titre a été saisi (seul le bouton Enregistrer doit créer la tâche).
   if (draftTaskId != null) {
     var did = draftTaskId; draftTaskId = null;
-    var ti = document.getElementById('task-title');
-    var titleVal = ti ? ti.value.trim() : '';
-    if (titleVal) { updateTask(did); return; } // updateTask enregistre, ferme et recharge
     removeDraftChildren(did)
       .then(function () { return grist.docApi.applyUserActions([['RemoveRecord', state.TASKS_TABLE, did]]); })
       .then(function () { return loadAllData(); })
