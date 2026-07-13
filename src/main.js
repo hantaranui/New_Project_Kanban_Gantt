@@ -17,9 +17,7 @@ import {
   getTaskAttachments, formatFileSize, uploadTaskAttachments, downloadAttachment, deleteAttachment,
   viewAttachment, closeAttachmentViewer, renderAttachmentsSection, openAttachmentInNewTab
 } from './domains/attachments.js';
-import {
-  updateStats, renderStatsView, renderWorkloadChart, renderTimelineChart, renderBurndownChart
-} from './domains/stats.js';
+import { updateStats } from './domains/stats.js';
 import {
   openProjectModal, closeProjectModal, renderProjectList, editProject, saveProject, deleteProject
 } from './domains/projects.js';
@@ -30,20 +28,11 @@ import {
 } from './domains/time-tracking.js';
 import {
   getTaskSubtasks, getTaskProgress, isSubtaskBlocked, getSubtaskBlocker,
-  toggleSubtaskFromPopup, toggleSubtaskFromCard, toggleSubtasks, expandAllSubtasks, collapseAllSubtasks,
-  toggleSubtaskFromTable, openSubtaskDepModal, updateSubtaskDep,
+  toggleSubtaskFromPopup, toggleSubtaskFromCard,
+  openSubtaskDepModal, updateSubtaskDep,
   setStStatus, setStType, setStPill, startEditSubtask, cancelEditSubtask, filterStAssignees
 } from './domains/subtasks.js';
 import { generateOccurrences, addRecurrenceToEpoch, createNextOccurrence } from './domains/recurrence.js';
-import {
-  renderMultiFilter, toggleMsFilter, toggleMsOption, clearMsFilter, sortTable, renderTableView
-} from './domains/table-view.js';
-import {
-  renderCalendarView, renderCalendarDay, onCalendarDayClick, onCalendarTaskDragStart, onCalendarDragOver,
-  onCalendarDrop, openNewTaskModalWithDate, calendarToday, setCalendarMode, getTasksForDate,
-  renderCalendarWeekView, calendarNav, renderCalendarMobileView, applyCalendarResponsiveClasses,
-  attachCalendarResizeObserver, renderCalendarDayView, openNewTaskForDay
-} from './domains/calendar.js';
 import {
   roleLabel, renderProjectSelector, buildFilterCombo, toggleFilterCombo, filterComboSearch, selectFilterCombo,
   toggleProjectDropdown, filterProjectDropdown, selectProjectOption, filterByProject, myAssigneeValue,
@@ -120,36 +109,36 @@ import { addTagSetting, editTagSetting, removeTagSetting, setTagsFromSettings } 
 // Any new onclick handler added to generated HTML must be added here too.
 Object.assign(window, {
   addCategorySetting, addComment, addDefaultAutomationRules, addKanbanStatus, addManualTimeEntry,
-  addRaciChip, addRoleChoice, addSubtask, addTagChip, addTagSetting, applySecurityRules, archiveTask, calendarNav,
-  calendarToday, cancelEditSubtask, clearMsFilter, closeAttachmentViewer, closeAutomationModal,
+  addRaciChip, addRoleChoice, addSubtask, addTagChip, addTagSetting, applySecurityRules, archiveTask,
+  cancelEditSubtask, closeAttachmentViewer, closeAutomationModal,
   closeConfirmModal, closeModal, closeModalForce, closeNotifications, closeProjectModal, closePromptModal,
-  collapseAllSubtasks, createGroup, createTask, createUser,
+  createGroup, createTask, createUser,
   deleteAttachment, deleteAutomationRule, deleteComment, deleteGroup,
   deleteProject, deleteSubtask, deleteTask, deleteUser,
   detectProjectColumns, detectTaskColumns, detectUserColumns, dismissNotification, dismissAllNotifications,
   downloadAttachment, editCategorySetting, editKanbanStatus,
-  editProject, editTagSetting, expandAllSubtasks, exportGanttPdf, filterComboSearch, filterProjectDropdown,
+  editProject, editTagSetting, exportGanttPdf, filterComboSearch, filterProjectDropdown,
   filterStAssignees, focusGanttTask, ganttCollapseAll, ganttExpandAll, ganttNav, ganttToday,
   generateOccurrences, generateSubtaskOccurrences, onAutoActionChange,
-  onAutoTriggerChange, onCalendarDayClick, onCalendarDragOver, onCalendarDrop, onCalendarTaskDragStart, onDragLeave,
+  onAutoTriggerChange, onDragLeave,
   onDragOver, onDragStart, onDrop, openAddAutomationRuleModal, openAttachmentInNewTab, openCardAttachmentsModal,
   openCardCommentsModal, openCardSubtasksModal, openColumnMappingModal,
   openEditAutomationRuleModal, openEditGroupModal, openEditTaskModal, openEditUserModal, openManageRolesModal,
-  openNewGroupModal, openNewTaskForDay, openNewTaskModal, openNewUserModal, openNotification,
+  openNewGroupModal, openNewTaskModal, openNewUserModal, openNotification,
   openProjectModal, openProjectModalForEdit, openSubtaskDepModal, pauseTimer, quickAction,
   removeCategorySetting, removeKanbanStatus, removeRaciChip, removeRoleChoice, removeSecurityRules,
   removeTagChip, removeTagSetting,
-  renderBurndownChart, renderEmojiPicker, renderProjectList, renderSettingsProjectsList, renderTableView,
-  renderTimelineChart, resetFilters, restoreTask, runSetupDiagnostic, saveAutomationRuleFromModal,
+  renderEmojiPicker, renderProjectList, renderSettingsProjectsList,
+  resetFilters, restoreTask, runSetupDiagnostic, saveAutomationRuleFromModal,
   saveColumnMapping, saveEditSubtask, saveInlineProjectEdit, saveProject, saveRoleChoices,
   saveTaskFromFooter, saveUiLabelSettings, selectEmoji, selectFilterCombo, selectProjectOption,
-  setCalendarMode, setGanttCustomRange, setGanttMode, setGanttSort, setGanttYear, setKanbanGroupBy,
+  setGanttCustomRange, setGanttMode, setGanttSort, setGanttYear, setKanbanGroupBy,
   setKanbanSort, setStPill, setStStatus, setStType, setupCreateFrenchTables, setupUseExistingTables,
-  showNotifications, sortTable, startEditSubtask, startTimer, submitPromptModal,
+  showNotifications, startEditSubtask, startTimer, submitPromptModal,
   switchTab, toggleArchiveView, toggleAutomationRule, toggleCardDisplay, toggleCardExpand,
   toggleEmojiPicker, toggleFilterCombo, toggleGanttFullscreen, toggleGanttSubtask, toggleKanbanCol,
-  toggleKanbanFullscreen, toggleMsFilter, toggleMsOption, toggleMyProjects, toggleNotifyConcerned, toggleProjectDropdown,
-  toggleRaci, toggleSubtask, toggleSubtaskFromCard, toggleSubtaskFromPopup, toggleSubtasks,
+  toggleKanbanFullscreen, toggleMyProjects, toggleNotifyConcerned, toggleProjectDropdown,
+  toggleRaci, toggleSubtask, toggleSubtaskFromCard, toggleSubtaskFromPopup,
   updateGroup, updateSubtaskDep, updateTask, updateUser, uploadTaskAttachments,
   viewAttachment
 });

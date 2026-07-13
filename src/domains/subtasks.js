@@ -2,7 +2,6 @@ import { t, currentLang } from '../i18n.js';
 import { sanitize } from '../utils/sanitize.js';
 import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
-import { renderTableView } from './table-view.js';
 import { loadAllData } from './data-loader.js';
 import { openCardSubtasksModal, renderKanbanView, getKanbanStatuses } from './kanban.js';
 import { openEditTaskModal, closeModalForce } from './task-modal.js';
@@ -64,83 +63,6 @@ export async function toggleSubtaskFromCard(subtaskId, completed) {
     renderKanbanView();
   } catch (e) {
     console.error('toggleSubtaskFromCard:', e);
-  }
-}
-
-export function toggleSubtasks(taskId) {
-  var rows = document.querySelectorAll('.subtask-row[data-parent="' + taskId + '"]');
-  var btn = document.getElementById('toggle-' + taskId);
-  var isExpanded = rows.length > 0 && rows[0].style.display !== 'none';
-  
-  for (var i = 0; i < rows.length; i++) {
-    rows[i].style.display = isExpanded ? 'none' : 'table-row';
-  }
-  if (btn) {
-    btn.textContent = isExpanded ? '▶' : '▼';
-    btn.classList.toggle('expanded', !isExpanded);
-  }
-}
-
-export function expandAllSubtasks() {
-  var rows = document.querySelectorAll('.subtask-row');
-  var btns = document.querySelectorAll('.toggle-btn');
-  for (var i = 0; i < rows.length; i++) rows[i].style.display = 'table-row';
-  for (var i = 0; i < btns.length; i++) { btns[i].textContent = '▼'; btns[i].classList.add('expanded'); }
-}
-
-export function collapseAllSubtasks() {
-  var rows = document.querySelectorAll('.subtask-row');
-  var btns = document.querySelectorAll('.toggle-btn');
-  for (var i = 0; i < rows.length; i++) rows[i].style.display = 'none';
-  for (var i = 0; i < btns.length; i++) { btns[i].textContent = '▶'; btns[i].classList.remove('expanded'); }
-}
-
-export async function toggleSubtaskFromTable(subtaskId, completed) {
-  // Find parent task ID before updating
-  var subtask = state.subtasks.find(function(st) { return st.id === subtaskId; });
-  var parentTaskId = subtask ? subtask.Parent_Task_Id : null;
-  
-  // Remember which toggles are expanded
-  var expandedTasks = [];
-  document.querySelectorAll('.toggle-btn.expanded').forEach(function(btn) {
-    var taskId = btn.id.replace('toggle-', '');
-    expandedTasks.push(parseInt(taskId));
-  });
-  
-  try {
-    await grist.docApi.applyUserActions([
-      ['UpdateRecord', state.SUBTASKS_TABLE, subtaskId, { Completed: completed }]
-    ]);
-    // Update local state
-    for (var i = 0; i < state.subtasks.length; i++) {
-      if (state.subtasks[i].id === subtaskId) {
-        state.subtasks[i].Completed = completed;
-        break;
-      }
-    }
-    // Refresh table view
-    renderTableView();
-    
-    // Restore expanded toggles
-    expandedTasks.forEach(function(taskId) {
-      var rows = document.querySelectorAll('.subtask-row[data-parent="' + taskId + '"]');
-      var btn = document.getElementById('toggle-' + taskId);
-      for (var i = 0; i < rows.length; i++) {
-        rows[i].style.display = 'table-row';
-      }
-      if (btn) {
-        btn.textContent = '▼';
-        btn.classList.add('expanded');
-      }
-    });
-    
-    // If modal is open, refresh it too
-    var modal = document.getElementById('edit-task-modal');
-    if (modal && modal.style.display !== 'none' && parentTaskId) {
-      openEditTaskModal(parentTaskId);
-    }
-  } catch (e) {
-    console.error('Error toggling subtask:', e);
   }
 }
 

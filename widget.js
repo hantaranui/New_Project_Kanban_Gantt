@@ -4,12 +4,8 @@
   var currentLang = "fr";
   var i18n = {
     fr: {
-      appTitle: "Gestion de Projet",
-      appSubtitle: "Organisez vos t\xE2ches en Kanban, suivez les \xE9ch\xE9ances en Gantt et coordonnez votre \xE9quipe.",
       notInGrist: "Ce widget doit \xEAtre utilis\xE9 dans Grist.",
-      tabCalendar: "Calendrier",
       tabKanban: "Kanban",
-      tabTable: "Tableau",
       tabGantt: "Gantt",
       newTask: "Nouvelle t\xE2che",
       newProject: "Nouveau projet",
@@ -22,17 +18,10 @@
       colDone: "Termin\xE9",
       noTasks: "Aucune t\xE2che",
       addTask: "+ Ajouter une t\xE2che",
-      tableTitle: "Tableau de Gestion",
-      tableSubtitle: "G\xE9rez vos t\xE2ches avec \xE9dition inline avanc\xE9e",
       searchPlaceholder: "Rechercher une t\xE2che...",
       allStatuses: "Tous les statuts",
       allPriorities: "Toutes priorit\xE9s",
       colTaskName: "T\xE2che",
-      colStatus: "Statut",
-      colPriority: "Priorit\xE9",
-      colAssignee: "Assign\xE9 \xE0",
-      colStartDate: "Date de d\xE9but",
-      colDueDate: "\xC9ch\xE9ance",
       colActions: "Actions",
       ganttTitle: "Diagramme de Gantt",
       ganttYear: "Ann\xE9e :",
@@ -52,13 +41,11 @@
       ganttRangeTo: "au :",
       extensionDate: "Date de prolongation",
       extensionTooltip: "Prolongation : d\xE9passement de l'\xE9ch\xE9ance",
-      autoExtend: "Prolongation auto",
       autoExtendHint: "Prolonge automatiquement jusqu'\xE0 la date du jour tant que la t\xE2che n'est pas termin\xE9e",
       ganttFullYear: "Ann\xE9e compl\xE8te",
       ganttNavInfo: "Navigation infinie vers autres ann\xE9es",
       ganttViewRange: "Vue :",
       modalNewTask: "Nouvelle t\xE2che",
-      modalEditTask: "Modifier la t\xE2che",
       fieldTitle: "Titre *",
       fieldDescription: "Description",
       fieldStatus: "Statut",
@@ -68,7 +55,6 @@
       fieldStartDate: "Date de d\xE9but",
       fieldDueDate: "\xC9ch\xE9ance",
       fieldCategory: "Cat\xE9gorie",
-      fieldEstimatedTime: "Temps estim\xE9 (h)",
       priorityHigh: "Haute",
       priorityMedium: "Moyenne",
       priorityLow: "Basse",
@@ -78,26 +64,19 @@
       save: "Enregistrer",
       cancel: "Annuler",
       delete: "Supprimer",
-      confirmDelete: "Supprimer cette t\xE2che ?",
       taskCreated: "T\xE2che cr\xE9\xE9e !",
       taskUpdated: "T\xE2che mise \xE0 jour !",
       taskDeleted: "T\xE2che supprim\xE9e.",
       taskMoved: "T\xE2che d\xE9plac\xE9e.",
       overdue: "En retard",
-      noDate: "Aucune date",
-      notDefined: "Non d\xE9finie",
-      tablesCreated: "Tables cr\xE9\xE9es automatiquement.",
       notifications: "Alertes",
       overdueTasksAlert: "t\xE2che(s) en retard",
       upcomingTasksAlert: "t\xE2che(s) \xE0 venir (3j)",
       noAlerts: "Aucune alerte",
       markAllRead: "Tout effacer",
       markAsRead: "Effacer",
-      automationTitle: "Automatisations",
       automationSubtitle: "Actions automatiques quand les t\xE2ches changent",
       addRule: "Ajouter une r\xE8gle",
-      ruleEnabled: "Activ\xE9e",
-      ruleDisabled: "D\xE9sactiv\xE9e",
       triggerLabel: "D\xE9clencheur",
       triggerStatusChange: "Changement de statut",
       triggerPriorityChange: "Changement de priorit\xE9",
@@ -118,27 +97,11 @@
       ruleSaved: "R\xE8gle sauvegard\xE9e",
       messageTemplate: "Message",
       defaultRules: "Ajouter les r\xE8gles par d\xE9faut",
-      exportCsv: "Export CSV",
       exportPdf: "Export PDF",
       searchPlaceholder: "Rechercher...",
       tags: "Tags",
       addTag: "Ajouter tag",
-      statistics: "Statistiques",
-      darkMode: "Mode sombre",
-      lightMode: "Mode clair",
-      tabStats: "Stats",
-      statsTitle: "Statistiques",
-      statsSubtitle: "Analysez la productivit\xE9 de votre \xE9quipe",
-      chartStatus: "R\xE9partition par statut",
-      chartPriority: "R\xE9partition par priorit\xE9",
-      chartAssignee: "T\xE2ches par assign\xE9",
-      chartWeek: "T\xE2ches cette semaine",
-      chartWorkload: "Charge de travail (risque de surcharge)",
-      completionRate: "Taux de compl\xE9tion",
-      overdueLabel: "En retard",
-      avgTimePerTask: "Temps moyen/t\xE2che",
       totalTime: "Temps total",
-      allProjects: "Tous les projets",
       manageProjects: "G\xE9rer les projets",
       project: "Projet",
       projectName: "Nom du projet",
@@ -157,9 +120,6 @@
       categoriesSubtitle: "G\xE9rez les cat\xE9gories de t\xE2ches",
       tagsSubtitle: "G\xE9rez les tags pour vos t\xE2ches",
       addCategory: "Ajouter",
-      tagName: "Nom du tag",
-      tagColor: "Couleur",
-      mostUsed: "Plus utilis\xE9",
       categories: "Cat\xE9gories",
       tabTeam: "\xC9quipe",
       teamUsersTitle: "Utilisateurs",
@@ -201,7 +161,6 @@
       reopenTask: "Rouvrir la t\xE2che",
       startTask: "D\xE9marrer la t\xE2che",
       completeTask: "Terminer la t\xE2che",
-      changePriority: "Changer la priorit\xE9",
       taskSummary: "R\xE9sum\xE9 de la t\xE2che",
       addAssignee: "Ajouter",
       searchAssignee: "Rechercher des noms...",
@@ -214,8 +173,6 @@
       subtaskSaved: "Sous-t\xE2che modifi\xE9e",
       editSubtask: "Modifier la sous-t\xE2che",
       subtaskAssignee: "Responsable",
-      subtaskDueDate: "\xC9ch\xE9ance",
-      noAssignee: "Non assign\xE9",
       dependencies: "D\xE9pendances",
       blockedBy: "Bloqu\xE9 par",
       noDependencies: "Aucune d\xE9pendance",
@@ -237,9 +194,7 @@
       totalTime: "Temps total",
       estimatedTime: "Temps estim\xE9",
       timeEntries: "Entr\xE9es de temps",
-      noTimeEntries: "Aucune entr\xE9e",
       timeEntryAdded: "Temps enregistr\xE9",
-      timeEntryDeleted: "Entr\xE9e supprim\xE9e",
       hours: "h",
       minutes: "min",
       recurrence: "R\xE9currence",
@@ -257,37 +212,16 @@
       occurrencesGenerated: "occurrences g\xE9n\xE9r\xE9es",
       fieldName: "Nom",
       categories: "Cat\xE9gories",
-      manageCategories: "G\xE9rer les cat\xE9gories",
       addCategory: "Ajouter",
-      categoryCreated: "Cat\xE9gorie cr\xE9\xE9e",
-      categoryDeleted: "Cat\xE9gorie supprim\xE9e",
-      noCategories: "Aucune cat\xE9gorie",
-      chartTimeline: "Charge dans le temps par agent",
-      chartBurndown: "Burndown / Burnup",
-      burnRemaining: "Restantes",
-      burnCompleted: "Termin\xE9es",
-      burnIdeal: "Id\xE9al",
       edit: "Modifier",
       required: "requis",
       tag: "Tag",
-      globalSearchPlaceholder: "Rechercher...",
-      taskSearchPlaceholder: "Rechercher une t\xE2che...",
-      calToday: "Aujourd'hui",
-      calMonth: "Mois",
-      calWeek: "Semaine",
-      calDay: "Jour",
       manageRolesTitle: "G\xE9rer les r\xF4les",
-      byWeek8: "Par semaine (8 sem.)",
-      byMonth6: "Par mois (6 mois)",
-      allAgents: "Tous les agents",
-      advancedConfig: "Configuration avanc\xE9e",
       mappingSubtitle: "Mappez vos propres tables et colonnes Grist",
       configureMapping: "Configurer le mapping",
       mappingDescription: "Vous pouvez cr\xE9er les tables en fran\xE7ais ou mapper vos propres tables existantes pour r\xE9utiliser vos donn\xE9es.",
       mappingGuide: "Consulter le guide complet du syst\xE8me de mapping",
-      securityTitle: "S\xE9curit\xE9 du document",
       securitySubtitle: "Prot\xE9gez les tables du widget avec des r\xE8gles d'acc\xE8s Grist (ACL)",
-      raciMode: "Mode RACI",
       raciSubtitle: "Activez la matrice RACI pour d\xE9finir les r\xF4les sur chaque t\xE2che",
       raciResponsible: "Responsable (R)",
       raciAccountable: "Approbateur (A)",
@@ -1402,7 +1336,6 @@
       await grist.docApi.applyUserActions(actions);
       showToast(count + " " + t("occurrencesGenerated"), "success");
       await loadAllData();
-      renderCurrentView();
     } catch (e) {
       console.error("Error generating occurrences:", e);
       showToast("Erreur : " + e.message, "error");
@@ -1782,399 +1715,595 @@
     updateNotificationBadge();
   }
 
-  // src/domains/calendar.js
-  var calendarYear = (/* @__PURE__ */ new Date()).getFullYear();
-  var calendarMonth = (/* @__PURE__ */ new Date()).getMonth();
-  var calendarMode = "month";
-  var calendarWeekOffset = 0;
-  var calendarDayOffset = 0;
-  function renderCalendarView() {
-    document.querySelectorAll(".calendar-mode-btn").forEach(function(btn) {
-      btn.classList.toggle("active", btn.getAttribute("data-mode") === calendarMode);
-    });
-    applyCalendarResponsiveClasses();
-    attachCalendarResizeObserver();
-    if (window.innerWidth < 480 && calendarMode !== "day") {
-      renderCalendarMobileView();
-      return;
-    }
-    if (calendarMode === "week") {
-      renderCalendarWeekView();
-      return;
-    }
-    if (calendarMode === "day") {
-      renderCalendarDayView();
-      return;
-    }
-    var monthNames = currentLang === "fr" ? ["Janvier", "F\xE9vrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Ao\xFBt", "Septembre", "Octobre", "Novembre", "D\xE9cembre"] : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    var dayNames = currentLang === "fr" ? ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    document.getElementById("calendar-month-title").textContent = monthNames[calendarMonth] + " " + calendarYear;
-    var weekdaysHtml = "";
-    for (var d = 0; d < 7; d++) {
-      var isWeekend = d >= 5;
-      weekdaysHtml += '<div class="calendar-weekday' + (isWeekend ? " weekend" : "") + '">' + dayNames[d] + "</div>";
-    }
-    document.getElementById("calendar-weekdays").innerHTML = weekdaysHtml;
-    var firstDay = new Date(calendarYear, calendarMonth, 1);
-    var lastDay = new Date(calendarYear, calendarMonth + 1, 0);
-    var startDayOfWeek = (firstDay.getDay() + 6) % 7;
-    var daysInMonth = lastDay.getDate();
-    var today = /* @__PURE__ */ new Date();
-    today.setHours(0, 0, 0, 0);
-    var daysHtml = "";
-    var dayIndex = 0;
-    var prevMonth = new Date(calendarYear, calendarMonth, 0);
-    var prevMonthDays = prevMonth.getDate();
-    for (var i = startDayOfWeek - 1; i >= 0; i--) {
-      var dayNum = prevMonthDays - i;
-      var prevDate = new Date(calendarYear, calendarMonth - 1, dayNum);
-      var prevTasks = getTasksForDate(prevDate);
-      daysHtml += renderCalendarDay(dayNum, prevDate, prevTasks, true, false, false);
-      dayIndex++;
-    }
-    for (var d = 1; d <= daysInMonth; d++) {
-      var currentDate = new Date(calendarYear, calendarMonth, d);
-      var isToday = currentDate.getTime() === today.getTime();
-      var dayTasks = getTasksForDate(currentDate);
-      daysHtml += renderCalendarDay(d, currentDate, dayTasks, false, isToday, false);
-      dayIndex++;
-    }
-    var remainingDays = 42 - dayIndex;
-    for (var i = 1; i <= remainingDays; i++) {
-      var nextDate = new Date(calendarYear, calendarMonth + 1, i);
-      var nextTasks = getTasksForDate(nextDate);
-      daysHtml += renderCalendarDay(i, nextDate, nextTasks, true, false);
-    }
-    var daysContainer = document.getElementById("calendar-days");
-    daysContainer.innerHTML = daysHtml;
-    daysContainer.className = "calendar-days";
+  // src/domains/categories.js
+  var customCategories = [];
+  function getCategories() {
+    return customCategories;
   }
-  function renderCalendarDay(dayNum, date, dayTasks, isOtherMonth, isToday, isWeekView) {
-    if (!date || isNaN(date.getTime())) {
-      console.error("Invalid date in renderCalendarDay:", date);
-      return "";
+  function setCategoriesFromSettings(raw) {
+    var parsed = [];
+    try {
+      parsed = JSON.parse(raw) || [];
+    } catch (e) {
     }
-    var dayOfWeek = (date.getDay() + 6) % 7;
-    var isWeekend = dayOfWeek >= 5;
-    var dateStr = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
-    var classes = "calendar-day";
-    if (isOtherMonth) classes += " other-month";
-    if (isToday) classes += " today";
-    if (isWeekend) classes += " weekend";
-    var html = '<div class="' + classes + `" onclick="onCalendarDayClick('` + dateStr + `')" ondragover="onCalendarDragOver(event)" ondrop="onCalendarDrop(event, '` + dateStr + `')">`;
-    if (!isWeekView) {
-      html += '<div class="day-number">' + dayNum + "</div>";
+    customCategories.length = 0;
+    Array.prototype.push.apply(customCategories, parsed);
+  }
+  async function saveCategories() {
+    await saveSetting("categories", JSON.stringify(customCategories));
+    await syncCategoryChoices();
+  }
+  async function syncCategoryChoices() {
+    try {
+      var choices = customCategories.map(function(c) {
+        return c.name;
+      });
+      var choiceOptions = {};
+      customCategories.forEach(function(c) {
+        if (c.color) choiceOptions[c.name] = { fillColor: c.color, textColor: "#ffffff" };
+      });
+      var categoryCol = getColumnName("tasks", "category");
+      await grist.docApi.applyUserActions([
+        ["ModifyColumn", state.TASKS_TABLE, categoryCol, { widgetOptions: JSON.stringify({ choices, choiceOptions }) }]
+      ]);
+      state.taskTableColumns = null;
+    } catch (e) {
+      console.log("syncCategoryChoices:", e.message);
     }
-    html += '<div class="day-tasks">';
-    var maxTasks = isWeekView ? 20 : 3;
-    for (var i = 0; i < Math.min(dayTasks.length, maxTasks); i++) {
-      var task = dayTasks[i];
-      var statusClass = "status-" + task.Status;
-      var priorityClass = task.Priority === "high" ? " priority-high" : "";
-      html += '<div class="day-task ' + statusClass + priorityClass + '" draggable="true" ondragstart="onCalendarTaskDragStart(event, ' + task.id + ')" onclick="event.stopPropagation(); openEditTaskModal(' + task.id + ')" title="' + sanitize(task.Title) + '">';
-      html += sanitize(task.Title);
+  }
+  function renderCategoriesList() {
+    var container = document.getElementById("categories-list");
+    if (!container) return;
+    if (customCategories.length === 0) {
+      container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === "fr" ? "Aucune cat\xE9gorie" : "No categories") + "</div>";
+      return;
+    }
+    var html = '<div class="settings-items">';
+    customCategories.forEach(function(cat, i) {
+      html += '<div class="settings-item">';
+      html += '<span class="settings-item-dot" style="background:' + (cat.color || "#6366f1") + ';"></span>';
+      html += '<div class="settings-item-info"><strong>' + sanitize(cat.name) + "</strong></div>";
+      html += '<div class="settings-item-actions">';
+      html += '<button class="btn-icon" onclick="editCategorySetting(' + i + ')" title="' + (currentLang === "fr" ? "Modifier" : "Edit") + '">\u270F\uFE0F</button>';
+      if (state.isOwner) html += '<button class="btn-icon" onclick="removeCategorySetting(' + i + ')" title="' + t("delete") + '">\u{1F5D1}\uFE0F</button>';
+      html += "</div>";
+      html += "</div>";
+    });
+    html += "</div>";
+    container.innerHTML = html;
+  }
+  async function addCategorySetting() {
+    var result = await showPromptModal(
+      currentLang === "fr" ? "Nouvelle cat\xE9gorie" : "New category",
+      [
+        { label: currentLang === "fr" ? "Nom" : "Name", placeholder: currentLang === "fr" ? "Ex: Discovery" : "Ex: Discovery" },
+        { label: currentLang === "fr" ? "Couleur" : "Color", type: "color" }
+      ],
+      ["", "#6366f1"]
+    );
+    if (!result || !result[0]) return;
+    var name = result[0].trim();
+    if (!name) return;
+    if (customCategories.some(function(c) {
+      return c.name === name;
+    })) {
+      showToast(currentLang === "fr" ? "Cette cat\xE9gorie existe d\xE9j\xE0" : "This category already exists", "error");
+      return;
+    }
+    customCategories.push({ name, color: result[1] || "#6366f1" });
+    await saveCategories();
+    renderCategoriesList();
+    refreshAllViews();
+    showToast(currentLang === "fr" ? "Cat\xE9gorie ajout\xE9e" : "Category added", "success");
+  }
+  async function editCategorySetting(index) {
+    var cat = customCategories[index];
+    if (!cat) return;
+    var result = await showPromptModal(
+      currentLang === "fr" ? "Modifier la cat\xE9gorie" : "Edit category",
+      [
+        { label: currentLang === "fr" ? "Nom" : "Name" },
+        { label: currentLang === "fr" ? "Couleur" : "Color", type: "color" }
+      ],
+      [cat.name, cat.color || "#6366f1"]
+    );
+    if (!result || !result[0]) return;
+    var oldName = cat.name;
+    cat.name = result[0].trim();
+    cat.color = result[1] || cat.color;
+    if (oldName !== cat.name) {
+      var categoryCol = getColumnName("tasks", "category");
+      var affected = state.tasks.filter(function(tsk) {
+        return tsk.Category === oldName;
+      });
+      if (affected.length > 0) {
+        var actions = affected.map(function(tsk) {
+          return ["UpdateRecord", state.TASKS_TABLE, tsk.id, { [categoryCol]: cat.name }];
+        });
+        try {
+          await grist.docApi.applyUserActions(actions);
+        } catch (e) {
+          console.log("rename category on tasks:", e.message);
+        }
+      }
+    }
+    await saveCategories();
+    renderCategoriesList();
+    refreshAllViews();
+  }
+  async function removeCategorySetting(index) {
+    var cat = customCategories[index];
+    if (!cat) return;
+    var confirmed = await showConfirmModal(
+      currentLang === "fr" ? "Supprimer la cat\xE9gorie \xAB " + cat.name + " \xBB ?" : 'Delete category "' + cat.name + '"?',
+      currentLang === "fr" ? "Supprimer" : "Delete"
+    );
+    if (!confirmed) return;
+    customCategories.splice(index, 1);
+    await saveCategories();
+    renderCategoriesList();
+    refreshAllViews();
+    showToast(currentLang === "fr" ? "Cat\xE9gorie supprim\xE9e" : "Category removed", "info");
+  }
+
+  // src/domains/team.js
+  function getUserDisplayName(emailOrName) {
+    if (!emailOrName) return "";
+    var user = state.users.find(function(u) {
+      return u.Email === emailOrName || u.Name === emailOrName;
+    });
+    if (user && user.Name) return user.Name;
+    if (emailOrName.indexOf("@") !== -1) {
+      return emailOrName.split("@")[0];
+    }
+    return emailOrName;
+  }
+  function renderTeamView() {
+    renderUsersList();
+    renderGroupsList();
+    renderCategoriesList();
+  }
+  function renderUsersList() {
+    var container = document.getElementById("users-list");
+    if (!container) return;
+    var displayedUsers = state.currentFilterRole ? state.users.filter(function(u2) {
+      return userMatchesRole(u2, state.currentFilterRole);
+    }) : state.users;
+    if (displayedUsers.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noUsers") + "</div>";
+      return;
+    }
+    var html = '<table class="data-table"><thead><tr>';
+    html += "<th>" + t("fieldName") + "</th>";
+    html += "<th>" + t("fieldEmail") + "</th>";
+    html += "<th>" + t("fieldRole") + "</th>";
+    html += "<th>" + t("fieldGroup") + "</th>";
+    html += "<th>" + t("colActions") + "</th>";
+    html += "</tr></thead><tbody>";
+    for (var i = 0; i < displayedUsers.length; i++) {
+      var u = displayedUsers[i];
+      var roleText = userRoleDisplay(u) ? userRoleDisplay(u).split(",").map(function(r) {
+        return roleLabel(r.trim());
+      }).join(", ") : "";
+      var firstRole = getUserRoles(u)[0] || "member";
+      var roleBg = firstRole === "admin" ? "#fef2f2;color:#dc2626" : firstRole === "viewer" ? "#f1f5f9;color:#64748b" : "#eff6ff;color:#1e40af";
+      html += "<tr>";
+      html += '<td style="font-weight:700;">\u{1F464} ' + sanitize(u.Name) + "</td>";
+      html += "<td>" + sanitize(u.Email) + "</td>";
+      html += '<td><span style="padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;background:' + roleBg + '">' + sanitize(roleText) + "</span></td>";
+      html += "<td>" + (u.Group_Name ? '<span class="assignee-chip">\u{1F465} ' + sanitize(u.Group_Name) + "</span>" : "--") + "</td>";
+      html += '<td><button class="btn-icon" onclick="openEditUserModal(' + u.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
+      html += '<button class="btn-icon" onclick="deleteUser(' + u.id + ')">\u{1F5D1}\uFE0F</button></td>';
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  }
+  function renderGroupsList() {
+    var container = document.getElementById("groups-list");
+    if (!container) return;
+    if (state.groups.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noGroups") + "</div>";
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < state.groups.length; i++) {
+      var g = state.groups[i];
+      var memberCount = state.users.filter(function(u) {
+        return u.Group_Name === g.Name;
+      }).length;
+      var memberNames = state.users.filter(function(u) {
+        return u.Group_Name === g.Name;
+      }).map(function(u) {
+        return u.Name || u.Email;
+      });
+      html += '<div class="template-card">';
+      html += '<div class="template-card-info">';
+      html += "<h4>\u{1F465} " + sanitize(g.Name) + "</h4>";
+      html += '<div class="template-meta">';
+      html += memberCount + " " + t("members");
+      if (g.Description) html += " \u2022 " + sanitize(g.Description);
+      html += "</div>";
+      if (memberNames.length > 0) {
+        html += '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">';
+        for (var j = 0; j < memberNames.length; j++) {
+          html += '<span class="assignee-chip">\u{1F464} ' + sanitize(memberNames[j]) + "</span>";
+        }
+        html += "</div>";
+      }
+      html += "</div>";
+      html += '<button class="btn-icon" onclick="openEditGroupModal(' + g.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
+      html += '<button class="btn-icon" onclick="deleteGroup(' + g.id + ')">\u{1F5D1}\uFE0F</button>';
       html += "</div>";
     }
-    if (dayTasks.length > maxTasks) {
-      html += '<div class="day-more">+' + (dayTasks.length - maxTasks) + " " + (currentLang === "fr" ? "autres" : "more") + "</div>";
+    container.innerHTML = html;
+  }
+  async function getRoleChoicesFromGrist() {
+    var roleSet = {};
+    var hasGristChoices = false;
+    try {
+      var roleColName = getColumnName("users", "role");
+      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
+      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
+      var tableRowId = null;
+      if (tablesData && tablesData.id && tablesData.tableId) {
+        for (var i = 0; i < tablesData.id.length; i++) {
+          if (tablesData.tableId[i] === state.USERS_TABLE) {
+            tableRowId = tablesData.id[i];
+            break;
+          }
+        }
+      }
+      if (tableRowId !== null && columnsData && columnsData.id) {
+        for (var j = 0; j < columnsData.id.length; j++) {
+          if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
+            var wo = columnsData.widgetOptions[j];
+            if (wo) {
+              try {
+                var opts = JSON.parse(wo);
+                if (opts.choices && Array.isArray(opts.choices) && opts.choices.length > 0) {
+                  opts.choices.forEach(function(c) {
+                    roleSet[c] = true;
+                  });
+                  hasGristChoices = true;
+                }
+              } catch (e) {
+              }
+            }
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Could not fetch role choices from Grist metadata:", e);
     }
-    html += "</div></div>";
-    return html;
-  }
-  function onCalendarDayClick(dateStr) {
-    openNewTaskModalWithDate(dateStr);
-  }
-  var calendarDraggedTaskId = null;
-  function onCalendarTaskDragStart(event, taskId) {
-    calendarDraggedTaskId = taskId;
-    event.dataTransfer.effectAllowed = "move";
-    event.target.style.opacity = "0.5";
-  }
-  function onCalendarDragOver(event) {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    event.currentTarget.classList.add("drag-over");
-  }
-  async function onCalendarDrop(event, dateStr) {
-    event.preventDefault();
-    event.currentTarget.classList.remove("drag-over");
-    if (!calendarDraggedTaskId) return;
-    var task = state.tasks.find(function(t2) {
-      return t2.id === calendarDraggedTaskId;
+    if (!hasGristChoices) {
+      ["admin", "member", "viewer"].forEach(function(r) {
+        roleSet[r] = true;
+      });
+    }
+    state.users.forEach(function(u) {
+      getUserRoles(u).forEach(function(r) {
+        if (r) roleSet[r] = true;
+      });
     });
-    if (!task) return;
-    var parts = dateStr.split("-");
-    var newDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-    var newTimestamp = Math.floor(newDate.getTime() / 1e3);
-    var duration = 0;
-    if (task.Start_Date && task.Due_Date) {
-      duration = task.Due_Date - task.Start_Date;
+    return Object.keys(roleSet).sort();
+  }
+  var _manageRolesState = { choices: [] };
+  async function openManageRolesModal() {
+    var choices = await getRoleChoicesFromGrist();
+    _manageRolesState.choices = choices.slice();
+    renderManageRolesModal();
+  }
+  function renderManageRolesModal() {
+    var choices = _manageRolesState.choices;
+    var usage = {};
+    state.users.forEach(function(u) {
+      getUserRoles(u).forEach(function(r2) {
+        if (r2) usage[r2] = (usage[r2] || 0) + 1;
+      });
+    });
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("manageRolesTitle") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<p style="color:#64748b;font-size:13px;margin:0 0 12px 0;">' + t("manageRolesSubtitle") + "</p>";
+    html += '<div class="settings-items">';
+    if (choices.length === 0) {
+      html += '<div style="text-align:center;color:#94a3b8;padding:20px;">--</div>';
+    } else {
+      for (var i = 0; i < choices.length; i++) {
+        var r = choices[i];
+        var count = usage[r] || 0;
+        html += '<div class="settings-item">';
+        html += '<div class="settings-item-info">';
+        html += "<strong>" + sanitize(roleLabel(r)) + "</strong>";
+        html += '<span class="settings-item-meta">' + count + " " + (currentLang === "fr" ? "utilisateur(s)" : "user(s)") + "</span>";
+        html += "</div>";
+        html += '<div class="settings-item-actions">';
+        html += '<button class="btn-icon" onclick="removeRoleChoice(' + i + ')" title="' + t("confirmDeleteRole") + '">\u{1F5D1}\uFE0F</button>';
+        html += "</div>";
+        html += "</div>";
+      }
     }
-    var updates = { Due_Date: newTimestamp };
-    if (task.Start_Date) {
-      updates.Start_Date = newTimestamp - duration;
+    html += "</div>";
+    html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+    html += '<input type="text" id="new-role-name" placeholder="' + t("newRolePlaceholder") + `" style="flex:1;" onkeydown="if(event.key==='Enter'){addRoleChoice();}" />`;
+    html += '<button class="btn btn-primary btn-sm" onclick="addRoleChoice()">+ ' + t("addRole") + "</button>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="saveRoleChoices()">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function addRoleChoice() {
+    var input = document.getElementById("new-role-name");
+    var name = (input.value || "").trim();
+    if (!name) return;
+    if (_manageRolesState.choices.indexOf(name) !== -1) {
+      showToast(currentLang === "fr" ? "Ce r\xF4le existe d\xE9j\xE0" : "Role already exists", "error");
+      return;
     }
+    _manageRolesState.choices.push(name);
+    renderManageRolesModal();
+  }
+  function removeRoleChoice(index) {
+    var role = _manageRolesState.choices[index];
+    var inUse = state.users.some(function(u) {
+      return userMatchesRole(u, role);
+    });
+    if (inUse) {
+      if (!confirm(t("cannotDeleteUsedRole") + ". " + (currentLang === "fr" ? "Continuer ?" : "Continue?"))) {
+        return;
+      }
+    } else if (!confirm(t("confirmDeleteRole"))) {
+      return;
+    }
+    _manageRolesState.choices.splice(index, 1);
+    renderManageRolesModal();
+  }
+  async function saveRoleChoices() {
+    try {
+      var roleColName = getColumnName("users", "role");
+      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
+      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
+      var tableRowId = null;
+      for (var i = 0; i < tablesData.id.length; i++) {
+        if (tablesData.tableId[i] === state.USERS_TABLE) {
+          tableRowId = tablesData.id[i];
+          break;
+        }
+      }
+      if (tableRowId === null) throw new Error("Table not found");
+      var existingOpts = {};
+      for (var j = 0; j < columnsData.id.length; j++) {
+        if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
+          var wo = columnsData.widgetOptions[j];
+          if (wo) {
+            try {
+              existingOpts = JSON.parse(wo);
+            } catch (e) {
+            }
+          }
+          break;
+        }
+      }
+      existingOpts.choices = _manageRolesState.choices;
+      if (!existingOpts.widget) existingOpts.widget = "TextBox";
+      await grist.docApi.applyUserActions([
+        ["ModifyColumn", state.USERS_TABLE, roleColName, { widgetOptions: JSON.stringify(existingOpts) }]
+      ]);
+      showToast(t("rolesUpdated"), "success");
+      closeModalForce();
+    } catch (e) {
+      console.error("Error saving roles:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function openEditUserModal(userId) {
+    var user = state.users.find(function(u) {
+      return u.id === userId;
+    });
+    if (!user) return;
+    var groupOptions = '<option value="">--</option>';
+    for (var i = 0; i < state.groups.length; i++) {
+      var sel = state.groups[i].Name === user.Group_Name ? " selected" : "";
+      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + ">" + sanitize(state.groups[i].Name) + "</option>";
+    }
+    var roleChoices = await getRoleChoicesFromGrist();
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(user.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" value="' + sanitize(user.Name) + '" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" value="' + sanitize(user.Email) + '" /></div>';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
+    if (user.Role && roleChoices.indexOf(user.Role) === -1) {
+      html += '<option value="' + sanitize(user.Role) + '" selected>' + sanitize(roleLabel(user.Role)) + "</option>";
+    }
+    for (var i = 0; i < roleChoices.length; i++) {
+      var r = roleChoices[i];
+      var sel = user.Role === r ? " selected" : "";
+      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
+    }
+    html += "</select></div>";
+    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="updateUser(' + userId + ')">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function openEditGroupModal(groupId) {
+    var group = state.groups.find(function(g) {
+      return g.id === groupId;
+    });
+    if (!group) return;
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(group.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" value="' + sanitize(group.Name) + '" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc">' + sanitize(group.Description || "") + "</textarea></div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="updateGroup(' + groupId + ')">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  async function updateUser(userId) {
+    var name = document.getElementById("user-name").value.trim();
+    if (!name) return;
+    var record = {};
+    record[getColumnName("users", "name")] = name;
+    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
+    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
+    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
     try {
       await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.TASKS_TABLE, calendarDraggedTaskId, updates]
+        ["UpdateRecord", state.USERS_TABLE, userId, record]
       ]);
-      showToast(t("taskMoved"), "success");
+      showToast(t("taskUpdated"), "success");
+      closeModalForce();
       await loadAllData();
     } catch (e) {
-      console.error("Error moving task:", e);
-    }
-    calendarDraggedTaskId = null;
-  }
-  function openNewTaskModalWithDate(dateStr) {
-    return startNewTask(null, dateStr);
-  }
-  function calendarToday() {
-    calendarYear = (/* @__PURE__ */ new Date()).getFullYear();
-    calendarMonth = (/* @__PURE__ */ new Date()).getMonth();
-    calendarWeekOffset = 0;
-    calendarDayOffset = 0;
-    renderCalendarView();
-  }
-  function setCalendarMode(mode) {
-    calendarMode = mode;
-    if (mode === "week") calendarWeekOffset = 0;
-    if (mode === "day") calendarDayOffset = 0;
-    renderCalendarView();
-  }
-  function getTasksForDate(date) {
-    var dateStart = new Date(date);
-    dateStart.setHours(0, 0, 0, 0);
-    var dateEnd = new Date(date);
-    dateEnd.setHours(23, 59, 59, 999);
-    var dateTs = dateStart.getTime() / 1e3;
-    var dateEndTs = dateEnd.getTime() / 1e3;
-    return getFilteredTasks().filter(function(task) {
-      var taskStart = task.Start_Date;
-      var taskEnd = task.Due_Date;
-      if (!taskStart && !taskEnd) return false;
-      if (taskStart && taskEnd) {
-        return taskStart <= dateEndTs && taskEnd >= dateTs;
-      }
-      if (taskStart) return taskStart >= dateTs && taskStart <= dateEndTs;
-      if (taskEnd) return taskEnd >= dateTs && taskEnd <= dateEndTs;
-      return false;
-    });
-  }
-  function renderCalendarWeekView() {
-    var now = /* @__PURE__ */ new Date();
-    var dayOfWeek = now.getDay();
-    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    var weekStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset + calendarWeekOffset * 7);
-    var monthNames = currentLang === "fr" ? ["Janvier", "F\xE9vrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Ao\xFBt", "Septembre", "Octobre", "Novembre", "D\xE9cembre"] : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    var dayNamesFull = currentLang === "fr" ? ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"] : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-    var weekEndDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + 6);
-    var startMonth = monthNames[weekStartDate.getMonth()];
-    var endMonth = monthNames[weekEndDate.getMonth()];
-    var title = weekStartDate.getDate() + " " + startMonth;
-    if (startMonth !== endMonth) {
-      title += " - " + weekEndDate.getDate() + " " + endMonth;
-    } else {
-      title += " - " + weekEndDate.getDate() + " " + endMonth;
-    }
-    title += " " + weekStartDate.getFullYear();
-    document.getElementById("calendar-month-title").textContent = title;
-    var today = /* @__PURE__ */ new Date();
-    today.setHours(0, 0, 0, 0);
-    var weekdaysHtml = "";
-    for (var d = 0; d < 7; d++) {
-      var dayDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + d);
-      var isWeekend = d >= 5;
-      var isToday = dayDate.getTime() === today.getTime();
-      weekdaysHtml += '<div class="calendar-weekday' + (isWeekend ? " weekend" : "") + (isToday ? " today" : "") + '">';
-      weekdaysHtml += dayNamesFull[d] + " <strong>" + dayDate.getDate() + "</strong>";
-      weekdaysHtml += "</div>";
-    }
-    document.getElementById("calendar-weekdays").innerHTML = weekdaysHtml;
-    var daysHtml = "";
-    for (var d = 0; d < 7; d++) {
-      var dayDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + d);
-      var isToday = dayDate.getTime() === today.getTime();
-      var dayTasks = getTasksForDate(dayDate);
-      daysHtml += renderCalendarDay(dayDate.getDate(), dayDate, dayTasks, false, isToday, true);
-    }
-    var daysContainer = document.getElementById("calendar-days");
-    daysContainer.innerHTML = daysHtml;
-    daysContainer.className = "calendar-days week-view";
-  }
-  function calendarNav(dir) {
-    if (window.innerWidth < 480 && calendarMode !== "day") {
-      calendarWeekOffset += dir;
-      renderCalendarView();
-      return;
-    }
-    if (calendarMode === "week") {
-      calendarWeekOffset += dir;
-    } else if (calendarMode === "day") {
-      calendarDayOffset += dir;
-    } else {
-      calendarMonth += dir;
-      if (calendarMonth > 11) {
-        calendarMonth = 0;
-        calendarYear++;
-      }
-      if (calendarMonth < 0) {
-        calendarMonth = 11;
-        calendarYear--;
-      }
-    }
-    renderCalendarView();
-  }
-  function renderCalendarMobileView() {
-    var now = /* @__PURE__ */ new Date();
-    var dayOfWeek = now.getDay();
-    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    var weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset + calendarWeekOffset * 7);
-    var weekEnd = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6);
-    var monthNames = currentLang === "fr" ? ["Jan", "F\xE9v", "Mar", "Avr", "Mai", "Juin", "Juil", "Ao\xFBt", "Sep", "Oct", "Nov", "D\xE9c"] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    var dayNames = currentLang === "fr" ? ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"] : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    var titleStart = weekStart.getDate() + " " + monthNames[weekStart.getMonth()];
-    var titleEnd = weekEnd.getDate() + " " + monthNames[weekEnd.getMonth()] + " " + weekEnd.getFullYear();
-    document.getElementById("calendar-month-title").textContent = titleStart + " \u2013 " + titleEnd;
-    document.getElementById("calendar-weekdays").innerHTML = "";
-    var today = /* @__PURE__ */ new Date();
-    today.setHours(0, 0, 0, 0);
-    var html = "";
-    for (var d = 0; d < 7; d++) {
-      var dayDate = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + d);
-      var isToday = dayDate.getTime() === today.getTime();
-      var isWeekend = d >= 5;
-      var dayTasks = getTasksForDate(dayDate);
-      var dateStr = dayDate.getFullYear() + "-" + String(dayDate.getMonth() + 1).padStart(2, "0") + "-" + String(dayDate.getDate()).padStart(2, "0");
-      var cls = "calendar-day" + (isToday ? " today" : "") + (isWeekend ? " weekend" : "");
-      html += '<div class="' + cls + `" onclick="onCalendarDayClick('` + dateStr + `')">`;
-      html += '<div class="mobile-day-label">';
-      html += '<span class="mobile-day-name">' + dayNames[dayDate.getDay()] + "</span>";
-      html += '<div class="day-number">' + dayDate.getDate() + "</div>";
-      html += "</div>";
-      html += '<div class="day-tasks">';
-      for (var i = 0; i < dayTasks.length; i++) {
-        var task = dayTasks[i];
-        html += '<div class="day-task status-' + task.Status + '" onclick="event.stopPropagation(); openEditTaskModal(' + task.id + ')" title="' + sanitize(task.Title) + '">' + sanitize(task.Title) + "</div>";
-      }
-      if (dayTasks.length === 0) {
-        html += '<span class="mobile-no-task">\u2014</span>';
-      }
-      html += "</div></div>";
-    }
-    var daysContainer = document.getElementById("calendar-days");
-    daysContainer.innerHTML = html;
-    daysContainer.className = "calendar-days calendar-mobile-list";
-  }
-  var _calResizeTimer;
-  var _calResizeObserver = null;
-  function applyCalendarResponsiveClasses() {
-    var calContainer = document.querySelector(".calendar-container");
-    if (!calContainer) return;
-    var w = calContainer.getBoundingClientRect().width || window.innerWidth;
-    calContainer.classList.toggle("cal-compact", w < 768 && w >= 480);
-    calContainer.classList.toggle("cal-mobile", w < 480);
-  }
-  function attachCalendarResizeObserver() {
-    var calContainer = document.querySelector(".calendar-container");
-    if (!calContainer || _calResizeObserver) return;
-    if (window.ResizeObserver) {
-      _calResizeObserver = new ResizeObserver(function() {
-        clearTimeout(_calResizeTimer);
-        _calResizeTimer = setTimeout(function() {
-          applyCalendarResponsiveClasses();
-          var calTab = document.getElementById("tab-calendar");
-          if (calTab && calTab.classList.contains("active")) renderCalendarView();
-        }, 150);
-      });
-      _calResizeObserver.observe(calContainer);
+      console.error("Error updating user:", e);
+      showToast("Error: " + e.message, "error");
     }
   }
-  window.addEventListener("resize", function() {
-    clearTimeout(_calResizeTimer);
-    _calResizeTimer = setTimeout(function() {
-      applyCalendarResponsiveClasses();
-      var calTab = document.getElementById("tab-calendar");
-      if (calTab && calTab.classList.contains("active")) renderCalendarView();
-    }, 200);
-  });
-  function renderCalendarDayView() {
-    var today = /* @__PURE__ */ new Date();
-    var viewDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + calendarDayOffset);
-    var isToday = calendarDayOffset === 0;
-    var monthNames = currentLang === "fr" ? ["Janvier", "F\xE9vrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Ao\xFBt", "Septembre", "Octobre", "Novembre", "D\xE9cembre"] : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    var dayNamesFull = currentLang === "fr" ? ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"] : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    document.getElementById("calendar-month-title").textContent = dayNamesFull[viewDate.getDay()] + " " + viewDate.getDate() + " " + monthNames[viewDate.getMonth()] + " " + viewDate.getFullYear();
-    var dayStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), 0, 0, 0);
-    var dayEnd = new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), 23, 59, 59);
-    var dayStartTs = Math.floor(dayStart.getTime() / 1e3);
-    var dayEndTs = Math.floor(dayEnd.getTime() / 1e3);
-    var filteredTasks = getFilteredTasks();
-    var dayTasks = filteredTasks.filter(function(t2) {
-      var dueThisDay = t2.Due_Date && t2.Due_Date >= dayStartTs && t2.Due_Date <= dayEndTs;
-      var inProgressThisDay = t2.Status === "progress" && t2.Start_Date && t2.Due_Date && t2.Start_Date <= dayEndTs && t2.Due_Date >= dayStartTs;
-      var inProgressNoEnd = t2.Status === "progress" && t2.Start_Date && !t2.Due_Date && t2.Start_Date <= dayEndTs;
-      return dueThisDay || inProgressThisDay || inProgressNoEnd;
-    });
-    var statusColors = { todo: "#94a3b8", progress: "#3b82f6", done: "#22c55e" };
-    var priorityColors = { high: "#ef4444", medium: "#f59e0b", low: "#22c55e" };
-    var html = '<div class="calendar-day-view">';
-    html += '<div class="calendar-day-header' + (isToday ? " today" : "") + '">';
-    html += isToday ? "\u{1F4C5} " + (currentLang === "fr" ? "Aujourd'hui" : "Today") : "";
-    html += '<span class="day-task-count">' + dayTasks.length + " " + (currentLang === "fr" ? "t\xE2che(s)" : "task(s)") + "</span>";
-    html += "</div>";
-    if (dayTasks.length === 0) {
-      html += '<div class="day-empty">' + (currentLang === "fr" ? "Aucune t\xE2che ce jour" : "No tasks today") + "</div>";
-    } else {
-      dayTasks.forEach(function(task) {
-        var taskSubtasks = getTaskSubtasks(task.id);
-        var completedSt = taskSubtasks.filter(function(st) {
-          return st.Completed;
-        }).length;
-        var stColor = statusColors[task.Status] || "#94a3b8";
-        var dueThisDay = task.Due_Date && task.Due_Date >= dayStartTs && task.Due_Date <= dayEndTs;
-        var isOverdue2 = task.Due_Date && task.Due_Date < dayStartTs && task.Status !== "done";
-        var dueBadge = dueThisDay ? '<span class="day-due-badge">\u{1F4CC} ' + (currentLang === "fr" ? "\xC9ch\xE9ance" : "Due today") + "</span>" : isOverdue2 ? '<span class="day-due-badge overdue">\u26A0\uFE0F ' + (currentLang === "fr" ? "En retard" : "Overdue") + "</span>" : '<span class="day-due-badge ongoing">\u{1F504} ' + (currentLang === "fr" ? "En cours" : "In progress") + "</span>";
-        html += '<div class="day-task-row" onclick="openEditTaskModal(' + task.id + ')">';
-        html += '<div class="day-task-indicator" style="background:' + stColor + '"></div>';
-        html += '<div class="day-task-body">';
-        html += '<div class="day-task-title">' + sanitize(task.Title) + " " + dueBadge + "</div>";
-        html += '<div class="day-task-meta">';
-        if (task.Assignee) html += "<span>\u{1F464} " + sanitize(task.Assignee.split(",")[0].trim()) + "</span>";
-        html += '<span style="color:' + priorityColors[task.Priority] + ';">\u25B2 ' + task.Priority + "</span>";
-        if (taskSubtasks.length > 0) {
-          html += "<span>\u2611\uFE0F " + completedSt + "/" + taskSubtasks.length + "</span>";
-        }
-        html += "</div>";
-        if (taskSubtasks.length > 0) {
-          html += '<div class="day-subtasks">';
-          taskSubtasks.forEach(function(st) {
-            html += '<div class="day-subtask-item">';
-            html += '<input type="checkbox" ' + (st.Completed ? "checked" : "") + ' onclick="event.stopPropagation();toggleSubtask(' + st.id + ", " + !st.Completed + ')" />';
-            html += '<span class="' + (st.Completed ? "st-done" : "") + '">' + sanitize(st.Title) + "</span>";
-            if (st.Assignee) html += '<span class="day-st-assignee">\u{1F464} ' + sanitize(st.Assignee) + "</span>";
-            html += "</div>";
-          });
-          html += "</div>";
-        }
-        html += "</div>";
-        html += "</div>";
-      });
+  async function updateGroup(groupId) {
+    var name = document.getElementById("group-name").value.trim();
+    if (!name) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", state.GROUPS_TABLE, groupId, {
+          Name: name,
+          Description: document.getElementById("group-desc").value.trim()
+        }]
+      ]);
+      showToast(t("taskUpdated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error updating group:", e);
+      showToast("Error: " + e.message, "error");
     }
-    var dateStr = viewDate.getFullYear() + "-" + String(viewDate.getMonth() + 1).padStart(2, "0") + "-" + String(viewDate.getDate()).padStart(2, "0");
-    html += `<div class="day-add-task" onclick="openNewTaskForDay('` + dateStr + `')">`;
-    html += "+ " + (currentLang === "fr" ? "Ajouter une t\xE2che ce jour" : "Add a task for this day");
+  }
+  async function openNewUserModal() {
+    var groupOptions = '<option value="">--</option>';
+    for (var i = 0; i < state.groups.length; i++) {
+      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + "</option>";
+    }
+    var roleChoices = await getRoleChoicesFromGrist();
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("modalNewUser") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" /></div>';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
+    for (var i = 0; i < roleChoices.length; i++) {
+      var r = roleChoices[i];
+      var sel = r === "member" ? " selected" : "";
+      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
+    }
+    html += "</select></div>";
+    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
     html += "</div>";
     html += "</div>";
-    var weekdays = document.getElementById("calendar-weekdays");
-    var days = document.getElementById("calendar-days");
-    if (weekdays) weekdays.innerHTML = "";
-    if (days) {
-      days.innerHTML = html;
-      days.className = "calendar-days day-view";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="createUser()">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function openNewGroupModal() {
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("modalNewGroup") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" /></div>';
+    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc"></textarea></div>';
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="createGroup()">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  async function createUser() {
+    var name = document.getElementById("user-name").value.trim();
+    if (!name) return;
+    var record = {};
+    record[getColumnName("users", "name")] = name;
+    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
+    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
+    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.USERS_TABLE, null, record]
+      ]);
+      showToast(t("userCreated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error creating user:", e);
+      showToast("Error: " + e.message, "error");
     }
   }
-  function openNewTaskForDay(dateStr) {
-    openNewTaskModalWithDate(dateStr);
+  async function createGroup() {
+    var name = document.getElementById("group-name").value.trim();
+    if (!name) return;
+    var record = {
+      Name: name,
+      Description: document.getElementById("group-desc").value.trim()
+    };
+    try {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", state.GROUPS_TABLE, null, record]
+      ]);
+      showToast(t("groupCreated"), "success");
+      closeModalForce();
+      await loadAllData();
+    } catch (e) {
+      console.error("Error creating group:", e);
+      showToast("Error: " + e.message, "error");
+    }
+  }
+  async function deleteUser(userId) {
+    if (!state.isOwner) return;
+    var confirmed = await showConfirmModal(t("confirmDeleteUser"), currentLang === "fr" ? "Supprimer l'utilisateur" : "Delete user");
+    if (!confirmed) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["RemoveRecord", state.USERS_TABLE, userId]
+      ]);
+      showToast(t("userDeleted"), "info");
+      await loadAllData();
+    } catch (e) {
+      console.error("Error deleting user:", e);
+    }
+  }
+  async function deleteGroup(groupId) {
+    if (!state.isOwner) return;
+    var confirmed = await showConfirmModal(t("confirmDeleteGroup"), currentLang === "fr" ? "Supprimer le groupe" : "Delete group");
+    if (!confirmed) return;
+    try {
+      await grist.docApi.applyUserActions([
+        ["RemoveRecord", state.GROUPS_TABLE, groupId]
+      ]);
+      showToast(t("groupDeleted"), "info");
+      await loadAllData();
+    } catch (e) {
+      console.error("Error deleting group:", e);
+    }
   }
 
   // src/domains/tasks.js
@@ -3091,388 +3220,6 @@
     }
     container.innerHTML = html;
   }
-  function renderStatsView() {
-    var filteredTasks = getFilteredTasks();
-    var kanbanStatuses = getKanbanStatuses();
-    var statusCounts = {};
-    kanbanStatuses.forEach(function(s) {
-      statusCounts[s.key] = 0;
-    });
-    filteredTasks.forEach(function(t2) {
-      statusCounts[t2.Status] = (statusCounts[t2.Status] || 0) + 1;
-    });
-    var maxStatus = Math.max.apply(null, kanbanStatuses.map(function(s) {
-      return statusCounts[s.key] || 0;
-    }).concat([1]));
-    var statusHtml = "";
-    kanbanStatuses.forEach(function(s) {
-      var count = statusCounts[s.key] || 0;
-      var height = count / maxStatus * 160;
-      var label = currentLang === "fr" ? s.label_fr : s.label_en;
-      statusHtml += '<div class="chart-bar">';
-      statusHtml += '<span class="chart-bar-value">' + count + "</span>";
-      statusHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + (s.color || "#94a3b8") + '"></div>';
-      statusHtml += '<span class="chart-bar-label">' + sanitize(label) + "</span>";
-      statusHtml += "</div>";
-    });
-    document.getElementById("chart-status").innerHTML = statusHtml;
-    var priorityCounts = { high: 0, medium: 0, low: 0 };
-    filteredTasks.forEach(function(t2) {
-      priorityCounts[t2.Priority] = (priorityCounts[t2.Priority] || 0) + 1;
-    });
-    var maxPriority = Math.max(priorityCounts.high, priorityCounts.medium, priorityCounts.low, 1);
-    var priorityHtml = "";
-    var priorityColors = { high: "#ef4444", medium: "#f59e0b", low: "#22c55e" };
-    var priorityLabels = { high: t("priorityHigh"), medium: t("priorityMedium"), low: t("priorityLow") };
-    ["high", "medium", "low"].forEach(function(p) {
-      var height = priorityCounts[p] / maxPriority * 160;
-      priorityHtml += '<div class="chart-bar">';
-      priorityHtml += '<span class="chart-bar-value">' + priorityCounts[p] + "</span>";
-      priorityHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + priorityColors[p] + '"></div>';
-      priorityHtml += '<span class="chart-bar-label">' + priorityLabels[p] + "</span>";
-      priorityHtml += "</div>";
-    });
-    document.getElementById("chart-priority").innerHTML = priorityHtml;
-    var assigneeCounts = {};
-    filteredTasks.forEach(function(t2) {
-      if (t2.Assignee) {
-        t2.Assignee.split(",").forEach(function(a) {
-          var name = getUserDisplayName(a.trim());
-          assigneeCounts[name] = (assigneeCounts[name] || 0) + 1;
-        });
-      }
-    });
-    var assigneeEntries = Object.entries(assigneeCounts).sort(function(a, b) {
-      return b[1] - a[1];
-    }).slice(0, 5);
-    var maxAssignee = assigneeEntries.length > 0 ? assigneeEntries[0][1] : 1;
-    var assigneeHtml = "";
-    var colors = ["#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b", "#22c55e"];
-    assigneeEntries.forEach(function(entry, i) {
-      var height = entry[1] / maxAssignee * 160;
-      assigneeHtml += '<div class="chart-bar">';
-      assigneeHtml += '<span class="chart-bar-value">' + entry[1] + "</span>";
-      assigneeHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + colors[i % colors.length] + '"></div>';
-      assigneeHtml += '<span class="chart-bar-label">' + entry[0] + "</span>";
-      assigneeHtml += "</div>";
-    });
-    if (assigneeEntries.length === 0) {
-      assigneeHtml = '<div style="text-align:center;color:#94a3b8;width:100%;">Aucune donn\xE9e</div>';
-    }
-    document.getElementById("chart-assignee").innerHTML = assigneeHtml;
-    var weekDays = currentLang === "fr" ? ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    var now = /* @__PURE__ */ new Date();
-    var dayOfWeek = now.getDay();
-    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    var weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
-    var weekCounts = [0, 0, 0, 0, 0, 0, 0];
-    filteredTasks.forEach(function(task) {
-      var tStart = task.Start_Date ? task.Start_Date : task.Due_Date || null;
-      var tEnd = task.Due_Date ? task.Due_Date : task.Start_Date || null;
-      if (!tEnd) return;
-      for (var d = 0; d < 7; d++) {
-        var dayStart = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + d);
-        var dayEnd = new Date(dayStart);
-        dayEnd.setHours(23, 59, 59, 999);
-        var dsTs = Math.floor(dayStart.getTime() / 1e3);
-        var deTs = Math.floor(dayEnd.getTime() / 1e3);
-        if (tStart <= deTs && tEnd >= dsTs) {
-          weekCounts[d]++;
-        }
-      }
-    });
-    var maxWeek = Math.max.apply(null, weekCounts) || 1;
-    var weekHtml = "";
-    weekCounts.forEach(function(count, i) {
-      var height = count / maxWeek * 160;
-      var isToday = i === (now.getDay() + 6) % 7;
-      weekHtml += '<div class="chart-bar">';
-      weekHtml += '<span class="chart-bar-value">' + count + "</span>";
-      weekHtml += '<div class="chart-bar-fill" style="height:' + height + "px;background:" + (isToday ? "#ef4444" : "#3b82f6") + '"></div>';
-      weekHtml += '<span class="chart-bar-label">' + weekDays[i] + "</span>";
-      weekHtml += "</div>";
-    });
-    document.getElementById("chart-week").innerHTML = weekHtml;
-    var completionRate = filteredTasks.length > 0 ? Math.round(statusCounts.done / filteredTasks.length * 100) : 0;
-    document.getElementById("stats-completion-rate").textContent = completionRate + "%";
-    var overdueCount = getOverdueTasks().length;
-    document.getElementById("stats-overdue-count").textContent = overdueCount;
-    var totalMinutes = 0;
-    state.timeEntries.forEach(function(te) {
-      if (te.Duration) totalMinutes += te.Duration;
-    });
-    var totalHours = Math.round(totalMinutes / 60);
-    document.getElementById("stats-total-time").textContent = totalHours + "h";
-    var avgMinutes = filteredTasks.length > 0 ? Math.round(totalMinutes / filteredTasks.length) : 0;
-    var avgHours = Math.round(avgMinutes / 60 * 10) / 10;
-    document.getElementById("stats-avg-time").textContent = avgHours + "h";
-    renderWorkloadChart();
-    renderBurndownChart();
-  }
-  function renderWorkloadChart() {
-    var workloadData = {};
-    var now = Math.floor(Date.now() / 1e3);
-    var filteredTasks = getFilteredTasks();
-    filteredTasks.forEach(function(task) {
-      if (task.Assignee && task.Status !== "done") {
-        task.Assignee.split(",").forEach(function(a) {
-          var email = a.trim();
-          var name = getUserDisplayName(email);
-          if (!workloadData[name]) {
-            workloadData[name] = {
-              total: 0,
-              overdue: 0,
-              highPriority: 0,
-              estimatedHours: 0
-            };
-          }
-          workloadData[name].total++;
-          if (task.Due_Date && task.Due_Date < now) {
-            workloadData[name].overdue++;
-          }
-          if (task.Priority === "high") {
-            workloadData[name].highPriority++;
-          }
-          if (task.Estimated_Hours) {
-            workloadData[name].estimatedHours += task.Estimated_Hours;
-          }
-        });
-      }
-    });
-    var workloadEntries = Object.entries(workloadData).map(function(entry) {
-      var name = entry[0];
-      var data = entry[1];
-      var score = data.total * 10 + data.overdue * 30 + data.highPriority * 15;
-      var level = score <= 50 ? "low" : score <= 100 ? "medium" : "high";
-      var levelLabel = currentLang === "fr" ? level === "low" ? "OK" : level === "medium" ? "Attention" : "Surcharge" : level === "low" ? "OK" : level === "medium" ? "Warning" : "Overload";
-      return {
-        name,
-        total: data.total,
-        overdue: data.overdue,
-        highPriority: data.highPriority,
-        score,
-        level,
-        levelLabel
-      };
-    }).sort(function(a, b) {
-      return b.score - a.score;
-    });
-    var maxScore = workloadEntries.length > 0 ? Math.max(workloadEntries[0].score, 100) : 100;
-    var html = "";
-    if (workloadEntries.length === 0) {
-      html = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === "fr" ? "Aucune t\xE2che assign\xE9e" : "No assigned tasks") + "</div>";
-    } else {
-      workloadEntries.forEach(function(entry) {
-        var barWidth = Math.min(entry.score / maxScore * 100, 100);
-        html += '<div class="workload-row">';
-        html += '<div class="workload-name" title="' + entry.name + '">' + entry.name + "</div>";
-        html += '<div class="workload-bar-bg">';
-        html += '<div class="workload-bar-fill ' + entry.level + '" style="width:' + barWidth + '%"></div>';
-        html += "</div>";
-        html += '<div class="workload-stats">';
-        html += '<span class="workload-badge ' + entry.level + '">' + entry.levelLabel + "</span>";
-        html += '<span class="workload-detail">' + entry.total + " " + (currentLang === "fr" ? "t\xE2ches" : "tasks");
-        if (entry.overdue > 0) {
-          html += ' \u2022 <span style="color:#ef4444;">' + entry.overdue + " " + (currentLang === "fr" ? "en retard" : "overdue") + "</span>";
-        }
-        html += "</span>";
-        html += "</div>";
-        html += "</div>";
-      });
-    }
-    document.getElementById("chart-workload").innerHTML = html;
-    var agentSelect = document.getElementById("timeline-agent");
-    if (agentSelect) {
-      var agentNames = Object.keys(workloadData).sort();
-      var currentAgentVal = agentSelect.value;
-      agentSelect.innerHTML = '<option value="">' + (currentLang === "fr" ? "Tous les agents" : "All agents") + "</option>";
-      agentNames.forEach(function(name) {
-        var sel = name === currentAgentVal ? " selected" : "";
-        agentSelect.innerHTML += '<option value="' + sanitize(name) + '"' + sel + ">" + sanitize(name) + "</option>";
-      });
-    }
-    renderTimelineChart();
-  }
-  function renderTimelineChart() {
-    var container = document.getElementById("chart-timeline");
-    if (!container) return;
-    var periodSel = document.getElementById("timeline-period");
-    var agentSel = document.getElementById("timeline-agent");
-    var period = periodSel ? periodSel.value : "weeks";
-    var agentFilter = agentSel ? agentSel.value : "";
-    var now = /* @__PURE__ */ new Date();
-    now.setHours(0, 0, 0, 0);
-    var slots = [];
-    var tlMn = currentLang === "fr" ? ["Jan", "F\xE9v", "Mar", "Avr", "Mai", "Jun", "Jul", "Ao\xFB", "Sep", "Oct", "Nov", "D\xE9c"] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    if (period === "weeks") {
-      var dayOfW = now.getDay();
-      var offToMon = dayOfW === 0 ? -6 : 1 - dayOfW;
-      var thisMon = new Date(now);
-      thisMon.setDate(thisMon.getDate() + offToMon);
-      for (var w = -4; w < 4; w++) {
-        var wStart = new Date(thisMon);
-        wStart.setDate(thisMon.getDate() + w * 7);
-        var wEnd = new Date(wStart);
-        wEnd.setDate(wStart.getDate() + 6);
-        wEnd.setHours(23, 59, 59, 999);
-        var isCurrentW = w === 0;
-        slots.push({ label: wStart.getDate() + "/" + (wStart.getMonth() + 1), start: Math.floor(wStart.getTime() / 1e3), end: Math.floor(wEnd.getTime() / 1e3), current: isCurrentW });
-      }
-    } else {
-      for (var m = -3; m < 3; m++) {
-        var d = new Date(now.getFullYear(), now.getMonth() + m, 1);
-        var dEnd = new Date(now.getFullYear(), now.getMonth() + m + 1, 0, 23, 59, 59, 999);
-        slots.push({ label: tlMn[d.getMonth()], start: Math.floor(d.getTime() / 1e3), end: Math.floor(dEnd.getTime() / 1e3), current: m === 0 });
-      }
-    }
-    var agentColors = ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16"];
-    var allAgents = [];
-    var filteredTasks = getFilteredTasks().filter(function(t2) {
-      return t2.Status !== "done";
-    });
-    filteredTasks.forEach(function(t2) {
-      if (!t2.Assignee) return;
-      t2.Assignee.split(",").forEach(function(a) {
-        var name = getUserDisplayName(a.trim());
-        if (allAgents.indexOf(name) === -1) allAgents.push(name);
-      });
-    });
-    allAgents.sort();
-    var visibleAgents = agentFilter ? [agentFilter] : allAgents;
-    var data = slots.map(function(slot) {
-      var row = { label: slot.label, total: 0, current: slot.current };
-      visibleAgents.forEach(function(agent) {
-        row[agent] = 0;
-      });
-      filteredTasks.forEach(function(t2) {
-        var tS = t2.Start_Date ? t2.Start_Date : t2.Due_Date || null;
-        var tE = t2.Due_Date ? t2.Due_Date : t2.Start_Date || null;
-        if (!tE) return;
-        if (tS > slot.end || tE < slot.start) return;
-        if (!t2.Assignee) return;
-        t2.Assignee.split(",").forEach(function(a) {
-          var name = getUserDisplayName(a.trim());
-          if (visibleAgents.indexOf(name) === -1) return;
-          row[name] = (row[name] || 0) + 1;
-          row.total++;
-        });
-      });
-      return row;
-    });
-    var maxVal = Math.max.apply(null, data.map(function(d2) {
-      return d2.total;
-    }));
-    if (maxVal === 0) maxVal = 1;
-    var BAR_H = 120;
-    var html = '<div style="display:flex;gap:4px;align-items:flex-end;min-height:' + (BAR_H + 50) + 'px;">';
-    data.forEach(function(slot) {
-      var colStyle = slot.current ? "flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:#eff6ff;border-radius:6px;padding:2px;" : "flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;";
-      html += '<div style="' + colStyle + '">';
-      html += '<span style="font-size:10px;color:' + (slot.current ? "#2563eb" : "#64748b") + ";font-weight:" + (slot.current ? "700" : "600") + ';">' + (slot.total || "") + "</span>";
-      html += '<div style="width:100%;display:flex;flex-direction:column-reverse;gap:1px;">';
-      var stackH = 0;
-      visibleAgents.forEach(function(agent, idx) {
-        var count = slot[agent] || 0;
-        if (count === 0) return;
-        var h = Math.max(Math.round(count / maxVal * BAR_H), 4);
-        stackH += h;
-        var color = agentColors[idx % agentColors.length];
-        html += '<div title="' + sanitize(agent) + " : " + count + '" style="height:' + h + "px;background:" + color + ';border-radius:2px;opacity:0.85;"></div>';
-      });
-      if (stackH === 0) {
-        html += '<div style="height:4px;background:#e2e8f0;border-radius:2px;"></div>';
-      }
-      html += "</div>";
-      html += '<span style="font-size:10px;color:' + (slot.current ? "#2563eb" : "#94a3b8") + ";margin-top:4px;font-weight:" + (slot.current ? "700" : "normal") + ';">' + slot.label + "</span>";
-      html += "</div>";
-    });
-    html += "</div>";
-    if (visibleAgents.length > 1) {
-      html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">';
-      visibleAgents.forEach(function(agent, idx) {
-        var color = agentColors[idx % agentColors.length];
-        html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;background:' + color + ';border-radius:2px;"></span>' + sanitize(agent) + "</span>";
-      });
-      html += "</div>";
-    }
-    container.innerHTML = html;
-  }
-  function renderBurndownChart() {
-    var container = document.getElementById("chart-burndown");
-    if (!container) return;
-    var periodSel = document.getElementById("burndown-period");
-    var weeks = periodSel ? parseInt(periodSel.value) || 8 : 8;
-    var now = /* @__PURE__ */ new Date();
-    var dayOfWeek = now.getDay();
-    var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    var thisMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
-    thisMonday.setHours(0, 0, 0, 0);
-    var allTasks = getFilteredTasks();
-    var labels = [];
-    var remaining = [];
-    var completed = [];
-    for (var w = weeks - 1; w >= 0; w--) {
-      var weekEnd = new Date(thisMonday.getTime() - w * 7 * 864e5);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
-      var weekEndTs = Math.floor(weekEnd.getTime() / 1e3);
-      var dd = String(weekEnd.getDate()).padStart(2, "0");
-      var mm = String(weekEnd.getMonth() + 1).padStart(2, "0");
-      labels.push(dd + "/" + mm);
-      var createdBefore = allTasks.filter(function(t2) {
-        return t2.Created_At && t2.Created_At <= weekEndTs;
-      });
-      var doneByThen = createdBefore.filter(function(t2) {
-        return t2.Status === "done";
-      }).length;
-      var totalByThen = createdBefore.length;
-      var remainByThen = totalByThen - doneByThen;
-      remaining.push(remainByThen);
-      completed.push(doneByThen);
-    }
-    var maxVal = Math.max.apply(null, remaining.concat(completed).concat([1]));
-    var chartH = 180;
-    var barW = Math.max(20, Math.floor(300 / weeks));
-    var html = '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;">';
-    html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:2px;flex-shrink:0;"></span>' + t("burnRemaining") + "</span>";
-    html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border-radius:2px;flex-shrink:0;"></span>' + t("burnCompleted") + "</span>";
-    html += '<span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;border:1.5px dashed #94a3b8;border-radius:2px;flex-shrink:0;"></span>' + t("burnIdeal") + "</span>";
-    html += "</div>";
-    html += '<div style="position:relative;height:' + (chartH + 30) + 'px;">';
-    var startRemaining = remaining[0] || 0;
-    var svgW = labels.length * (barW + 8);
-    html += '<svg style="position:absolute;top:0;left:0;width:' + svgW + "px;height:" + chartH + 'px;pointer-events:none;">';
-    for (var li = 0; li < labels.length - 1; li++) {
-      var x1 = li * (barW + 8) + barW / 2;
-      var x2 = (li + 1) * (barW + 8) + barW / 2;
-      var idealVal1 = startRemaining - startRemaining / (labels.length - 1) * li;
-      var idealVal2 = startRemaining - startRemaining / (labels.length - 1) * (li + 1);
-      var y1 = chartH - idealVal1 / maxVal * chartH;
-      var y2 = chartH - idealVal2 / maxVal * chartH;
-      html += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="#94a3b8" stroke-dasharray="4,3" stroke-width="1.5"/>';
-    }
-    html += "</svg>";
-    html += '<div style="display:flex;align-items:flex-end;gap:8px;height:' + chartH + 'px;">';
-    for (var bi = 0; bi < labels.length; bi++) {
-      var remH = remaining[bi] / maxVal * (chartH - 20);
-      var compH = completed[bi] / maxVal * (chartH - 20);
-      html += '<div style="display:flex;flex-direction:column;align-items:center;width:' + barW + 'px;">';
-      html += '<div style="font-size:9px;color:#64748b;margin-bottom:2px;">' + remaining[bi] + "</div>";
-      html += '<div style="width:100%;display:flex;flex-direction:column;gap:1px;">';
-      html += '<div style="height:' + remH + 'px;background:#ef4444;border-radius:3px 3px 0 0;min-height:2px;"></div>';
-      html += '<div style="height:' + compH + 'px;background:#22c55e;border-radius:0 0 3px 3px;min-height:2px;"></div>';
-      html += "</div>";
-      html += "</div>";
-    }
-    html += "</div>";
-    html += '<div style="display:flex;gap:8px;margin-top:4px;">';
-    for (var lbi = 0; lbi < labels.length; lbi++) {
-      html += '<div style="width:' + barW + 'px;text-align:center;font-size:9px;color:#94a3b8;">' + labels[lbi] + "</div>";
-    }
-    html += "</div>";
-    html += "</div>";
-    container.innerHTML = html;
-  }
 
   // src/ui/tabs.js
   function switchTab(tabId) {
@@ -3483,11 +3230,8 @@
       tc.classList.toggle("active", tc.id === "tab-" + tabId);
     });
     localStorage.setItem("pm-active-tab", tabId);
-    if (tabId === "calendar") renderCalendarView();
     if (tabId === "kanban") renderKanbanView();
-    if (tabId === "table") renderTableView();
     if (tabId === "gantt") renderGanttView();
-    if (tabId === "stats") renderStatsView();
     if (tabId === "team") renderTeamView();
     if (tabId === "settings") renderSettingsView();
   }
@@ -3507,145 +3251,11 @@
     var activeTab = document.querySelector(".tab-btn.active");
     if (activeTab) {
       var tab = activeTab.getAttribute("data-tab");
-      if (tab === "calendar") renderCalendarView();
       if (tab === "kanban") renderKanbanView();
-      if (tab === "table") renderTableView();
       if (tab === "gantt") renderGanttView();
-      if (tab === "stats") renderStatsView();
       if (tab === "team") renderTeamView();
     }
     applyBusinessRoleRestrictions();
-  }
-
-  // src/domains/categories.js
-  var customCategories = [];
-  function getCategories() {
-    return customCategories;
-  }
-  function setCategoriesFromSettings(raw) {
-    var parsed = [];
-    try {
-      parsed = JSON.parse(raw) || [];
-    } catch (e) {
-    }
-    customCategories.length = 0;
-    Array.prototype.push.apply(customCategories, parsed);
-  }
-  async function saveCategories() {
-    await saveSetting("categories", JSON.stringify(customCategories));
-    await syncCategoryChoices();
-  }
-  async function syncCategoryChoices() {
-    try {
-      var choices = customCategories.map(function(c) {
-        return c.name;
-      });
-      var choiceOptions = {};
-      customCategories.forEach(function(c) {
-        if (c.color) choiceOptions[c.name] = { fillColor: c.color, textColor: "#ffffff" };
-      });
-      var categoryCol = getColumnName("tasks", "category");
-      await grist.docApi.applyUserActions([
-        ["ModifyColumn", state.TASKS_TABLE, categoryCol, { widgetOptions: JSON.stringify({ choices, choiceOptions }) }]
-      ]);
-      state.taskTableColumns = null;
-    } catch (e) {
-      console.log("syncCategoryChoices:", e.message);
-    }
-  }
-  function renderCategoriesList() {
-    var container = document.getElementById("categories-list");
-    if (!container) return;
-    if (customCategories.length === 0) {
-      container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">' + (currentLang === "fr" ? "Aucune cat\xE9gorie" : "No categories") + "</div>";
-      return;
-    }
-    var html = '<div class="settings-items">';
-    customCategories.forEach(function(cat, i) {
-      html += '<div class="settings-item">';
-      html += '<span class="settings-item-dot" style="background:' + (cat.color || "#6366f1") + ';"></span>';
-      html += '<div class="settings-item-info"><strong>' + sanitize(cat.name) + "</strong></div>";
-      html += '<div class="settings-item-actions">';
-      html += '<button class="btn-icon" onclick="editCategorySetting(' + i + ')" title="' + (currentLang === "fr" ? "Modifier" : "Edit") + '">\u270F\uFE0F</button>';
-      if (state.isOwner) html += '<button class="btn-icon" onclick="removeCategorySetting(' + i + ')" title="' + t("delete") + '">\u{1F5D1}\uFE0F</button>';
-      html += "</div>";
-      html += "</div>";
-    });
-    html += "</div>";
-    container.innerHTML = html;
-  }
-  async function addCategorySetting() {
-    var result = await showPromptModal(
-      currentLang === "fr" ? "Nouvelle cat\xE9gorie" : "New category",
-      [
-        { label: currentLang === "fr" ? "Nom" : "Name", placeholder: currentLang === "fr" ? "Ex: Discovery" : "Ex: Discovery" },
-        { label: currentLang === "fr" ? "Couleur" : "Color", type: "color" }
-      ],
-      ["", "#6366f1"]
-    );
-    if (!result || !result[0]) return;
-    var name = result[0].trim();
-    if (!name) return;
-    if (customCategories.some(function(c) {
-      return c.name === name;
-    })) {
-      showToast(currentLang === "fr" ? "Cette cat\xE9gorie existe d\xE9j\xE0" : "This category already exists", "error");
-      return;
-    }
-    customCategories.push({ name, color: result[1] || "#6366f1" });
-    await saveCategories();
-    renderCategoriesList();
-    refreshAllViews();
-    showToast(currentLang === "fr" ? "Cat\xE9gorie ajout\xE9e" : "Category added", "success");
-  }
-  async function editCategorySetting(index) {
-    var cat = customCategories[index];
-    if (!cat) return;
-    var result = await showPromptModal(
-      currentLang === "fr" ? "Modifier la cat\xE9gorie" : "Edit category",
-      [
-        { label: currentLang === "fr" ? "Nom" : "Name" },
-        { label: currentLang === "fr" ? "Couleur" : "Color", type: "color" }
-      ],
-      [cat.name, cat.color || "#6366f1"]
-    );
-    if (!result || !result[0]) return;
-    var oldName = cat.name;
-    cat.name = result[0].trim();
-    cat.color = result[1] || cat.color;
-    if (oldName !== cat.name) {
-      var categoryCol = getColumnName("tasks", "category");
-      var affected = state.tasks.filter(function(tsk) {
-        return tsk.Category === oldName;
-      });
-      if (affected.length > 0) {
-        var actions = affected.map(function(tsk) {
-          return ["UpdateRecord", state.TASKS_TABLE, tsk.id, { [categoryCol]: cat.name }];
-        });
-        try {
-          await grist.docApi.applyUserActions(actions);
-        } catch (e) {
-          console.log("rename category on tasks:", e.message);
-        }
-      }
-    }
-    await saveCategories();
-    renderCategoriesList();
-    refreshAllViews();
-  }
-  async function removeCategorySetting(index) {
-    var cat = customCategories[index];
-    if (!cat) return;
-    var confirmed = await showConfirmModal(
-      currentLang === "fr" ? "Supprimer la cat\xE9gorie \xAB " + cat.name + " \xBB ?" : 'Delete category "' + cat.name + '"?',
-      currentLang === "fr" ? "Supprimer" : "Delete"
-    );
-    if (!confirmed) return;
-    customCategories.splice(index, 1);
-    await saveCategories();
-    renderCategoriesList();
-    refreshAllViews();
-    showToast(currentLang === "fr" ? "Cat\xE9gorie supprim\xE9e" : "Category removed", "info");
   }
 
   // src/domains/tags.js
@@ -3876,40 +3486,6 @@
     await removeAttachmentsForTask(taskId);
     await removeTimeEntriesForTask(taskId);
   }
-  async function saveTaskFormSilently(taskId) {
-    var title = requireTaskTitle();
-    if (!title) return false;
-    if (shouldLimitToMyProjects() && editAssignees.length === 0) {
-      var mine = myAssigneeValue();
-      if (mine) editAssignees = [mine];
-    }
-    var projectEl = document.getElementById("task-project");
-    var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
-    var record = {};
-    setField(record, "tasks", "title", title);
-    setField(record, "tasks", "description", getInputValue("task-desc").trim());
-    setField(record, "tasks", "status", getInputValue("task-status"));
-    setField(record, "tasks", "priority", getInputValue("task-priority"));
-    setField(record, "tasks", "assignee", ["L"].concat(resolveAssigneeIds(editAssignees)));
-    setField(record, "tasks", "group", getInputValue("task-group"));
-    setField(record, "tasks", "startDate", toEpoch(getInputValue("task-start")));
-    setField(record, "tasks", "dueDate", toEpoch(getInputValue("task-due")));
-    setField(record, "tasks", "category", getInputValue("task-category").trim());
-    setField(record, "tasks", "projectId", projectId);
-    setField(record, "tasks", "recurrence", getInputValue("task-recurrence", "none"));
-    setField(record, "tasks", "estimatedHours", getEstimatedHoursInput());
-    setField(record, "tasks", "tag", ["L"].concat(editTags));
-    if (state.raciEnabled && state.TASKS_TABLE === state.DEFAULT_TASKS_TABLE) {
-      record.Accountable = editAccountable.join(", ");
-      record.Consulted = editConsulted.join(", ");
-      record.Informed = editInformed.join(", ");
-    }
-    record = await keepExistingTaskColumns(record);
-    await grist.docApi.applyUserActions([
-      ["UpdateRecord", state.TASKS_TABLE, taskId, record]
-    ]);
-    return true;
-  }
   function captureTaskFormState() {
     var autoExtendEl = document.getElementById("task-auto-extend");
     return {
@@ -3956,120 +3532,6 @@
       return;
     }
     return startNewTask(defaultStatus);
-    editAssignees = [];
-    editAccountable = [];
-    editConsulted = [];
-    editInformed = [];
-    var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + "</option>";
-    }
-    var dotColor = "#f59e0b";
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal modal-detail" onclick="event.stopPropagation()">';
-    html += '<div class="modal-detail-top">';
-    html += '<span class="group-dot" style="background:' + dotColor + '"></span>';
-    html += '<span style="font-size:14px;font-weight:800;">' + t("modalNewTask") + "</span>";
-    html += '<div style="flex:1;"></div>';
-    html += '<button class="modal-close" onclick="closeModalForce()">\u2715</button>';
-    html += "</div>";
-    html += '<div class="modal-detail-content" style="grid-template-columns:1fr;">';
-    html += '<div class="modal-detail-left">';
-    html += '<input class="detail-title-input" type="text" id="task-title" placeholder="' + t("fieldTitle") + '" />';
-    html += '<div class="detail-field">';
-    html += '<div class="detail-field-value"><textarea id="task-desc" placeholder="' + t("fieldDescription") + '"></textarea></div>';
-    html += "</div>";
-    if (state.raciEnabled) {
-      html += renderRaciField("R", t("raciResponsible"), "assignee", "editAssignees");
-      html += renderRaciField("A", t("raciAccountable"), "accountable", "editAccountable");
-      html += renderRaciField("C", t("raciConsulted"), "consulted", "editConsulted");
-      html += renderRaciField("I", t("raciInformed"), "informed", "editInformed");
-    } else {
-      html += '<div class="detail-field">';
-      html += '<span class="detail-field-icon">\u{1F464}</span>';
-      html += '<span class="detail-field-label">' + t("fieldAssignee") + "</span>";
-      html += '<div class="detail-field-value">';
-      html += '<div class="assignee-chips" id="assignee-chips"></div>';
-      html += '<div class="assignee-add-row">';
-      html += '<select id="assignee-select">';
-      html += '<option value="">-- ' + t("searchAssignee") + " --</option>";
-      for (var i = 0; i < state.users.length; i++) {
-        html += '<option value="' + sanitize(state.users[i].Email || state.users[i].Name) + '">' + sanitize(state.users[i].Name || state.users[i].Email) + "</option>";
-      }
-      html += "</select>";
-      html += `<button class="assignee-add-btn" onclick="addRaciChip('editAssignees','assignee')">` + t("addAssignee") + "</button>";
-      html += "</div>";
-      html += "</div></div>";
-    }
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4CA}</span>';
-    html += '<span class="detail-field-label">' + t("fieldStatus") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-status">';
-    var _statuses = getKanbanStatuses();
-    for (var _si = 0; _si < _statuses.length; _si++) {
-      var _s = _statuses[_si];
-      var _sl = currentLang === "fr" ? _s.label_fr : _s.label_en;
-      html += '<option value="' + _s.key + '"' + (defaultStatus === _s.key || !defaultStatus && _si === 0 ? " selected" : "") + ">" + _sl + "</option>";
-    }
-    html += "</select></div></div>";
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F525}</span>';
-    html += '<span class="detail-field-label">' + t("fieldPriority") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-priority">';
-    html += '<option value="medium">' + t("priorityMedium") + "</option>";
-    html += '<option value="high">' + t("priorityHigh") + "</option>";
-    html += '<option value="low">' + t("priorityLow") + "</option>";
-    html += "</select></div></div>";
-    html += "</div>";
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F465}</span>';
-    html += '<span class="detail-field-label">' + t("fieldGroup") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-group">' + groupOptions + "</select></div>";
-    html += "</div>";
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4C5}</span>';
-    html += '<span class="detail-field-label">' + t("fieldStartDate") + "</span>";
-    html += '<div class="detail-field-value"><input type="date" id="task-start" /></div>';
-    html += "</div>";
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u23F0</span>';
-    html += '<span class="detail-field-label">' + t("fieldDueDate") + "</span>";
-    html += '<div class="detail-field-value"><input type="date" id="task-due" /></div>';
-    html += "</div>";
-    html += "</div>";
-    var projectOptions = '<option value="">' + t("noProject") + "</option>";
-    for (var pi = 0; pi < state.projects.length; pi++) {
-      var projSelected = state.currentProjectId === state.projects[pi].id ? " selected" : "";
-      projectOptions += '<option value="' + state.projects[pi].id + '"' + projSelected + ">" + sanitize(state.projects[pi].Name) + "</option>";
-    }
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4C2}</span>';
-    html += '<span class="detail-field-label">' + t("project") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-project">' + projectOptions + "</select></div>";
-    html += "</div>";
-    var newCategoryOptions = '<option value="">--</option>';
-    var newCategories = getCategories();
-    for (var nci = 0; nci < newCategories.length; nci++) {
-      newCategoryOptions += '<option value="' + sanitize(newCategories[nci].name) + '">' + sanitize(newCategories[nci].name) + "</option>";
-    }
-    html += '<div class="detail-field">';
-    html += '<span class="detail-field-icon">\u{1F4C1}</span>';
-    html += '<span class="detail-field-label">' + t("fieldCategory") + "</span>";
-    html += '<div class="detail-field-value"><select id="task-category">' + newCategoryOptions + "</select></div>";
-    html += "</div>";
-    html += renderTagField();
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-detail-footer">';
-    html += "<div></div>";
-    html += '<div style="display:flex;gap:8px;">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="createTask()">' + t("save") + "</button>";
-    html += "</div></div>";
-    html += "</div></div>";
-    document.getElementById("modal-container").innerHTML = html;
   }
   var editAssignees = [];
   var editAccountable = [];
@@ -5216,727 +4678,6 @@
     }
   }
 
-  // src/domains/team.js
-  function getUserDisplayName(emailOrName) {
-    if (!emailOrName) return "";
-    var user = state.users.find(function(u) {
-      return u.Email === emailOrName || u.Name === emailOrName;
-    });
-    if (user && user.Name) return user.Name;
-    if (emailOrName.indexOf("@") !== -1) {
-      return emailOrName.split("@")[0];
-    }
-    return emailOrName;
-  }
-  function renderTeamView() {
-    renderUsersList();
-    renderGroupsList();
-    renderCategoriesList();
-  }
-  function renderUsersList() {
-    var container = document.getElementById("users-list");
-    if (!container) return;
-    var displayedUsers = state.currentFilterRole ? state.users.filter(function(u2) {
-      return userMatchesRole(u2, state.currentFilterRole);
-    }) : state.users;
-    if (displayedUsers.length === 0) {
-      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noUsers") + "</div>";
-      return;
-    }
-    var html = '<table class="data-table"><thead><tr>';
-    html += "<th>" + t("fieldName") + "</th>";
-    html += "<th>" + t("fieldEmail") + "</th>";
-    html += "<th>" + t("fieldRole") + "</th>";
-    html += "<th>" + t("fieldGroup") + "</th>";
-    html += "<th>" + t("colActions") + "</th>";
-    html += "</tr></thead><tbody>";
-    for (var i = 0; i < displayedUsers.length; i++) {
-      var u = displayedUsers[i];
-      var roleText = userRoleDisplay(u) ? userRoleDisplay(u).split(",").map(function(r) {
-        return roleLabel(r.trim());
-      }).join(", ") : "";
-      var firstRole = getUserRoles(u)[0] || "member";
-      var roleBg = firstRole === "admin" ? "#fef2f2;color:#dc2626" : firstRole === "viewer" ? "#f1f5f9;color:#64748b" : "#eff6ff;color:#1e40af";
-      html += "<tr>";
-      html += '<td style="font-weight:700;">\u{1F464} ' + sanitize(u.Name) + "</td>";
-      html += "<td>" + sanitize(u.Email) + "</td>";
-      html += '<td><span style="padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;background:' + roleBg + '">' + sanitize(roleText) + "</span></td>";
-      html += "<td>" + (u.Group_Name ? '<span class="assignee-chip">\u{1F465} ' + sanitize(u.Group_Name) + "</span>" : "--") + "</td>";
-      html += '<td><button class="btn-icon" onclick="openEditUserModal(' + u.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
-      html += '<button class="btn-icon" onclick="deleteUser(' + u.id + ')">\u{1F5D1}\uFE0F</button></td>';
-      html += "</tr>";
-    }
-    html += "</tbody></table>";
-    container.innerHTML = html;
-  }
-  function renderGroupsList() {
-    var container = document.getElementById("groups-list");
-    if (!container) return;
-    if (state.groups.length === 0) {
-      container.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;">' + t("noGroups") + "</div>";
-      return;
-    }
-    var html = "";
-    for (var i = 0; i < state.groups.length; i++) {
-      var g = state.groups[i];
-      var memberCount = state.users.filter(function(u) {
-        return u.Group_Name === g.Name;
-      }).length;
-      var memberNames = state.users.filter(function(u) {
-        return u.Group_Name === g.Name;
-      }).map(function(u) {
-        return u.Name || u.Email;
-      });
-      html += '<div class="template-card">';
-      html += '<div class="template-card-info">';
-      html += "<h4>\u{1F465} " + sanitize(g.Name) + "</h4>";
-      html += '<div class="template-meta">';
-      html += memberCount + " " + t("members");
-      if (g.Description) html += " \u2022 " + sanitize(g.Description);
-      html += "</div>";
-      if (memberNames.length > 0) {
-        html += '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">';
-        for (var j = 0; j < memberNames.length; j++) {
-          html += '<span class="assignee-chip">\u{1F464} ' + sanitize(memberNames[j]) + "</span>";
-        }
-        html += "</div>";
-      }
-      html += "</div>";
-      html += '<button class="btn-icon" onclick="openEditGroupModal(' + g.id + ')" title="' + t("edit") + '">\u270F\uFE0F</button>';
-      html += '<button class="btn-icon" onclick="deleteGroup(' + g.id + ')">\u{1F5D1}\uFE0F</button>';
-      html += "</div>";
-    }
-    container.innerHTML = html;
-  }
-  async function getRoleChoicesFromGrist() {
-    var roleSet = {};
-    var hasGristChoices = false;
-    try {
-      var roleColName = getColumnName("users", "role");
-      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
-      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
-      var tableRowId = null;
-      if (tablesData && tablesData.id && tablesData.tableId) {
-        for (var i = 0; i < tablesData.id.length; i++) {
-          if (tablesData.tableId[i] === state.USERS_TABLE) {
-            tableRowId = tablesData.id[i];
-            break;
-          }
-        }
-      }
-      if (tableRowId !== null && columnsData && columnsData.id) {
-        for (var j = 0; j < columnsData.id.length; j++) {
-          if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
-            var wo = columnsData.widgetOptions[j];
-            if (wo) {
-              try {
-                var opts = JSON.parse(wo);
-                if (opts.choices && Array.isArray(opts.choices) && opts.choices.length > 0) {
-                  opts.choices.forEach(function(c) {
-                    roleSet[c] = true;
-                  });
-                  hasGristChoices = true;
-                }
-              } catch (e) {
-              }
-            }
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      console.log("Could not fetch role choices from Grist metadata:", e);
-    }
-    if (!hasGristChoices) {
-      ["admin", "member", "viewer"].forEach(function(r) {
-        roleSet[r] = true;
-      });
-    }
-    state.users.forEach(function(u) {
-      getUserRoles(u).forEach(function(r) {
-        if (r) roleSet[r] = true;
-      });
-    });
-    return Object.keys(roleSet).sort();
-  }
-  var _manageRolesState = { choices: [] };
-  async function openManageRolesModal() {
-    var choices = await getRoleChoicesFromGrist();
-    _manageRolesState.choices = choices.slice();
-    renderManageRolesModal();
-  }
-  function renderManageRolesModal() {
-    var choices = _manageRolesState.choices;
-    var usage = {};
-    state.users.forEach(function(u) {
-      getUserRoles(u).forEach(function(r2) {
-        if (r2) usage[r2] = (usage[r2] || 0) + 1;
-      });
-    });
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("manageRolesTitle") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<p style="color:#64748b;font-size:13px;margin:0 0 12px 0;">' + t("manageRolesSubtitle") + "</p>";
-    html += '<div class="settings-items">';
-    if (choices.length === 0) {
-      html += '<div style="text-align:center;color:#94a3b8;padding:20px;">--</div>';
-    } else {
-      for (var i = 0; i < choices.length; i++) {
-        var r = choices[i];
-        var count = usage[r] || 0;
-        html += '<div class="settings-item">';
-        html += '<div class="settings-item-info">';
-        html += "<strong>" + sanitize(roleLabel(r)) + "</strong>";
-        html += '<span class="settings-item-meta">' + count + " " + (currentLang === "fr" ? "utilisateur(s)" : "user(s)") + "</span>";
-        html += "</div>";
-        html += '<div class="settings-item-actions">';
-        html += '<button class="btn-icon" onclick="removeRoleChoice(' + i + ')" title="' + t("confirmDeleteRole") + '">\u{1F5D1}\uFE0F</button>';
-        html += "</div>";
-        html += "</div>";
-      }
-    }
-    html += "</div>";
-    html += '<div style="display:flex;gap:8px;margin-top:16px;">';
-    html += '<input type="text" id="new-role-name" placeholder="' + t("newRolePlaceholder") + `" style="flex:1;" onkeydown="if(event.key==='Enter'){addRoleChoice();}" />`;
-    html += '<button class="btn btn-primary btn-sm" onclick="addRoleChoice()">+ ' + t("addRole") + "</button>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="saveRoleChoices()">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function addRoleChoice() {
-    var input = document.getElementById("new-role-name");
-    var name = (input.value || "").trim();
-    if (!name) return;
-    if (_manageRolesState.choices.indexOf(name) !== -1) {
-      showToast(currentLang === "fr" ? "Ce r\xF4le existe d\xE9j\xE0" : "Role already exists", "error");
-      return;
-    }
-    _manageRolesState.choices.push(name);
-    renderManageRolesModal();
-  }
-  function removeRoleChoice(index) {
-    var role = _manageRolesState.choices[index];
-    var inUse = state.users.some(function(u) {
-      return userMatchesRole(u, role);
-    });
-    if (inUse) {
-      if (!confirm(t("cannotDeleteUsedRole") + ". " + (currentLang === "fr" ? "Continuer ?" : "Continue?"))) {
-        return;
-      }
-    } else if (!confirm(t("confirmDeleteRole"))) {
-      return;
-    }
-    _manageRolesState.choices.splice(index, 1);
-    renderManageRolesModal();
-  }
-  async function saveRoleChoices() {
-    try {
-      var roleColName = getColumnName("users", "role");
-      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
-      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
-      var tableRowId = null;
-      for (var i = 0; i < tablesData.id.length; i++) {
-        if (tablesData.tableId[i] === state.USERS_TABLE) {
-          tableRowId = tablesData.id[i];
-          break;
-        }
-      }
-      if (tableRowId === null) throw new Error("Table not found");
-      var existingOpts = {};
-      for (var j = 0; j < columnsData.id.length; j++) {
-        if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
-          var wo = columnsData.widgetOptions[j];
-          if (wo) {
-            try {
-              existingOpts = JSON.parse(wo);
-            } catch (e) {
-            }
-          }
-          break;
-        }
-      }
-      existingOpts.choices = _manageRolesState.choices;
-      if (!existingOpts.widget) existingOpts.widget = "TextBox";
-      await grist.docApi.applyUserActions([
-        ["ModifyColumn", state.USERS_TABLE, roleColName, { widgetOptions: JSON.stringify(existingOpts) }]
-      ]);
-      showToast(t("rolesUpdated"), "success");
-      closeModalForce();
-    } catch (e) {
-      console.error("Error saving roles:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function openEditUserModal(userId) {
-    var user = state.users.find(function(u) {
-      return u.id === userId;
-    });
-    if (!user) return;
-    var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      var sel = state.groups[i].Name === user.Group_Name ? " selected" : "";
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '"' + sel + ">" + sanitize(state.groups[i].Name) + "</option>";
-    }
-    var roleChoices = await getRoleChoicesFromGrist();
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(user.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" value="' + sanitize(user.Name) + '" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" value="' + sanitize(user.Email) + '" /></div>';
-    html += '<div class="form-row">';
-    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
-    if (user.Role && roleChoices.indexOf(user.Role) === -1) {
-      html += '<option value="' + sanitize(user.Role) + '" selected>' + sanitize(roleLabel(user.Role)) + "</option>";
-    }
-    for (var i = 0; i < roleChoices.length; i++) {
-      var r = roleChoices[i];
-      var sel = user.Role === r ? " selected" : "";
-      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
-    }
-    html += "</select></div>";
-    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="updateUser(' + userId + ')">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function openEditGroupModal(groupId) {
-    var group = state.groups.find(function(g) {
-      return g.id === groupId;
-    });
-    if (!group) return;
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("edit") + " - " + sanitize(group.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" value="' + sanitize(group.Name) + '" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc">' + sanitize(group.Description || "") + "</textarea></div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="updateGroup(' + groupId + ')">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  async function updateUser(userId) {
-    var name = document.getElementById("user-name").value.trim();
-    if (!name) return;
-    var record = {};
-    record[getColumnName("users", "name")] = name;
-    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
-    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
-    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.USERS_TABLE, userId, record]
-      ]);
-      showToast(t("taskUpdated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error updating user:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function updateGroup(groupId) {
-    var name = document.getElementById("group-name").value.trim();
-    if (!name) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.GROUPS_TABLE, groupId, {
-          Name: name,
-          Description: document.getElementById("group-desc").value.trim()
-        }]
-      ]);
-      showToast(t("taskUpdated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error updating group:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function openNewUserModal() {
-    var groupOptions = '<option value="">--</option>';
-    for (var i = 0; i < state.groups.length; i++) {
-      groupOptions += '<option value="' + sanitize(state.groups[i].Name) + '">' + sanitize(state.groups[i].Name) + "</option>";
-    }
-    var roleChoices = await getRoleChoicesFromGrist();
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("modalNewUser") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="user-name" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldEmail") + '</label><input type="email" id="user-email" /></div>';
-    html += '<div class="form-row">';
-    html += '<div class="form-group"><label>' + t("fieldRole") + '</label><select id="user-role">';
-    for (var i = 0; i < roleChoices.length; i++) {
-      var r = roleChoices[i];
-      var sel = r === "member" ? " selected" : "";
-      html += '<option value="' + sanitize(r) + '"' + sel + ">" + sanitize(roleLabel(r)) + "</option>";
-    }
-    html += "</select></div>";
-    html += '<div class="form-group"><label>' + t("fieldGroup") + '</label><select id="user-group">' + groupOptions + "</select></div>";
-    html += "</div>";
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="createUser()">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  function openNewGroupModal() {
-    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
-    html += '<div class="modal" onclick="event.stopPropagation()">';
-    html += '<div class="modal-header"><h3>' + t("modalNewGroup") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
-    html += '<div class="modal-body">';
-    html += '<div class="form-group"><label>' + t("fieldName") + '</label><input type="text" id="group-name" /></div>';
-    html += '<div class="form-group"><label>' + t("fieldDescription") + '</label><textarea id="group-desc"></textarea></div>';
-    html += "</div>";
-    html += '<div class="modal-footer">';
-    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
-    html += '<button class="btn btn-primary" onclick="createGroup()">' + t("save") + "</button>";
-    html += "</div></div></div>";
-    document.getElementById("modal-container").innerHTML = html;
-  }
-  async function createUser() {
-    var name = document.getElementById("user-name").value.trim();
-    if (!name) return;
-    var record = {};
-    record[getColumnName("users", "name")] = name;
-    record[getColumnName("users", "email")] = document.getElementById("user-email").value.trim();
-    record[getColumnName("users", "role")] = document.getElementById("user-role").value;
-    record[getColumnName("users", "group")] = document.getElementById("user-group").value;
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.USERS_TABLE, null, record]
-      ]);
-      showToast(t("userCreated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error creating user:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function createGroup() {
-    var name = document.getElementById("group-name").value.trim();
-    if (!name) return;
-    var record = {
-      Name: name,
-      Description: document.getElementById("group-desc").value.trim()
-    };
-    try {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", state.GROUPS_TABLE, null, record]
-      ]);
-      showToast(t("groupCreated"), "success");
-      closeModalForce();
-      await loadAllData();
-    } catch (e) {
-      console.error("Error creating group:", e);
-      showToast("Error: " + e.message, "error");
-    }
-  }
-  async function deleteUser(userId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(t("confirmDeleteUser"), currentLang === "fr" ? "Supprimer l'utilisateur" : "Delete user");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.USERS_TABLE, userId]
-      ]);
-      showToast(t("userDeleted"), "info");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error deleting user:", e);
-    }
-  }
-  async function deleteGroup(groupId) {
-    if (!state.isOwner) return;
-    var confirmed = await showConfirmModal(t("confirmDeleteGroup"), currentLang === "fr" ? "Supprimer le groupe" : "Delete group");
-    if (!confirmed) return;
-    try {
-      await grist.docApi.applyUserActions([
-        ["RemoveRecord", state.GROUPS_TABLE, groupId]
-      ]);
-      showToast(t("groupDeleted"), "info");
-      await loadAllData();
-    } catch (e) {
-      console.error("Error deleting group:", e);
-    }
-  }
-
-  // src/domains/table-view.js
-  var tableFilterStatuses = [];
-  var tableFilterPriorities = [];
-  function renderMultiFilter(kind) {
-    var containerId = kind === "status" ? "ms-status" : "ms-priority";
-    var c = document.getElementById(containerId);
-    if (!c) return;
-    var opts, selected, placeholder;
-    if (kind === "status") {
-      opts = getKanbanStatuses().map(function(s) {
-        return { value: s.key, label: currentLang === "fr" ? s.label_fr : s.label_en };
-      });
-      selected = tableFilterStatuses;
-      placeholder = currentLang === "fr" ? "Tous les statuts" : "All statuses";
-    } else {
-      opts = [
-        { value: "high", label: t("priorityHigh") },
-        { value: "medium", label: t("priorityMedium") },
-        { value: "low", label: t("priorityLow") }
-      ];
-      selected = tableFilterPriorities;
-      placeholder = currentLang === "fr" ? "Toutes priorit\xE9s" : "All priorities";
-    }
-    var labelText = selected.length === 0 ? placeholder : opts.filter(function(o) {
-      return selected.indexOf(o.value) !== -1;
-    }).map(function(o) {
-      return o.label;
-    }).join(", ");
-    var h = '<button type="button" class="filter-combo-btn' + (selected.length ? " active" : "") + `" onclick="toggleMsFilter('` + containerId + `')" id="` + containerId + '-btn">';
-    h += '<span class="filter-combo-label">' + sanitize(labelText) + '</span><span class="filter-combo-chevron">\u25BE</span></button>';
-    h += '<div class="filter-combo-dd" id="' + containerId + '-dd"><div class="filter-combo-list">';
-    if (selected.length) {
-      h += `<div class="filter-combo-opt" onclick="clearMsFilter('` + kind + `')" style="color:#ef4444;font-weight:600;">\u2715 ` + (currentLang === "fr" ? "Effacer" : "Clear") + "</div>";
-    }
-    opts.forEach(function(o) {
-      var on = selected.indexOf(o.value) !== -1;
-      h += '<div class="filter-combo-opt' + (on ? " selected" : "") + `" onclick="toggleMsOption('` + kind + "','" + sanitize(o.value).replace(/'/g, "\\'") + `')">`;
-      h += '<span style="display:inline-block;width:16px;">' + (on ? "\u2713" : "") + "</span>" + sanitize(o.label) + "</div>";
-    });
-    h += "</div></div>";
-    var prevDd = document.getElementById(containerId + "-dd");
-    var wasOpen = prevDd && prevDd.classList.contains("show");
-    c.innerHTML = h;
-    if (wasOpen) {
-      var newDd = document.getElementById(containerId + "-dd");
-      var newBtn = document.getElementById(containerId + "-btn");
-      if (newDd) newDd.classList.add("show");
-      if (newBtn) newBtn.classList.add("open");
-    }
-  }
-  function toggleMsFilter(containerId) {
-    var dd = document.getElementById(containerId + "-dd");
-    var btn = document.getElementById(containerId + "-btn");
-    if (!dd) return;
-    var isOpen = dd.classList.contains("show");
-    document.querySelectorAll(".filter-combo-dd.show").forEach(function(d) {
-      d.classList.remove("show");
-    });
-    document.querySelectorAll(".filter-combo-btn.open").forEach(function(b) {
-      b.classList.remove("open");
-    });
-    if (!isOpen) {
-      dd.classList.add("show");
-      if (btn) btn.classList.add("open");
-      setTimeout(function() {
-        document.addEventListener("mousedown", function hideMs(e) {
-          var box = document.getElementById(containerId);
-          if (box && !box.contains(e.target)) {
-            var dd2 = document.getElementById(containerId + "-dd");
-            var btn2 = document.getElementById(containerId + "-btn");
-            if (dd2) dd2.classList.remove("show");
-            if (btn2) btn2.classList.remove("open");
-            document.removeEventListener("mousedown", hideMs);
-          }
-        });
-      }, 0);
-    }
-  }
-  function toggleMsOption(kind, value) {
-    var arr = kind === "status" ? tableFilterStatuses : tableFilterPriorities;
-    var i = arr.indexOf(value);
-    if (i === -1) arr.push(value);
-    else arr.splice(i, 1);
-    renderTableView();
-  }
-  function clearMsFilter(kind) {
-    if (kind === "status") tableFilterStatuses = [];
-    else tableFilterPriorities = [];
-    renderMultiFilter(kind);
-    renderTableView();
-  }
-  var tableSortField = null;
-  var tableSortAsc = true;
-  function sortTable(field) {
-    if (tableSortField === field) {
-      tableSortAsc = !tableSortAsc;
-    } else {
-      tableSortField = field;
-      tableSortAsc = true;
-    }
-    renderTableView();
-  }
-  function renderTableView() {
-    var _prevView = document.getElementById("table-view");
-    var _expandedParents = [];
-    if (_prevView) {
-      _prevView.querySelectorAll(".toggle-btn.expanded").forEach(function(b) {
-        _expandedParents.push(b.id.replace("toggle-", ""));
-      });
-    }
-    var _scrollEl = document.scrollingElement || document.documentElement;
-    var _scrollTop = _scrollEl ? _scrollEl.scrollTop : window.scrollY || 0;
-    renderMultiFilter("status");
-    renderMultiFilter("priority");
-    var search = (document.getElementById("table-search").value || "").toLowerCase();
-    var filtered = getFilteredTasks().filter(function(task2) {
-      if (tableFilterStatuses.length && tableFilterStatuses.indexOf(task2.Status) === -1) return false;
-      if (tableFilterPriorities.length && tableFilterPriorities.indexOf(task2.Priority) === -1) return false;
-      if (search) {
-        var text = (task2.Title + " " + task2.Description + " " + task2.Assignee).toLowerCase();
-        if (text.indexOf(search) === -1) return false;
-      }
-      return true;
-    });
-    if (tableSortField) {
-      var dir = tableSortAsc ? 1 : -1;
-      filtered.sort(function(a, b) {
-        var va, vb;
-        switch (tableSortField) {
-          case "Title":
-            va = (a.Title || "").toLowerCase();
-            vb = (b.Title || "").toLowerCase();
-            break;
-          case "Project":
-            va = getProjectName(a.Project_Id).toLowerCase();
-            vb = getProjectName(b.Project_Id).toLowerCase();
-            break;
-          case "Status":
-            va = a.Status || "";
-            vb = b.Status || "";
-            break;
-          case "Priority":
-            var po = { high: 0, medium: 1, low: 2 };
-            va = po[a.Priority] !== void 0 ? po[a.Priority] : 3;
-            vb = po[b.Priority] !== void 0 ? po[b.Priority] : 3;
-            break;
-          case "Assignee":
-            va = (a.Assignee || "").toLowerCase();
-            vb = (b.Assignee || "").toLowerCase();
-            break;
-          case "Start_Date":
-            va = a.Start_Date || 0;
-            vb = b.Start_Date || 0;
-            break;
-          case "Due_Date":
-            va = a.Due_Date || 0;
-            vb = b.Due_Date || 0;
-            break;
-          default:
-            va = "";
-            vb = "";
-        }
-        if (va < vb) return -1 * dir;
-        if (va > vb) return 1 * dir;
-        return 0;
-      });
-    }
-    function sortIcon(field) {
-      return tableSortField === field ? tableSortAsc ? " \u25B2" : " \u25BC" : " \u21C5";
-    }
-    var thStyle = "cursor:pointer;user-select:none;";
-    var html = '<table class="data-table">';
-    html += "<thead><tr>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Title')">` + t("colTaskName") + sortIcon("Title") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Project')">` + (currentLang === "fr" ? "Projet" : "Project") + sortIcon("Project") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Status')">` + t("colStatus") + sortIcon("Status") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Priority')">` + t("colPriority") + sortIcon("Priority") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Assignee')">` + t("colAssignee") + sortIcon("Assignee") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Start_Date')">` + t("colStartDate") + sortIcon("Start_Date") + "</th>";
-    html += '<th style="' + thStyle + `" onclick="sortTable('Due_Date')">` + t("colDueDate") + sortIcon("Due_Date") + "</th>";
-    html += "<th>" + t("colActions") + "</th>";
-    html += "</tr></thead><tbody>";
-    for (var i = 0; i < filtered.length; i++) {
-      var task = filtered[i];
-      var statusClass = "status-" + task.Status;
-      var overdueHtml = isOverdue(task) ? " \u26A0\uFE0F" : "";
-      var dotClass = task.Priority === "high" ? "dot-high" : task.Priority === "medium" ? "dot-medium" : "dot-low";
-      var taskSubtasks = getTaskSubtasks(task.id);
-      var completedSt = taskSubtasks.filter(function(st2) {
-        return st2.Completed;
-      }).length;
-      var taskProjColor = getProjectColor(task.Project_Id);
-      var taskProjName = getProjectName(task.Project_Id);
-      html += '<tr class="task-row clickable-row" onclick="openEditTaskModal(' + task.id + ')">';
-      html += '<td><div style="display:flex;align-items:center;gap:8px;border-left:3px solid ' + taskProjColor + ';padding-left:6px;">';
-      if (taskSubtasks.length > 0) {
-        html += '<button class="toggle-btn" onclick="event.stopPropagation(); toggleSubtasks(' + task.id + ')" id="toggle-' + task.id + '">\u25B6</button>';
-      } else {
-        html += '<span style="width:18px;"></span>';
-      }
-      html += '<div><div style="font-weight:700;">' + sanitize(task.Title) + "</div>";
-      if (task.Description) html += '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + sanitize(task.Description).substring(0, 80) + "</div>";
-      html += "</div></div></td>";
-      html += "<td>" + (taskProjName ? '<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:50%;background:' + taskProjColor + ';display:inline-block;"></span>' + sanitize(taskProjName) + "</span>" : "") + "</td>";
-      html += '<td><span class="status-badge ' + statusClass + '">\u25CF ' + statusLabel(task.Status) + "</span>";
-      if (taskSubtasks.length > 0) html += ' <span class="st-badge">' + completedSt + "/" + taskSubtasks.length + "</span>";
-      html += "</td>";
-      html += '<td><span class="priority-dot ' + dotClass + '"></span> ' + priorityLabel(task.Priority) + "</td>";
-      var assigneeDisplay = task.Assignee ? task.Assignee.split(",").map(function(a) {
-        return getUserDisplayName(a.trim());
-      }).join(", ") : "";
-      html += "<td>" + (assigneeDisplay ? '<span class="assignee-chip">\u{1F464} ' + sanitize(assigneeDisplay) + "</span>" : "") + "</td>";
-      html += "<td>" + (task.Start_Date ? formatDate(task.Start_Date) : t("notDefined")) + "</td>";
-      html += '<td style="' + (isOverdue(task) ? "color:#dc2626;font-weight:700;" : "") + '">' + (task.Due_Date ? formatDate(task.Due_Date) + overdueHtml : t("noDate")) + "</td>";
-      html += '<td onclick="event.stopPropagation();">';
-      if (state.isOwner) html += '<button class="btn-icon" onclick="deleteTask(' + task.id + ')">\u{1F5D1}\uFE0F</button>';
-      html += "</td>";
-      html += "</tr>";
-      var _nowSec = Math.floor(Date.now() / 1e3);
-      for (var si = 0; si < taskSubtasks.length; si++) {
-        var st = taskSubtasks[si];
-        html += '<tr class="subtask-row clickable-row" data-parent="' + task.id + '" style="display:none;cursor:pointer;" onclick="openEditTaskModal(' + task.id + ", true); setTimeout(function(){startEditSubtask(" + st.id + ')},100);">';
-        var stStatus = st.Status || (st.Completed ? "done" : "todo");
-        var stDotClass = st.Priority === "high" ? "dot-high" : st.Priority === "medium" ? "dot-medium" : "dot-low";
-        var stAssignee = st.Assignee ? st.Assignee.split(",").map(function(a) {
-          return getUserDisplayName(a.trim());
-        }).join(", ") : "";
-        var stOverdue = st.Due_Date && !st.Completed && st.Due_Date < _nowSec;
-        var stMilestoneMark = st.Type === "milestone" ? '<span title="Jalon" style="color:#7c3aed;margin-right:3px;">\u25C6</span>' : "";
-        html += '<td><div class="subtask-indent"><span class="subtask-arrow">\u2514</span><input type="checkbox" class="subtask-checkbox" ' + (st.Completed ? "checked" : "") + ' onclick="event.stopPropagation();toggleSubtask(' + st.id + ", " + !st.Completed + ')" style="cursor:pointer;width:14px;height:14px;margin-right:6px;flex-shrink:0;" />' + stMilestoneMark + '<span class="subtask-name' + (st.Completed ? " completed" : "") + '">' + sanitize(st.Title) + "</span></div></td>";
-        html += "<td></td>";
-        var stStatusDef = getKanbanStatuses().find(function(s) {
-          return s.key === stStatus;
-        });
-        var stStatusColor = stStatusDef && stStatusDef.color ? stStatusDef.color : "#94a3b8";
-        html += '<td><span class="status-badge" style="background:' + stStatusColor + "20;color:" + stStatusColor + ';">\u25CF ' + statusLabel(stStatus) + "</span></td>";
-        html += '<td><span class="priority-dot ' + stDotClass + '"></span> ' + priorityLabel(st.Priority) + "</td>";
-        html += "<td>" + (stAssignee ? '<span class="assignee-chip">\u{1F464} ' + sanitize(stAssignee) + "</span>" : "") + "</td>";
-        html += "<td>" + (st.Start_Date ? formatDate(st.Start_Date) : "") + "</td>";
-        html += '<td style="' + (stOverdue ? "color:#dc2626;font-weight:700;" : "") + '">' + (st.Due_Date ? formatDate(st.Due_Date) + (stOverdue ? " \u26A0\uFE0F" : "") : "") + "</td>";
-        html += "<td></td>";
-        html += "</tr>";
-      }
-    }
-    if (filtered.length === 0) {
-      html += '<tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8;">' + t("noTasks") + "</td></tr>";
-    }
-    html += "</tbody></table>";
-    document.getElementById("table-view").innerHTML = html;
-    _expandedParents.forEach(function(pid) {
-      var rows = document.querySelectorAll('.subtask-row[data-parent="' + pid + '"]');
-      var btn = document.getElementById("toggle-" + pid);
-      for (var i2 = 0; i2 < rows.length; i2++) rows[i2].style.display = "table-row";
-      if (btn) {
-        btn.textContent = "\u25BC";
-        btn.classList.add("expanded");
-      }
-    });
-    if (_scrollEl && _scrollTop) _scrollEl.scrollTop = _scrollTop;
-  }
-
   // src/domains/subtasks.js
   function getTaskSubtasks(taskId) {
     return state.subtasks.filter(function(st) {
@@ -5997,76 +4738,6 @@
       renderKanbanView();
     } catch (e) {
       console.error("toggleSubtaskFromCard:", e);
-    }
-  }
-  function toggleSubtasks(taskId) {
-    var rows = document.querySelectorAll('.subtask-row[data-parent="' + taskId + '"]');
-    var btn = document.getElementById("toggle-" + taskId);
-    var isExpanded = rows.length > 0 && rows[0].style.display !== "none";
-    for (var i = 0; i < rows.length; i++) {
-      rows[i].style.display = isExpanded ? "none" : "table-row";
-    }
-    if (btn) {
-      btn.textContent = isExpanded ? "\u25B6" : "\u25BC";
-      btn.classList.toggle("expanded", !isExpanded);
-    }
-  }
-  function expandAllSubtasks() {
-    var rows = document.querySelectorAll(".subtask-row");
-    var btns = document.querySelectorAll(".toggle-btn");
-    for (var i = 0; i < rows.length; i++) rows[i].style.display = "table-row";
-    for (var i = 0; i < btns.length; i++) {
-      btns[i].textContent = "\u25BC";
-      btns[i].classList.add("expanded");
-    }
-  }
-  function collapseAllSubtasks() {
-    var rows = document.querySelectorAll(".subtask-row");
-    var btns = document.querySelectorAll(".toggle-btn");
-    for (var i = 0; i < rows.length; i++) rows[i].style.display = "none";
-    for (var i = 0; i < btns.length; i++) {
-      btns[i].textContent = "\u25B6";
-      btns[i].classList.remove("expanded");
-    }
-  }
-  async function toggleSubtaskFromTable(subtaskId, completed) {
-    var subtask = state.subtasks.find(function(st) {
-      return st.id === subtaskId;
-    });
-    var parentTaskId = subtask ? subtask.Parent_Task_Id : null;
-    var expandedTasks = [];
-    document.querySelectorAll(".toggle-btn.expanded").forEach(function(btn) {
-      var taskId = btn.id.replace("toggle-", "");
-      expandedTasks.push(parseInt(taskId));
-    });
-    try {
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", state.SUBTASKS_TABLE, subtaskId, { Completed: completed }]
-      ]);
-      for (var i = 0; i < state.subtasks.length; i++) {
-        if (state.subtasks[i].id === subtaskId) {
-          state.subtasks[i].Completed = completed;
-          break;
-        }
-      }
-      renderTableView();
-      expandedTasks.forEach(function(taskId) {
-        var rows = document.querySelectorAll('.subtask-row[data-parent="' + taskId + '"]');
-        var btn = document.getElementById("toggle-" + taskId);
-        for (var i2 = 0; i2 < rows.length; i2++) {
-          rows[i2].style.display = "table-row";
-        }
-        if (btn) {
-          btn.textContent = "\u25BC";
-          btn.classList.add("expanded");
-        }
-      });
-      var modal = document.getElementById("edit-task-modal");
-      if (modal && modal.style.display !== "none" && parentTaskId) {
-        openEditTaskModal(parentTaskId);
-      }
-    } catch (e) {
-      console.error("Error toggling subtask:", e);
     }
   }
   function openSubtaskDepModal(subtaskId, taskId) {
@@ -7392,7 +6063,7 @@
     return ["kanban", "gantt", "team", "settings"].indexOf(tabId) !== -1;
   }
   function applyOwnerRestrictions() {
-    var allTabs = ["calendar", "kanban", "table", "gantt", "stats", "team", "settings"];
+    var allTabs = ["kanban", "gantt", "team", "settings"];
     allTabs.forEach(function(tab) {
       var el = document.querySelector('[data-tab="' + tab + '"]');
       if (el) el.style.display = isTabAllowed(tab) ? "" : "none";
@@ -9106,61 +7777,6 @@
       }
       await ensureConfigAndSettingsTables(existingTables);
       existingTables = await grist.docApi.listTables();
-      if (false) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", state.CONFIG_TABLE, [
-            { id: "Config_Key", type: "Text" },
-            { id: "Table_Name", type: "Text" },
-            { id: "Column_Name", type: "Text" },
-            { id: "Display_Label", type: "Text" },
-            { id: "Required", type: "Bool" },
-            { id: "Default_Value", type: "Text" }
-          ]]
-        ]);
-        var defaultConfig = [
-          // Tasks mapping
-          ["task_title", state.TASKS_TABLE, "Title", "Titre", true, "Title"],
-          ["task_description", state.TASKS_TABLE, "Description", "Description", false, "Description"],
-          ["task_status", state.TASKS_TABLE, "Status", "Statut", true, "Status"],
-          ["task_priority", state.TASKS_TABLE, "Priority", "Priorit\xE9", true, "Priority"],
-          ["task_assignee", state.TASKS_TABLE, "Assignee", "Assign\xE9 \xE0", false, "Assignee"],
-          ["task_group", state.TASKS_TABLE, "Group_Name", "Groupe", false, "Group_Name"],
-          ["task_start_date", state.TASKS_TABLE, "Start_Date", "Date d\xE9but", false, "Start_Date"],
-          ["task_due_date", state.TASKS_TABLE, "Due_Date", "\xC9ch\xE9ance", false, "Due_Date"],
-          ["task_category", state.TASKS_TABLE, "Category", "Cat\xE9gorie", false, "Category"],
-          ["task_tag", state.TASKS_TABLE, "Tag", "Tag", false, "Tag"],
-          ["task_recurrence", state.TASKS_TABLE, "Recurrence", "R\xE9currence", false, "Recurrence"],
-          ["task_estimated_hours", state.TASKS_TABLE, "Estimated_Hours", "Heures estim\xE9es", false, "Estimated_Hours"],
-          ["task_created_at", state.TASKS_TABLE, "Created_At", "Cr\xE9\xE9 le", false, "Created_At"],
-          ["task_project_id", state.TASKS_TABLE, "Project_Id", "Projet", false, "Project_Id"],
-          // Users mapping
-          ["user_name", state.USERS_TABLE, "Name", "Nom", true, "Name"],
-          ["user_email", state.USERS_TABLE, "Email", "Email", true, "Email"],
-          ["user_role", state.USERS_TABLE, "Role", "R\xF4le", false, "Role"],
-          ["user_group", state.USERS_TABLE, "Group_Name", "Groupe", false, "Group_Name"],
-          // Projects mapping
-          ["project_name", state.PROJECTS_TABLE, "Name", "Nom", true, "Name"],
-          ["project_description", state.PROJECTS_TABLE, "Description", "Description", false, "Description"],
-          ["project_color", state.PROJECTS_TABLE, "Color", "Couleur", false, "Color"],
-          ["project_status", state.PROJECTS_TABLE, "Status", "Statut", false, "Status"]
-        ];
-        var configRecords = [];
-        for (var i = 0; i < defaultConfig.length; i++) {
-          configRecords.push({
-            Config_Key: defaultConfig[i][0],
-            Table_Name: defaultConfig[i][1],
-            Column_Name: defaultConfig[i][2],
-            Display_Label: defaultConfig[i][3],
-            Required: defaultConfig[i][4],
-            Default_Value: defaultConfig[i][5]
-          });
-        }
-        await grist.docApi.applyUserActions([
-          ["BulkAddRecord", state.CONFIG_TABLE, configRecords.map(function() {
-            return null;
-          }), configRecords]
-        ]);
-      }
       if (existingTables.indexOf(state.SETTINGS_TABLE) === -1) {
         await grist.docApi.applyUserActions([
           ["AddTable", state.SETTINGS_TABLE, [
@@ -9547,10 +8163,7 @@
     addTagSetting,
     applySecurityRules,
     archiveTask,
-    calendarNav,
-    calendarToday,
     cancelEditSubtask,
-    clearMsFilter,
     closeAttachmentViewer,
     closeAutomationModal,
     closeConfirmModal,
@@ -9559,7 +8172,6 @@
     closeNotifications,
     closeProjectModal,
     closePromptModal,
-    collapseAllSubtasks,
     createGroup,
     createTask,
     createUser,
@@ -9581,7 +8193,6 @@
     editKanbanStatus,
     editProject,
     editTagSetting,
-    expandAllSubtasks,
     exportGanttPdf,
     filterComboSearch,
     filterProjectDropdown,
@@ -9595,10 +8206,6 @@
     generateSubtaskOccurrences,
     onAutoActionChange,
     onAutoTriggerChange,
-    onCalendarDayClick,
-    onCalendarDragOver,
-    onCalendarDrop,
-    onCalendarTaskDragStart,
     onDragLeave,
     onDragOver,
     onDragStart,
@@ -9615,7 +8222,6 @@
     openEditUserModal,
     openManageRolesModal,
     openNewGroupModal,
-    openNewTaskForDay,
     openNewTaskModal,
     openNewUserModal,
     openNotification,
@@ -9631,12 +8237,9 @@
     removeSecurityRules,
     removeTagChip,
     removeTagSetting,
-    renderBurndownChart,
     renderEmojiPicker,
     renderProjectList,
     renderSettingsProjectsList,
-    renderTableView,
-    renderTimelineChart,
     resetFilters,
     restoreTask,
     runSetupDiagnostic,
@@ -9651,7 +8254,6 @@
     selectEmoji,
     selectFilterCombo,
     selectProjectOption,
-    setCalendarMode,
     setGanttCustomRange,
     setGanttMode,
     setGanttSort,
@@ -9664,7 +8266,6 @@
     setupCreateFrenchTables,
     setupUseExistingTables,
     showNotifications,
-    sortTable,
     startEditSubtask,
     startTimer,
     submitPromptModal,
@@ -9679,8 +8280,6 @@
     toggleGanttSubtask,
     toggleKanbanCol,
     toggleKanbanFullscreen,
-    toggleMsFilter,
-    toggleMsOption,
     toggleMyProjects,
     toggleNotifyConcerned,
     toggleProjectDropdown,
@@ -9688,7 +8287,6 @@
     toggleSubtask,
     toggleSubtaskFromCard,
     toggleSubtaskFromPopup,
-    toggleSubtasks,
     updateGroup,
     updateSubtaskDep,
     updateTask,

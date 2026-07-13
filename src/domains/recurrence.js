@@ -3,10 +3,6 @@ import { state } from '../store.js';
 import { showToast } from '../ui/toast.js';
 import { loadAllData } from './data-loader.js';
 import { setField } from '../config.js';
-// NOTE: renderCurrentView() below is called but never defined anywhere in this
-// codebase - a pre-existing bug (confirmed present before this refactor too,
-// see git history). Left as-is: fixing bugs is out of scope for this
-// structural-only pass.
 
 // RECURRENCE HANDLING
 // =============================================================================
@@ -88,7 +84,6 @@ export async function generateOccurrences(taskId, period) {
     await grist.docApi.applyUserActions(actions);
     showToast(count + ' ' + t('occurrencesGenerated'), 'success');
     await loadAllData();
-    renderCurrentView();
   } catch (e) {
     console.error('Error generating occurrences:', e);
     showToast('Erreur : ' + e.message, 'error');

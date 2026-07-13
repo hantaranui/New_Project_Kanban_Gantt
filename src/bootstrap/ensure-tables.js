@@ -449,63 +449,6 @@ export async function ensureTables() {
     // Create configuration/settings tables for column mapping configuration
     await ensureConfigAndSettingsTables(existingTables);
     existingTables = await grist.docApi.listTables();
-    if (false && existingTables.indexOf(state.CONFIG_TABLE) === -1) {
-      await grist.docApi.applyUserActions([
-        ['AddTable', state.CONFIG_TABLE, [
-          { id: 'Config_Key', type: 'Text' },
-          { id: 'Table_Name', type: 'Text' },
-          { id: 'Column_Name', type: 'Text' },
-          { id: 'Display_Label', type: 'Text' },
-          { id: 'Required', type: 'Bool' },
-          { id: 'Default_Value', type: 'Text' }
-        ]]
-      ]);
-      
-      // Initialize with default mapping
-      var defaultConfig = [
-        // Tasks mapping
-        ['task_title', state.TASKS_TABLE, 'Title', 'Titre', true, 'Title'],
-        ['task_description', state.TASKS_TABLE, 'Description', 'Description', false, 'Description'],
-        ['task_status', state.TASKS_TABLE, 'Status', 'Statut', true, 'Status'],
-        ['task_priority', state.TASKS_TABLE, 'Priority', 'Priorité', true, 'Priority'],
-        ['task_assignee', state.TASKS_TABLE, 'Assignee', 'Assigné à', false, 'Assignee'],
-        ['task_group', state.TASKS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
-        ['task_start_date', state.TASKS_TABLE, 'Start_Date', 'Date début', false, 'Start_Date'],
-        ['task_due_date', state.TASKS_TABLE, 'Due_Date', 'Échéance', false, 'Due_Date'],
-        ['task_category', state.TASKS_TABLE, 'Category', 'Catégorie', false, 'Category'],
-        ['task_tag', state.TASKS_TABLE, 'Tag', 'Tag', false, 'Tag'],
-        ['task_recurrence', state.TASKS_TABLE, 'Recurrence', 'Récurrence', false, 'Recurrence'],
-        ['task_estimated_hours', state.TASKS_TABLE, 'Estimated_Hours', 'Heures estimées', false, 'Estimated_Hours'],
-        ['task_created_at', state.TASKS_TABLE, 'Created_At', 'Créé le', false, 'Created_At'],
-        ['task_project_id', state.TASKS_TABLE, 'Project_Id', 'Projet', false, 'Project_Id'],
-        // Users mapping
-        ['user_name', state.USERS_TABLE, 'Name', 'Nom', true, 'Name'],
-        ['user_email', state.USERS_TABLE, 'Email', 'Email', true, 'Email'],
-        ['user_role', state.USERS_TABLE, 'Role', 'Rôle', false, 'Role'],
-        ['user_group', state.USERS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
-        // Projects mapping
-        ['project_name', state.PROJECTS_TABLE, 'Name', 'Nom', true, 'Name'],
-        ['project_description', state.PROJECTS_TABLE, 'Description', 'Description', false, 'Description'],
-        ['project_color', state.PROJECTS_TABLE, 'Color', 'Couleur', false, 'Color'],
-        ['project_status', state.PROJECTS_TABLE, 'Status', 'Statut', false, 'Status']
-      ];
-      
-      var configRecords = [];
-      for (var i = 0; i < defaultConfig.length; i++) {
-        configRecords.push({
-          Config_Key: defaultConfig[i][0],
-          Table_Name: defaultConfig[i][1],
-          Column_Name: defaultConfig[i][2],
-          Display_Label: defaultConfig[i][3],
-          Required: defaultConfig[i][4],
-          Default_Value: defaultConfig[i][5]
-        });
-      }
-      
-      await grist.docApi.applyUserActions([
-        ['BulkAddRecord', state.CONFIG_TABLE, configRecords.map(function() { return null; }), configRecords]
-      ]);
-    }
 
     // Create PM_Settings table for widget preferences (shared across users)
     if (existingTables.indexOf(state.SETTINGS_TABLE) === -1) {

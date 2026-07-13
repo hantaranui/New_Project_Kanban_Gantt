@@ -169,7 +169,7 @@ export function isTabAllowed(tabId) {
 }
 
 export function applyOwnerRestrictions() {
-  var allTabs = ['calendar', 'kanban', 'table', 'gantt', 'stats', 'team', 'settings'];
+  var allTabs = ['kanban', 'gantt', 'team', 'settings'];
   allTabs.forEach(function(tab) {
     var el = document.querySelector('[data-tab="' + tab + '"]');
     if (el) el.style.display = isTabAllowed(tab) ? '' : 'none';
