@@ -295,7 +295,7 @@ export async function ensureTables() {
           { id: 'Name', type: 'Text' },
           { id: 'Email', type: 'Text' },
           { id: 'Role', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['admin', 'member', 'viewer'] }) },
-          { id: 'Group_Name', type: 'Text' }
+          { id: 'Group_Name', type: 'Choice', widgetOptions: JSON.stringify({ choices: [] }) }
         ]]
       ]);
     }

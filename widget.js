@@ -132,6 +132,14 @@
       rolesUpdated: "R\xF4les mis \xE0 jour !",
       confirmDeleteRole: "Supprimer ce r\xF4le ?",
       cannotDeleteUsedRole: "Ce r\xF4le est utilis\xE9 par des utilisateurs",
+      manageGroups: "Groupes",
+      manageGroupsTitle: "G\xE9rer les groupes",
+      manageGroupsSubtitle: "Ajoutez ou supprimez des groupes utilis\xE9s dans votre \xE9quipe",
+      addGroupOption: "Ajouter un groupe",
+      newGroupPlaceholder: "Nom du nouveau groupe",
+      groupsUpdated: "Groupes mis \xE0 jour !",
+      confirmDeleteGroupOption: "Supprimer ce groupe ?",
+      cannotDeleteUsedGroupOption: "Ce groupe est utilis\xE9 par des utilisateurs",
       addUser: "Ajouter",
       modalNewUser: "Nouvel utilisateur",
       fieldName: "Nom *",
@@ -1927,6 +1935,117 @@
       if (u.Group_Name) groupSet[u.Group_Name] = true;
     });
     return Object.keys(groupSet).sort();
+  }
+  var _manageGroupsState = { choices: [] };
+  async function openManageGroupsModal() {
+    var choices = await getGroupChoicesFromGrist();
+    _manageGroupsState.choices = choices.slice();
+    renderManageGroupsModal();
+  }
+  function renderManageGroupsModal() {
+    var choices = _manageGroupsState.choices;
+    var usage = {};
+    state.users.forEach(function(u) {
+      if (u.Group_Name) usage[u.Group_Name] = (usage[u.Group_Name] || 0) + 1;
+    });
+    var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+    html += '<div class="modal" onclick="event.stopPropagation()">';
+    html += '<div class="modal-header"><h3>' + t("manageGroupsTitle") + '</h3><button class="modal-close" onclick="closeModalForce()">\u2715</button></div>';
+    html += '<div class="modal-body">';
+    html += '<p style="color:#64748b;font-size:13px;margin:0 0 12px 0;">' + t("manageGroupsSubtitle") + "</p>";
+    html += '<div class="settings-items">';
+    if (choices.length === 0) {
+      html += '<div style="text-align:center;color:#94a3b8;padding:20px;">--</div>';
+    } else {
+      for (var i = 0; i < choices.length; i++) {
+        var g = choices[i];
+        var count = usage[g] || 0;
+        html += '<div class="settings-item">';
+        html += '<div class="settings-item-info">';
+        html += "<strong>" + sanitize(g) + "</strong>";
+        html += '<span class="settings-item-meta">' + count + " " + (currentLang === "fr" ? "utilisateur(s)" : "user(s)") + "</span>";
+        html += "</div>";
+        html += '<div class="settings-item-actions">';
+        html += '<button class="btn-icon" onclick="removeGroupChoice(' + i + ')" title="' + t("confirmDeleteGroupOption") + '">\u{1F5D1}\uFE0F</button>';
+        html += "</div>";
+        html += "</div>";
+      }
+    }
+    html += "</div>";
+    html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+    html += '<input type="text" id="new-group-name" placeholder="' + t("newGroupPlaceholder") + `" style="flex:1;" onkeydown="if(event.key==='Enter'){addGroupChoice();}" />`;
+    html += '<button class="btn btn-primary btn-sm" onclick="addGroupChoice()">+ ' + t("addGroupOption") + "</button>";
+    html += "</div>";
+    html += "</div>";
+    html += '<div class="modal-footer">';
+    html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t("cancel") + "</button>";
+    html += '<button class="btn btn-primary" onclick="saveGroupChoices()">' + t("save") + "</button>";
+    html += "</div></div></div>";
+    document.getElementById("modal-container").innerHTML = html;
+  }
+  function addGroupChoice() {
+    var input = document.getElementById("new-group-name");
+    var name = (input.value || "").trim();
+    if (!name) return;
+    if (_manageGroupsState.choices.indexOf(name) !== -1) {
+      showToast(currentLang === "fr" ? "Ce groupe existe d\xE9j\xE0" : "Group already exists", "error");
+      return;
+    }
+    _manageGroupsState.choices.push(name);
+    renderManageGroupsModal();
+  }
+  function removeGroupChoice(index) {
+    var group = _manageGroupsState.choices[index];
+    var inUse = state.users.some(function(u) {
+      return u.Group_Name === group;
+    });
+    if (inUse) {
+      if (!confirm(t("cannotDeleteUsedGroupOption") + ". " + (currentLang === "fr" ? "Continuer ?" : "Continue?"))) {
+        return;
+      }
+    } else if (!confirm(t("confirmDeleteGroupOption"))) {
+      return;
+    }
+    _manageGroupsState.choices.splice(index, 1);
+    renderManageGroupsModal();
+  }
+  async function saveGroupChoices() {
+    try {
+      var groupColName = getColumnName("users", "group");
+      var tablesData = await grist.docApi.fetchTable("_grist_Tables");
+      var columnsData = await grist.docApi.fetchTable("_grist_Tables_column");
+      var tableRowId = null;
+      for (var i = 0; i < tablesData.id.length; i++) {
+        if (tablesData.tableId[i] === state.USERS_TABLE) {
+          tableRowId = tablesData.id[i];
+          break;
+        }
+      }
+      if (tableRowId === null) throw new Error("Table not found");
+      var existingOpts = {};
+      for (var j = 0; j < columnsData.id.length; j++) {
+        if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === groupColName) {
+          var wo = columnsData.widgetOptions[j];
+          if (wo) {
+            try {
+              existingOpts = JSON.parse(wo);
+            } catch (e) {
+            }
+          }
+          break;
+        }
+      }
+      existingOpts.choices = _manageGroupsState.choices;
+      if (!existingOpts.widget) existingOpts.widget = "TextBox";
+      await grist.docApi.applyUserActions([
+        ["ModifyColumn", state.USERS_TABLE, groupColName, { widgetOptions: JSON.stringify(existingOpts) }]
+      ]);
+      showToast(t("groupsUpdated"), "success");
+      closeModalForce();
+    } catch (e) {
+      console.error("Error saving groups:", e);
+      showToast("Error: " + e.message, "error");
+    }
   }
   async function getRoleChoicesFromGrist() {
     var roleSet = {};
@@ -7539,7 +7658,7 @@
             { id: "Name", type: "Text" },
             { id: "Email", type: "Text" },
             { id: "Role", type: "Choice", widgetOptions: JSON.stringify({ choices: ["admin", "member", "viewer"] }) },
-            { id: "Group_Name", type: "Text" }
+            { id: "Group_Name", type: "Choice", widgetOptions: JSON.stringify({ choices: [] }) }
           ]]
         ]);
       }
@@ -8044,6 +8163,7 @@
     addCategorySetting,
     addComment,
     addDefaultAutomationRules,
+    addGroupChoice,
     addKanbanStatus,
     addManualTimeEntry,
     addRaciChip,
@@ -8107,6 +8227,7 @@
     openEditAutomationRuleModal,
     openEditTaskModal,
     openEditUserModal,
+    openManageGroupsModal,
     openManageRolesModal,
     openNewTaskModal,
     openNewUserModal,
@@ -8117,6 +8238,7 @@
     pauseTimer,
     quickAction,
     removeCategorySetting,
+    removeGroupChoice,
     removeKanbanStatus,
     removeRaciChip,
     removeRoleChoice,
@@ -8124,6 +8246,7 @@
     removeTagChip,
     removeTagSetting,
     renderEmojiPicker,
+    renderManageGroupsModal,
     renderProjectList,
     renderSettingsProjectsList,
     resetFilters,
@@ -8132,6 +8255,7 @@
     saveAutomationRuleFromModal,
     saveColumnMapping,
     saveEditSubtask,
+    saveGroupChoices,
     saveInlineProjectEdit,
     saveProject,
     saveRoleChoices,

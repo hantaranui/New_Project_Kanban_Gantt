@@ -60,7 +60,8 @@ import {
 import {
   renderTeamView, renderUsersList, getRoleChoicesFromGrist, openManageRolesModal,
   renderManageRolesModal, addRoleChoice, removeRoleChoice, saveRoleChoices, openEditUserModal,
-  updateUser, openNewUserModal, createUser, deleteUser
+  updateUser, openNewUserModal, createUser, deleteUser,
+  openManageGroupsModal, renderManageGroupsModal, addGroupChoice, removeGroupChoice, saveGroupChoices
 } from './domains/team.js';
 import {
   saveCardDisplaySettings, saveSetting, uiLabel, saveUiLabels, renderSettingsView,
@@ -107,7 +108,7 @@ import { addTagSetting, editTagSetting, removeTagSetting, setTagsFromSettings } 
 // one of these handlers throws "X is not defined" the moment it's clicked.
 // Any new onclick handler added to generated HTML must be added here too.
 Object.assign(window, {
-  addCategorySetting, addComment, addDefaultAutomationRules, addKanbanStatus, addManualTimeEntry,
+  addCategorySetting, addComment, addDefaultAutomationRules, addGroupChoice, addKanbanStatus, addManualTimeEntry,
   addRaciChip, addRoleChoice, addSubtask, addTagChip, addTagSetting, applySecurityRules, archiveTask,
   cancelEditSubtask, closeAttachmentViewer, closeAutomationModal,
   closeConfirmModal, closeModal, closeModalForce, closeNotifications, closeProjectModal, closePromptModal,
@@ -122,14 +123,14 @@ Object.assign(window, {
   onAutoTriggerChange, onDragLeave,
   onDragOver, onDragStart, onDrop, openAddAutomationRuleModal, openAttachmentInNewTab, openCardAttachmentsModal,
   openCardCommentsModal, openCardSubtasksModal, openColumnMappingModal,
-  openEditAutomationRuleModal, openEditTaskModal, openEditUserModal, openManageRolesModal,
+  openEditAutomationRuleModal, openEditTaskModal, openEditUserModal, openManageGroupsModal, openManageRolesModal,
   openNewTaskModal, openNewUserModal, openNotification,
   openProjectModal, openProjectModalForEdit, openSubtaskDepModal, pauseTimer, quickAction,
-  removeCategorySetting, removeKanbanStatus, removeRaciChip, removeRoleChoice, removeSecurityRules,
+  removeCategorySetting, removeGroupChoice, removeKanbanStatus, removeRaciChip, removeRoleChoice, removeSecurityRules,
   removeTagChip, removeTagSetting,
-  renderEmojiPicker, renderProjectList, renderSettingsProjectsList,
+  renderEmojiPicker, renderManageGroupsModal, renderProjectList, renderSettingsProjectsList,
   resetFilters, restoreTask, runSetupDiagnostic, saveAutomationRuleFromModal,
-  saveColumnMapping, saveEditSubtask, saveInlineProjectEdit, saveProject, saveRoleChoices,
+  saveColumnMapping, saveEditSubtask, saveGroupChoices, saveInlineProjectEdit, saveProject, saveRoleChoices,
   saveTaskFromFooter, saveUiLabelSettings, selectEmoji, selectFilterCombo, selectProjectOption,
   setGanttCustomRange, setGanttMode, setGanttSort, setGanttStatusFilter, setGanttYear, setKanbanGroupBy,
   setKanbanSort, setStPill, setStStatus, setStType, setupCreateFrenchTables, setupUseExistingTables,

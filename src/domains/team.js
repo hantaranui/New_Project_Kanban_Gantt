@@ -118,6 +118,123 @@ export async function getGroupChoicesFromGrist() {
   return Object.keys(groupSet).sort();
 }
 
+// In-memory state for the manage groups modal
+var _manageGroupsState = { choices: [] };
+
+export async function openManageGroupsModal() {
+  var choices = await getGroupChoicesFromGrist();
+  _manageGroupsState.choices = choices.slice();
+  renderManageGroupsModal();
+}
+
+export function renderManageGroupsModal() {
+  var choices = _manageGroupsState.choices;
+  var usage = {};
+  state.users.forEach(function(u) { if (u.Group_Name) usage[u.Group_Name] = (usage[u.Group_Name] || 0) + 1; });
+
+  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+  html += '<div class="modal" onclick="event.stopPropagation()">';
+  html += '<div class="modal-header"><h3>' + t('manageGroupsTitle') + '</h3><button class="modal-close" onclick="closeModalForce()">✕</button></div>';
+  html += '<div class="modal-body">';
+  html += '<p style="color:#64748b;font-size:13px;margin:0 0 12px 0;">' + t('manageGroupsSubtitle') + '</p>';
+
+  html += '<div class="settings-items">';
+  if (choices.length === 0) {
+    html += '<div style="text-align:center;color:#94a3b8;padding:20px;">--</div>';
+  } else {
+    for (var i = 0; i < choices.length; i++) {
+      var g = choices[i];
+      var count = usage[g] || 0;
+      html += '<div class="settings-item">';
+      html += '<div class="settings-item-info">';
+      html += '<strong>' + sanitize(g) + '</strong>';
+      html += '<span class="settings-item-meta">' + count + ' ' + (currentLang === 'fr' ? 'utilisateur(s)' : 'user(s)') + '</span>';
+      html += '</div>';
+      html += '<div class="settings-item-actions">';
+      html += '<button class="btn-icon" onclick="removeGroupChoice(' + i + ')" title="' + t('confirmDeleteGroupOption') + '">🗑️</button>';
+      html += '</div>';
+      html += '</div>';
+    }
+  }
+  html += '</div>';
+
+  html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+  html += '<input type="text" id="new-group-name" placeholder="' + t('newGroupPlaceholder') + '" style="flex:1;" onkeydown="if(event.key===\'Enter\'){addGroupChoice();}" />';
+  html += '<button class="btn btn-primary btn-sm" onclick="addGroupChoice()">+ ' + t('addGroupOption') + '</button>';
+  html += '</div>';
+
+  html += '</div>';
+  html += '<div class="modal-footer">';
+  html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t('cancel') + '</button>';
+  html += '<button class="btn btn-primary" onclick="saveGroupChoices()">' + t('save') + '</button>';
+  html += '</div></div></div>';
+
+  document.getElementById('modal-container').innerHTML = html;
+}
+
+export function addGroupChoice() {
+  var input = document.getElementById('new-group-name');
+  var name = (input.value || '').trim();
+  if (!name) return;
+  if (_manageGroupsState.choices.indexOf(name) !== -1) {
+    showToast(currentLang === 'fr' ? 'Ce groupe existe déjà' : 'Group already exists', 'error');
+    return;
+  }
+  _manageGroupsState.choices.push(name);
+  renderManageGroupsModal();
+}
+
+export function removeGroupChoice(index) {
+  var group = _manageGroupsState.choices[index];
+  var inUse = state.users.some(function(u) { return u.Group_Name === group; });
+  if (inUse) {
+    if (!confirm(t('cannotDeleteUsedGroupOption') + '. ' + (currentLang === 'fr' ? 'Continuer ?' : 'Continue?'))) {
+      return;
+    }
+  } else if (!confirm(t('confirmDeleteGroupOption'))) {
+    return;
+  }
+  _manageGroupsState.choices.splice(index, 1);
+  renderManageGroupsModal();
+}
+
+export async function saveGroupChoices() {
+  try {
+    var groupColName = getColumnName('users', 'group');
+    var tablesData = await grist.docApi.fetchTable('_grist_Tables');
+    var columnsData = await grist.docApi.fetchTable('_grist_Tables_column');
+
+    var tableRowId = null;
+    for (var i = 0; i < tablesData.id.length; i++) {
+      if (tablesData.tableId[i] === state.USERS_TABLE) { tableRowId = tablesData.id[i]; break; }
+    }
+    if (tableRowId === null) throw new Error('Table not found');
+
+    var existingOpts = {};
+    for (var j = 0; j < columnsData.id.length; j++) {
+      if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === groupColName) {
+        var wo = columnsData.widgetOptions[j];
+        if (wo) {
+          try { existingOpts = JSON.parse(wo); } catch (e) {}
+        }
+        break;
+      }
+    }
+
+    existingOpts.choices = _manageGroupsState.choices;
+    if (!existingOpts.widget) existingOpts.widget = 'TextBox';
+
+    await grist.docApi.applyUserActions([
+      ['ModifyColumn', state.USERS_TABLE, groupColName, { widgetOptions: JSON.stringify(existingOpts) }]
+    ]);
+    showToast(t('groupsUpdated'), 'success');
+    closeModalForce();
+  } catch (e) {
+    console.error('Error saving groups:', e);
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
 export async function getRoleChoicesFromGrist() {
   var roleSet = {};
   var hasGristChoices = false;
